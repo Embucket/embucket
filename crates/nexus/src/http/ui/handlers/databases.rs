@@ -165,6 +165,7 @@ pub async fn get_database(
         )
             .unwrap(),
     };
+
     let mut database = state.get_database(&ident).await?;
     let tables = state.list_tables(&ident).await?;
 
