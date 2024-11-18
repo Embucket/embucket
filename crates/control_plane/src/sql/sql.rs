@@ -82,7 +82,7 @@ impl SqlExecutor {
                     return self.execute_with_custom_plan(&query, warehouse_name).await;
                 }
                 _ => {}
-        }
+            }
         }
         if let DFStatement::Statement(ref mut s) = statement {
             println!("old statement: {}", s.clone().to_string());
