@@ -2,7 +2,6 @@ use crate::sql::context::CustomContextProvider;
 use crate::sql::functions::parse_json::ParseJsonFunc;
 use crate::sql::planner::ExtendedSqlToRel;
 use arrow::array::RecordBatch;
-use datafusion::catalog::CatalogProvider;
 use datafusion::common::Result;
 use datafusion::datasource::default_table_source::provider_as_source;
 use datafusion::execution::context::SessionContext;
@@ -14,7 +13,6 @@ use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
 use datafusion_functions_json::register_all;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
-use iceberg_rust::catalog::Catalog;
 use iceberg_rust::spec::identifier::Identifier;
 use iceberg_rust::spec::schema::Schema;
 use iceberg_rust::spec::types::StructType;
@@ -59,7 +57,7 @@ impl SqlExecutor {
     ) -> Result<Vec<RecordBatch>> {
         if let Statement::CreateTable(create_table_statement) = statement {
             let new_table_full_name = create_table_statement.name.to_string();
-            let new_table_wh_id = create_table_statement.name.0[0].clone();
+            let _new_table_wh_id = create_table_statement.name.0[0].clone();
             let new_table_db = create_table_statement.name.0[1].clone();
             let new_table_name = create_table_statement.name.0[2].clone();
             let location = create_table_statement.location.clone();
