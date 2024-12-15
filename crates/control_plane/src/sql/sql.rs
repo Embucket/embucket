@@ -16,6 +16,9 @@ use datafusion::sql::sqlparser::ast::{
     CreateTable as CreateTableStatement, Ident, ObjectName, Query, SchemaName, Statement,
     TableFactor, TableWithJoins,
 };
+use datafusion::sql::sqlparser::ast::{ObjectName, Statement, CreateTable as CreateTableStatement, SetExpr, Query, Value, GroupByExpr};
+use datafusion::datasource::default_table_source::provider_as_source;
+use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
 use datafusion_functions_json::register_all;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
@@ -27,6 +30,8 @@ use regex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
+use datafusion::sql::sqlparser::ast::{ TableFactor, TableWithJoins, Select, Expr, BinaryOperator, SelectItem, Ident};
+
 
 pub struct SqlExecutor {
     ctx: SessionContext,
@@ -67,6 +72,16 @@ impl SqlExecutor {
                     return self.execute_with_custom_plan(&query, warehouse_name).await;
                 }
                 _ => {}
+        }
+        }
+        if let DFStatement::Statement(ref mut s) = statement {
+            println!("old statement: {}", s.clone().to_string());
+            if let Statement::CreateTable (CreateTableStatement { ref mut query, .. }) = &mut **s {
+                if let Some(ref mut query) = query {
+                    self.modify_selects_with_qualify(query);
+                }
+                println!("new statement: {}", s.clone().to_string());
+                return self.create_table_query(*s.clone(), warehouse_name).await;
             }
         }
         self.ctx.sql(&query).await?.collect().await
@@ -447,6 +462,90 @@ impl SqlExecutor {
                 self.update_tables_in_table_with_joins(table_with_joins, warehouse_name);
             }
             _ => {}
+        }
+    }
+
+    fn modify_selects_with_qualify(&self, query: &mut Query) {
+        match &mut *query.body {
+            SetExpr::Select(select) => {
+                if let Some(qualify_expr) = &select.qualify {
+                    if let Expr::BinaryOp { left, op, right } = qualify_expr {
+                        if matches!(op, BinaryOperator::Eq) {
+                            let mut inner_select = select.clone();
+                            inner_select.projection.push(
+                                SelectItem::ExprWithAlias {
+                                    expr: *(left.clone()),
+                                    alias: Ident { value: "qualify_alias".to_string(), quote_style: None }
+                                }
+                            );
+                            inner_select.qualify = None;
+                            let subquery = Query {
+                                with: None,
+                                body: Box::new(SetExpr::Select(inner_select)),
+                                order_by: None,
+                                limit: None,
+                                limit_by: vec![],
+                                offset: None,
+                                fetch: None,
+                                locks: vec![],
+                                for_clause: None,
+                                settings: None,
+                                format_clause: None,
+                            };
+                            let outer_select = Select {
+                                distinct: None,
+                                top: None,
+                                projection: vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident { value: "*".to_string(),
+                                    quote_style: None }))],
+                                into: None,
+                                from: vec![TableWithJoins {
+                                    relation: TableFactor::Derived {
+                                        lateral: false,
+                                        subquery: Box::new(subquery),
+                                        alias: None,
+                                    },
+                                    joins: vec![],
+                                }],
+                                lateral_views: vec![],
+                                prewhere: None,
+                                selection: Some(Expr::BinaryOp {
+                                    left: Box::new(Expr::Identifier(Ident { value: "qualify_alias".to_string(), quote_style: None })),
+                                    op: BinaryOperator::Eq,
+                                    right: Box::new(*right.clone())
+                                }),
+                                group_by: GroupByExpr::Expressions(vec![], vec![]),
+                                cluster_by: vec![],
+                                distribute_by: vec![],
+                                sort_by: vec![],
+                                having: None,
+                                named_window: vec![],
+                                qualify: None,
+                                window_before_qualify: false,
+                                value_table_mode: None,
+                                connect_by: None,
+                            };
+
+                            *query.body = SetExpr::Select(Box::new(outer_select));
+                        } else {
+                            println!("QUALIFY expression is a binary operation, but not an equality.");
+                        }
+                    } else {
+                        println!("QUALIFY expression is not a binary operation.");
+                    }
+                }
+            }
+            SetExpr::Query(inner_query) => {
+                self.modify_selects_with_qualify(inner_query);
+            }
+            // Handle any other query patterns if required
+            _ => {}
+        }
+
+        // Recursively check the CTEs (Common Table Expressions) and modify them if applicable
+        if let Some(with) = &mut query.with {
+            for cte in &mut with.cte_tables {
+                self.modify_selects_with_qualify(&mut cte.query);
+            }
         }
     }
 }
