@@ -15,19 +15,23 @@ or replace temporary view DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_q
     false
 );
 describe table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sessions__dbt_tmp;
-begin alter session
+begin;
+alter session
     set
-    query_tag = 'snowplow_dbt' insert into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sessions ("SESSION_IDENTIFIER") (
+    query_tag = 'snowplow_dbt';
+            insert into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sessions ("SESSION_IDENTIFIER") (
     select
     "SESSION_IDENTIFIER"
     from
     DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sessions__dbt_tmp
     );
-COMMIT
+COMMIT;
 drop
-    view if exists DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sessions__dbt_tmp cascade alter session
+    view if exists DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sessions__dbt_tmp cascade;
+alter session
     set
-    query_tag = 'snowplow_dbt' create
+    query_tag = 'snowplow_dbt';
+create
 or replace temporary view DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest__dbt_tmp as (
     with prep as (
       select
@@ -44,9 +48,11 @@ or replace temporary view DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_increm
 describe table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest__dbt_tmp;
 describe table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest;
 describe table "DBT_TRY_1"."ATOMIC_SNOWPLOW_MANIFEST"."SNOWPLOW_WEB_INCREMENTAL_MANIFEST";
-begin alter session
+begin;
+alter session
     set
-    query_tag = 'snowplow_dbt' insert into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest ("MODEL", "LAST_SUCCESS") (
+    query_tag = 'snowplow_dbt';
+insert into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest ("MODEL", "LAST_SUCCESS") (
     select
     "MODEL",
     "LAST_SUCCESS"
@@ -55,7 +61,7 @@ begin alter session
     );
 COMMIT;
 drop
-    view if exists DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest__dbt_tmp cascade
+    view if exists DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest__dbt_tmp cascade;
 select
     min(last_success) as min_last_success,
     max(last_success) as max_last_success,
@@ -78,7 +84,8 @@ where
         );
 alter session
 set
-    query_tag = 'snowplow_dbt' create
+    query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_new_event_limits as (
     select
       cast('2022-08-19' as timestamp) as lower_limit,
@@ -131,13 +138,12 @@ or replace transient table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_
             max(
               COALESCE(e.domain_userid, NULL)
             ) as user_identifier,
-            -- Edge case 1: Arbitary selection to avoid window function like first_value.
             min(collector_tstamp) as start_tstamp,
             max(collector_tstamp) as end_tstamp
           from
             DBT_TRY_1.atomic.events e
           where
-            dvce_sent_tstamp <= dateadd(day, 3, dvce_created_tstamp) -- don't process data that's too late
+            dvce_sent_tstamp <= dateadd(day, 3, dvce_created_tstamp)
             and collector_tstamp >= cast(
               '2022-08-19 00:00:00' as timestamp
             )
@@ -145,7 +151,7 @@ or replace transient table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_
               '2022-09-18 00:00:00' as timestamp
             )
             and true
-            and True --don't reprocess sessions that have already been processed.
+            and True
           group by
             1
         ),
@@ -155,7 +161,7 @@ or replace transient table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_
           from
             new_events_session_ids_init e
           where
-            session_identifier is not null -- don't continue processing v.long sessions
+            session_identifier is not null
             and not exists (
               select
                 1
@@ -170,7 +176,7 @@ or replace transient table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_
             *
           from
             new_events_session_ids
-        ); -- main query?
+        ),
         select
           sl.session_identifier,
           sl.user_identifier,
@@ -178,7 +184,7 @@ or replace transient table DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_
           least(
             dateadd(day, 3, sl.start_tstamp),
             sl.end_tstamp
-          ) as end_tstamp -- limit session length to max_session_days
+          ) as end_tstamp
         from
           session_lifecycle sl
       )
@@ -208,8 +214,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_t
       s.session_identifier,
       s.user_identifier,
       s.start_tstamp,
-      -- end_tstamp used in next step to limit events. When backfilling, set end_tstamp to upper_limit if end_tstamp > upper_limit.
-      -- This ensures we don't accidentally process events after upper_limit
       case when s.end_tstamp > cast(
         '2022-09-18 00:00:00' as timestamp
       ) then cast(
@@ -218,14 +222,12 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_t
     from
       DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_sessions_lifecycle_manifest s
     where
-      -- General window of start_tstamps to limit table scans. Logic complicated by backfills.
-      -- To be within the run, session start_tstamp must be >= lower_limit - max_session_days as we limit end_tstamp in manifest to start_tstamp + max_session_days
       s.start_tstamp >= cast(
         '2022-08-16 00:00:00' as timestamp
       )
       and s.start_tstamp <= cast(
         '2022-09-18 00:00:00' as timestamp
-      ) -- Select sessions within window that either; start or finish between lower & upper limit, start and finish outside of lower and upper limits
+      )
       and not (
         s.start_tstamp > cast(
           '2022-09-18 00:00:00' as timestamp
@@ -239,7 +241,7 @@ merge into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_base_quarantined_sess
     select
         session_identifier
     from
-        DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_this_run -- '=' since end_tstamp is restricted to start_tstamp + max_session_days
+        DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_this_run
     where
         end_tstamp = dateadd(day, 3, start_tstamp)
 ) src on trg.session_identifier = src.session_identifier when not matched then insert (session_identifier)
@@ -249,9 +251,11 @@ select
     min(start_tstamp) as lower_limit,
     max(end_tstamp) as upper_limit
 from
-    DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_this_run alter session
+    DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_this_run;
+alter session
 set
-    query_tag = 'snowplow_dbt' create
+    query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_events_this_run as (
     with base_query as (
       with identified_events AS (
@@ -263,7 +267,7 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_events_thi
       )
       select
         a.*,
-        b.user_identifier -- take user_identifier from manifest. This ensures only 1 domain_userid per session.
+        b.user_identifier
       from
         identified_events as a
         inner join DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_sessions_this_run as b on a.session_identifier = b.session_identifier
@@ -276,7 +280,7 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_events_thi
         and a.collector_tstamp <= cast(
           '2022-08-22 00:33:22.077000' as timestamp
         )
-        and a.collector_tstamp >= b.start_tstamp -- deal with late loading events
+        and a.collector_tstamp >= b.start_tstamp
         and true qualify row_number() over (
           partition by a.event_id
           order by
@@ -299,17 +303,13 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_events_thi
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_engaged_time as (
     select
       ev.page_view_id,
       ev.domain_sessionid,
       max(ev.derived_tstamp) as end_tstamp,
-      -- aggregate pings:
-      -- divides epoch tstamps by snowplow__heartbeat to get distinct intervals
-      -- floor rounds to nearest integer - duplicates all evaluate to the same number
-      -- count(distinct) counts duplicates only once
-      -- adding snowplow__min_visit_length accounts for the page view event itself.
       10 * (
         count(
           distinct(
@@ -332,7 +332,8 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_engaged_time
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+    create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth as (
     with prep as (
       select
@@ -342,9 +343,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth
         max(ev.doc_height) as doc_height,
         max(ev.br_viewwidth) as br_viewwidth,
         max(ev.br_viewheight) as br_viewheight,
-        -- coalesce replaces null with 0 (because the page view event does send an offset)
-        -- greatest prevents outliers (negative offsets)
-        -- least also prevents outliers (offsets greater than the docwidth or docheight)
         least(
           greatest(
             min(
@@ -354,7 +352,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth
           ),
           max(ev.doc_width)
         ) as hmin,
-        -- should be zero
         least(
           greatest(
             max(
@@ -373,7 +370,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth
           ),
           max(ev.doc_height)
         ) as vmin,
-        -- should be zero (edge case: not zero because the pv event is missing)
         least(
           greatest(
             max(
@@ -388,8 +384,8 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth
       where
         ev.event_name in ('page_view', 'page_ping')
         and ev.page_view_id is not null
-        and ev.doc_height > 0 -- exclude problematic (but rare) edge case
-        and ev.doc_width > 0 -- exclude problematic (but rare) edge case
+        and ev.doc_height > 0
+        and ev.doc_width > 0
       group by
         1,
         2
@@ -412,7 +408,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth
           )
         ) as float
       ) as relative_hmin,
-      -- brackets matter: because hmin is of type int, we need to divide before we multiply by 100 or we risk an overflow
       cast(
         round(
           100 *(
@@ -433,20 +428,18 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_pv_scroll_depth
             least(vmax + br_viewheight, doc_height)/ cast(doc_height as float)
           )
         ) as float
-      ) as relative_vmax -- not zero when a user hasn't scrolled because it includes the non-zero viewheight
+      ) as relative_vmax
     from
       prep
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt'; create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_run as (
     with session_firsts as (
       select
-        -- app id
         app_id as app_id,
         platform,
-        -- session fields
         domain_sessionid,
         original_domain_sessionid,
         domain_sessionidx,
@@ -457,14 +450,11 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
             current_timestamp()
           )
         ):: timestamp as model_tstamp,
-        -- user fields
         user_id,
         domain_userid,
         original_domain_userid,
-        -- updated with mapping as part of post hook on derived sessions table
         cast(domain_userid as TEXT) as stitched_user_id,
         network_userid as network_userid,
-        -- first page fields
         page_title as first_page_title,
         page_url as first_page_url,
         page_urlscheme as first_page_urlscheme,
@@ -472,7 +462,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         page_urlpath as first_page_urlpath,
         page_urlquery as first_page_urlquery,
         page_urlfragment as first_page_urlfragment,
-        -- referrer fields
         page_referrer as referrer,
         refr_urlscheme as refr_urlscheme,
         refr_urlhost as refr_urlhost,
@@ -482,7 +471,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         refr_medium as refr_medium,
         refr_source as refr_source,
         refr_term as refr_term,
-        -- marketing fields
         mkt_medium as mkt_medium,
         mkt_source as mkt_source,
         mkt_term as mkt_term,
@@ -570,7 +558,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         or lower(
           trim(mkt_source)
         ) = 'firebase' then 'Mobile Push Notifications' else 'Unassigned' end as default_channel_group,
-        -- geo fields
         geo_country as geo_country,
         geo_region as geo_region,
         geo_region_name as geo_region_name,
@@ -581,22 +568,17 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         geo_timezone as geo_timezone,
         g.name as geo_country_name,
         g.region as geo_continent,
-        -- ip address
         user_ipaddress as user_ipaddress,
-        -- user agent
         useragent as useragent,
         dvce_screenwidth || 'x' || dvce_screenheight as screen_resolution,
         br_renderengine as br_renderengine,
         br_lang as br_lang,
         l.name as br_lang_name,
         os_timezone as os_timezone,
-        -- optional fields, only populated if enabled.
-        -- iab enrichment fields
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : category :: VARCHAR as category,
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : primaryImpact :: VARCHAR as primary_impact,
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : reason :: VARCHAR as reason,
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : spiderOrRobot :: BOOLEAN as spider_or_robot,
-        -- ua parser enrichment fields
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : useragentFamily :: VARCHAR as useragent_family,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : useragentMajor :: VARCHAR as useragent_major,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : useragentMinor :: VARCHAR as useragent_minor,
@@ -609,7 +591,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : osPatchMinor :: VARCHAR as os_patch_minor,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : osVersion :: VARCHAR as os_version,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : deviceFamily :: VARCHAR as device_family,
-        -- yauaa enrichment fields
         contexts_nl_basjes_yauaa_context_1[0] : deviceClass :: VARCHAR as device_class,
         contexts_nl_basjes_yauaa_context_1[0] : agentClass :: VARCHAR as agent_class,
         contexts_nl_basjes_yauaa_context_1[0] : agentName :: VARCHAR as agent_name,
@@ -630,7 +611,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         contexts_nl_basjes_yauaa_context_1[0] : operatingSystemName :: VARCHAR as operating_system_name,
         contexts_nl_basjes_yauaa_context_1[0] : operatingSystemNameVersion :: VARCHAR as operating_system_name_version,
         contexts_nl_basjes_yauaa_context_1[0] : operatingSystemVersion :: VARCHAR as operating_system_version,
-        -- event name for use later
         event_name
       from
         DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_events_this_run ev
@@ -693,19 +673,18 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         domain_sessionid,
         min(derived_tstamp) as start_tstamp,
         max(derived_tstamp) as end_tstamp,
-        count(*) as total_events -- engagement fields
+        count(*) as total_events
         ,
         count(
           distinct case when event_name in ('page_ping', 'page_view')
           and page_view_id is not null then page_view_id else null end
-        ) as page_views -- (hb * (#page pings - # distinct page view ids ON page pings)) + (# distinct page view ids ON page pings * min visit length)
+        ) as page_views
         ,
         (
           10 * (
-            -- number of (unqiue in heartbeat increment) pages pings following a page ping (gap of heartbeat)
             count(
               distinct case when event_name = 'page_ping'
-              and page_view_id is not null then -- need to get a unique list of floored time PER page view, so create a dummy surrogate key...
+              and page_view_id is not null then
               page_view_id || cast(
                 floor(
                   date_part(
@@ -718,7 +697,7 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
               and page_view_id is not null then page_view_id else null end
             )
           )
-        ) + -- number of page pings following a page view (or no event) (gap of min visit length)
+        ) +
         (
           count(
             distinct case when event_name = 'page_ping'
@@ -742,32 +721,25 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         domain_sessionid
     )
     select
-      -- app id
       a.app_id,
       a.platform,
-      -- session fields
       a.domain_sessionid,
       a.original_domain_sessionid,
       a.domain_sessionidx,
-      -- when the session starts with a ping we need to add the min visit length to get when the session actually started
       case when a.event_name = 'page_ping' then dateadd(second, -5, c.start_tstamp) else c.start_tstamp end as start_tstamp,
       c.end_tstamp,
       a.model_tstamp,
-      -- user fields
       a.user_id,
       a.domain_userid,
       a.original_domain_userid,
       a.stitched_user_id,
       a.network_userid,
-      -- engagement fields
       c.page_views,
       c.engaged_time_in_s,
       c.total_events,
       page_views >= 2
       or engaged_time_in_s / 10 >= 2 as is_engaged,
-      -- when the session starts with a ping we need to add the min visit length to get when the session actually started
       c.absolute_time_in_s + case when a.event_name = 'page_ping' then 5 else 0 end as absolute_time_in_s,
-      -- first page fields
       a.first_page_title,
       a.first_page_url,
       a.first_page_urlscheme,
@@ -775,7 +747,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       a.first_page_urlpath,
       a.first_page_urlquery,
       a.first_page_urlfragment,
-      -- only take the first value when the last is genuinely missing (base on url as has to always be populated)
       case when b.last_page_url is null then coalesce(
         b.last_page_title, a.first_page_title
       ) else b.last_page_title end as last_page_title,
@@ -797,7 +768,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       case when b.last_page_url is null then coalesce(
         b.last_page_urlfragment, a.first_page_urlfragment
       ) else b.last_page_urlfragment end as last_page_urlfragment,
-      -- referrer fields
       a.referrer,
       a.refr_urlscheme,
       a.refr_urlhost,
@@ -807,7 +777,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       a.refr_medium,
       a.refr_source,
       a.refr_term,
-      -- marketing fields
       a.mkt_medium,
       a.mkt_source,
       a.mkt_term,
@@ -817,7 +786,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       a.mkt_network,
       a.mkt_source_platform,
       a.default_channel_group,
-      -- geo fields
       a.geo_country,
       a.geo_region,
       a.geo_region_name,
@@ -841,9 +809,7 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       case when b.last_geo_country is null then coalesce(
         b.last_geo_continent, a.geo_continent
       ) else b.last_geo_continent end as last_geo_continent,
-      -- ip address
       a.user_ipaddress,
-      -- user agent
       a.useragent,
       a.br_renderengine,
       a.br_lang,
@@ -853,13 +819,10 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
         b.last_br_lang_name, a.br_lang_name
       ) else b.last_br_lang_name end as last_br_lang_name,
       a.os_timezone,
-      -- optional fields, only populated if enabled.
-      -- iab enrichment fields
       a.category,
       a.primary_impact,
       a.reason,
       a.spider_or_robot,
-      -- ua parser enrichment fields
       a.useragent_family,
       a.useragent_major,
       a.useragent_minor,
@@ -872,7 +835,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       a.os_patch_minor,
       a.os_version,
       a.device_family,
-      -- yauaa enrichment fields
       a.device_class,
       case when a.device_class = 'Desktop' THEN 'Desktop' when a.device_class = 'Phone' then 'Mobile' when a.device_class = 'Tablet' then 'Tablet' else 'Other' end as device_category,
       a.screen_resolution,
@@ -894,8 +856,7 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
       a.operating_system_class,
       a.operating_system_name,
       a.operating_system_name_version,
-      a.operating_system_version -- conversion fields
-      -- passthrough fields
+      a.operating_system_version
     from
       session_firsts a
       left join session_lasts b on a.domain_sessionid = b.domain_sessionid
@@ -903,7 +864,8 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_r
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_user_mapping as (
     select
       distinct domain_userid,
@@ -917,14 +879,16 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_user_mapping as
     from
       DBT_TRY_1.ATOMIC_scratch.snowplow_web_base_events_this_run
     where
-      True --returns false if run doesn't contain new events.
+      True
       and user_id is not null
       and domain_userid is not null
   );
 drop
-    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_user_mapping__dbt_tmp cascade alter session
+    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_user_mapping__dbt_tmp cascade;
+alter session
     set
-    query_tag = 'snowplow_dbt' create
+    query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this_run as (
     with prep as (
       select
@@ -932,17 +896,14 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         ev.event_id,
         ev.app_id,
         ev.platform,
-        -- user fields
         ev.user_id,
         ev.domain_userid,
         ev.original_domain_userid,
         cast(null as TEXT) as stitched_user_id,
         ev.network_userid,
-        -- session fields
         ev.domain_sessionid,
         ev.original_domain_sessionid,
         ev.domain_sessionidx,
-        -- timestamp fields
         ev.dvce_created_tstamp,
         ev.collector_tstamp,
         ev.derived_tstamp,
@@ -957,7 +918,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         ev.page_urlpath,
         ev.page_urlquery,
         ev.page_urlfragment,
-        -- marketing fields
         ev.mkt_medium,
         ev.mkt_source,
         ev.mkt_term,
@@ -1041,7 +1001,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         or lower(
           trim(mkt_source)
         ) = 'firebase' then 'Mobile Push Notifications' else 'Unassigned' end as default_channel_group,
-        -- referrer fields
         ev.page_referrer,
         ev.refr_urlscheme,
         ev.refr_urlhost,
@@ -1051,7 +1010,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         ev.refr_medium,
         ev.refr_source,
         ev.refr_term,
-        -- geo fields
         ev.geo_country,
         ev.geo_region,
         ev.geo_region_name,
@@ -1069,13 +1027,10 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         ev.br_colordepth,
         ev.br_renderengine,
         ev.os_timezone,
-        -- optional fields, only populated if enabled.
-        -- iab enrichment fields: set iab variable to true to enable
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : category :: VARCHAR as category,
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : primaryImpact :: VARCHAR as primary_impact,
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : reason :: VARCHAR as reason,
         contexts_com_iab_snowplow_spiders_and_robots_1[0] : spiderOrRobot :: BOOLEAN as spider_or_robot,
-        -- ua parser enrichment fields
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : useragentFamily :: VARCHAR as useragent_family,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : useragentMajor :: VARCHAR as useragent_major,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : useragentMinor :: VARCHAR as useragent_minor,
@@ -1088,7 +1043,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : osPatchMinor :: VARCHAR as os_patch_minor,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : osVersion :: VARCHAR as os_version,
         contexts_com_snowplowanalytics_snowplow_ua_parser_context_1[0] : deviceFamily :: VARCHAR as device_family,
-        -- yauaa enrichment fields
         contexts_nl_basjes_yauaa_context_1[0] : deviceClass :: VARCHAR as device_class,
         contexts_nl_basjes_yauaa_context_1[0] : agentClass :: VARCHAR as agent_class,
         contexts_nl_basjes_yauaa_context_1[0] : agentName :: VARCHAR as agent_name,
@@ -1133,13 +1087,11 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
         p.event_id,
         p.app_id,
         p.platform,
-        -- user fields
         p.user_id,
         p.domain_userid,
         p.original_domain_userid,
         p.stitched_user_id,
         p.network_userid,
-        -- session fields
         p.domain_sessionid,
         p.original_domain_sessionid,
         p.domain_sessionidx,
@@ -1150,13 +1102,11 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
             p.dvce_created_tstamp,
             p.event_id
         ) AS page_view_in_session_index,
-        -- timestamp fields
         p.dvce_created_tstamp,
         p.collector_tstamp,
         p.derived_tstamp,
         p.start_tstamp,
         coalesce(t.end_tstamp, p.derived_tstamp) as end_tstamp,
-        -- only page views with pings will have a row in table t
         convert_timezone(
           'UTC',
           convert_timezone(
@@ -1165,7 +1115,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
           )
         ):: timestamp as model_tstamp,
         coalesce(t.engaged_time_in_s, 0) as engaged_time_in_s,
-        -- where there are no pings, engaged time is 0.
         datediff(
           second,
           p.derived_tstamp,
@@ -1267,13 +1216,11 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
       pve.event_id,
       pve.app_id,
       pve.platform,
-      -- user fields
       pve.user_id,
       pve.domain_userid,
       pve.original_domain_userid,
       pve.stitched_user_id,
       pve.network_userid,
-      -- session fields
       pve.domain_sessionid,
       pve.original_domain_sessionid,
       pve.domain_sessionidx,
@@ -1281,7 +1228,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
       max(pve.page_view_in_session_index) over (
         partition by pve.domain_sessionid
       ) as page_views_in_session,
-      -- timestamp fields
       pve.dvce_created_tstamp,
       pve.collector_tstamp,
       pve.derived_tstamp,
@@ -1380,7 +1326,8 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions as (
     select
       *
@@ -1391,7 +1338,7 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions as (
         from
           DBT_TRY_1.ATOMIC_scratch.snowplow_web_sessions_this_run
         where
-          True --returns false if run doesn't contain new events.
+          True
           )
     order by
       (
@@ -1401,9 +1348,9 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions as (
 alter table
     DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions cluster by (
     to_date(start_tstamp)
-    )
+    );
 drop
-    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions__dbt_tmp cascade
+    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions__dbt_tmp cascade;
 update
     DBT_TRY_1.ATOMIC_derived.snowplow_web_sessions as s
 set
@@ -1414,7 +1361,8 @@ where
     s.domain_userid = um.domain_userid;
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_page_views as (
     select
       *
@@ -1425,7 +1373,7 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_page_views as (
         from
           DBT_TRY_1.ATOMIC_scratch.snowplow_web_page_views_this_run
         where
-          True --returns false if run doesn't contain new events.
+          True
           )
     order by
       (
@@ -1435,11 +1383,13 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_page_views as (
 alter table
     DBT_TRY_1.ATOMIC_derived.snowplow_web_page_views cluster by (
     to_date(start_tstamp)
-    )
+    );
 drop
-    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_page_views__dbt_tmp cascade alter session
+    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_page_views__dbt_tmp cascade;
+alter session
     set
-    query_tag = 'snowplow_dbt' create
+    query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_sessions_this_run as (
     select
       a.*,
@@ -1459,21 +1409,19 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_sessions_
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_aggs as (
     select
       domain_userid,
-      -- time
       user_start_tstamp as start_tstamp,
       user_end_tstamp as end_tstamp,
-      -- first/last session. Max to resolve edge case with multiple sessions with the same start/end tstamp
       max(
         case when start_tstamp = user_start_tstamp then domain_sessionid end
       ) as first_domain_sessionid,
       max(
         case when end_tstamp = user_end_tstamp then domain_sessionid end
       ) as last_domain_sessionid,
-      -- engagement
       sum(page_views) as page_views,
       count(distinct domain_sessionid) as sessions,
       sum(engaged_time_in_s) as engaged_time_in_s
@@ -1486,7 +1434,8 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_aggs as (
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_lasts as (
     select
       a.domain_userid,
@@ -1510,10 +1459,10 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_lasts as 
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
+  query_tag = 'snowplow_dbt';
+create
 or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_this_run as (
     select
-      -- user fields
       a.user_id,
       a.domain_userid,
       a.original_domain_userid,
@@ -1527,11 +1476,9 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_this_run 
           current_timestamp()
         )
       ):: timestamp as model_tstamp,
-      -- engagement fields
       b.page_views,
       b.sessions,
       b.engaged_time_in_s,
-      -- first page fields
       a.first_page_title,
       a.first_page_url,
       a.first_page_urlscheme,
@@ -1560,7 +1507,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_this_run 
       c.last_geo_region_name,
       c.last_br_lang,
       c.last_br_lang_name,
-      -- referrer fields
       a.referrer,
       a.refr_urlscheme,
       a.refr_urlhost,
@@ -1570,7 +1516,6 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_this_run 
       a.refr_medium,
       a.refr_source,
       a.refr_term,
-      -- marketing fields
       a.mkt_medium,
       a.mkt_source,
       a.mkt_term,
@@ -1587,8 +1532,8 @@ or replace transient table DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_this_run 
   );
 alter session
 set
-  query_tag = 'snowplow_dbt' create
-or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_users as (
+  query_tag = 'snowplow_dbt';
+create or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_users as (
     select
       *
     from
@@ -1598,7 +1543,7 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_users as (
         from
           DBT_TRY_1.ATOMIC_scratch.snowplow_web_users_this_run
         where
-          True --returns false if run doesn't contain new events.
+          True
           )
     order by
       (
@@ -1608,9 +1553,10 @@ or replace transient table DBT_TRY_1.ATOMIC_derived.snowplow_web_users as (
 alter table
     DBT_TRY_1.ATOMIC_derived.snowplow_web_users cluster by (
     to_date(start_tstamp)
-    )
+    );
 drop
-    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_users__dbt_tmp cascade merge into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest m using (
+    view if exists DBT_TRY_1.ATOMIC_derived.snowplow_web_users__dbt_tmp cascade;
+merge into DBT_TRY_1.ATOMIC_snowplow_manifest.snowplow_web_incremental_manifest m using (
     select
     b.model,
     a.last_success
@@ -1659,11 +1605,11 @@ drop
     'snowplow_web_users' as model
     ) b
     where
-    a.last_success is not null -- if run contains no data don't add to manifest
+    a.last_success is not null
     ) s on m.model = s.model when matched then
 update
     set
         last_success = greatest(m.last_success, s.last_success) when not matched then insert (model, last_success)
 values
     (model, last_success);
-COMMIT
+COMMIT;

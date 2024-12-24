@@ -49,7 +49,7 @@ fn read_sql_file(file_path: &str) -> io::Result<String> {
 
 #[test]
 fn validate_sql_syntax_in_files() {
-    SimpleLogger::new().init().unwrap();
+    //SimpleLogger::new().init().unwrap();
 
     let testlist_file_env = env::var("TESTLIST_FILE").ok();
     let directory = "sql-tests"; // Current directory
@@ -99,8 +99,9 @@ fn validate_sql_syntax_in_files() {
                     }
                     Err(err) => {
                         println!(
-                            "Query {} in file {} failed to parse: {}",
+                            "Query {}: {} in file {} failed to parse: {}",
                             i + 1,
+                            query,
                             file_path,
                             err
                         );
@@ -119,8 +120,7 @@ fn validate_sql_syntax_in_files() {
     }
 
     println!(
-        "All SQL files listed in {:?} have been validated.",
-        testlist_files
+        "All SQL files have been validated."
     );
     assert!(files_valid);
 }
