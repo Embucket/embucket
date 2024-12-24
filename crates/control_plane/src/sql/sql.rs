@@ -1,19 +1,20 @@
+use crate::models::created_entity_response;
 use crate::sql::context::CustomContextProvider;
 use crate::sql::functions::parse_json::ParseJsonFunc;
 use crate::sql::planner::ExtendedSqlToRel;
-use arrow::array::{RecordBatch, UInt64Array};
-use arrow::datatypes::{DataType, Field, Schema as ArrowSchema};
+use arrow::array::RecordBatch;
 use datafusion::catalog::SchemaProvider;
 use datafusion::catalog_common::information_schema::InformationSchemaProvider;
 use datafusion::catalog_common::{ResolvedTableReference, TableReference};
 use datafusion::common::{plan_datafusion_err, Result};
 use datafusion::datasource::default_table_source::provider_as_source;
 use datafusion::execution::context::SessionContext;
+use datafusion::logical_expr::sqlparser::ast::Insert;
 use datafusion::logical_expr::{LogicalPlan, ScalarUDF};
 use datafusion::sql::parser::Statement as DFStatement;
-use datafusion::sql::sqlparser::ast::{
-    CreateTable as CreateTableStatement, ObjectName, SchemaName, Statement,
-};
+use datafusion::sql::sqlparser::ast::{ObjectName, Statement, CreateTable as CreateTableStatement, SetExpr, Query, Value, GroupByExpr};
+use datafusion::datasource::default_table_source::provider_as_source;
+use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
 use datafusion_functions_json::register_all;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
@@ -24,7 +25,7 @@ use iceberg_rust::spec::types::StructType;
 use regex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::sync::Arc;
+use datafusion::sql::sqlparser::ast::{ TableFactor, TableWithJoins, Select, Expr, BinaryOperator, SelectItem, Ident};
 
 pub struct SqlExecutor {
     ctx: SessionContext,
@@ -40,34 +41,20 @@ impl SqlExecutor {
     pub async fn query(&self, query: &String, warehouse_name: &String) -> Result<Vec<RecordBatch>> {
         let state = self.ctx.state();
         let dialect = state.config().options().sql_parser.dialect.as_str();
-        // Update query to use custom JSON functions
-        let query = self.preprocess_query(query);
-        println!("Query: {}", query);
-        let statement = state.sql_to_statement(&query, dialect)?;
+        let mut statement = state.sql_to_statement(query, dialect)?;
 
-        if let DFStatement::Statement(s) = statement {
-            println!("Statement: {:?}", s);
-            match *s {
-                Statement::CreateTable { .. } => {
-                    return self.create_table_query(*s, warehouse_name).await;
+        if let DFStatement::Statement(ref mut s) = statement {
+            println!("old statement: {}", s.clone().to_string());
+            if let Statement::CreateTable (CreateTableStatement { ref mut query, .. }) = &mut **s {
+                if let Some(ref mut query) = query {
+                    self.modify_selects_with_qualify(query);
                 }
-                Statement::CreateSchema { schema_name, .. } => {
-                    return self.create_schema(schema_name, warehouse_name).await;
-                }
-                Statement::ShowVariable { .. } => {
-                    return self.execute_with_custom_plan(&query).await;
-                }
-                _ => {}
+                println!("new statement: {}", s.clone().to_string());
+                return self.create_table_query(*s.clone(), warehouse_name).await;
             }
         }
-        self.ctx.sql(&query).await?.collect().await
-    }
 
-    pub fn preprocess_query(&self, query: &String) -> String {
-        // Replace field[0].subfield -> json_get(json_get(field, 0), 'subfield')
-        let re = regex::Regex::new(r"(\w+)\[(\d+)]\.(\w+)").unwrap();
-        re.replace_all(query, "json_get(json_get($1, $2), '$3')")
-            .to_string()
+        self.ctx.sql(query).await?.collect().await
     }
 
     pub async fn create_table_query(
@@ -76,13 +63,18 @@ impl SqlExecutor {
         warehouse_name: &String,
     ) -> Result<Vec<RecordBatch>> {
         if let Statement::CreateTable(create_table_statement) = statement {
-            let new_table_full_name = create_table_statement.name.to_string();
-            let _new_table_wh_id = create_table_statement.name.0[0].clone();
-            // Get database identifier from warehouse.db.db_1.table_name
-            let new_table_db =
-                &create_table_statement.name.0[1..create_table_statement.name.0.len() - 1];
-            let new_table_name = create_table_statement.name.0.last().unwrap().clone();
+            let mut new_table_full_name = create_table_statement.name.to_string();
+            let mut ident = create_table_statement.name.0;
+            if !new_table_full_name.starts_with(warehouse_name) {
+                new_table_full_name = format!("{}.{}", warehouse_name, new_table_full_name);
+                ident.insert(0, Ident::new(warehouse_name));
+            }
+            let _new_table_wh_id = ident[0].clone();
+            // Get database identifier from warehouse.db.schema.table_name
+            let new_table_db = &ident[1..ident.len() - 1];
+            let new_table_name = ident.last().unwrap().clone();
             let location = create_table_statement.location.clone();
+            let transient = create_table_statement.transient;
 
             // Replace the name of table that needs creation (for ex. "warehouse"."database"."table" -> "table")
             // And run the query - this will create an InMemory table
@@ -90,13 +82,18 @@ impl SqlExecutor {
                 name: ObjectName {
                     0: vec![new_table_name.clone()],
                 },
+                transient: false,
                 ..create_table_statement
             };
             let updated_query = modified_statement.to_string();
-            self.execute_with_custom_plan(&updated_query).await?;
 
             // Get schema of new table
-            let plan = self.get_custom_logical_plan(&updated_query).await?;
+            let plan = self.get_custom_logical_plan(&updated_query, "").await?;
+            self.ctx
+                .execute_logical_plan(plan.clone())
+                .await?
+                .collect()
+                .await?;
             let schema = Schema::builder()
                 .with_schema_id(0)
                 .with_identifier_field_ids(vec![])
@@ -111,7 +108,10 @@ impl SqlExecutor {
             let iceberg_catalog = catalog.as_any().downcast_ref::<IcebergCatalog>().unwrap();
             let rest_catalog = iceberg_catalog.catalog();
             let new_table_ident = Identifier::new(
-                &new_table_db.into_iter().map(|v| v.value.clone()).collect::<Vec<String>>(),
+                &new_table_db
+                    .into_iter()
+                    .map(|v| v.value.clone())
+                    .collect::<Vec<String>>(),
                 &new_table_name.value,
             );
             match rest_catalog.tabular_exists(&new_table_ident).await {
@@ -138,16 +138,20 @@ impl SqlExecutor {
                 .await
                 .unwrap();
 
-            // Copy data from InMemory table to created table
-            let insert_query =
-                format!("INSERT INTO {new_table_full_name} SELECT * FROM {new_table_name}");
-            let result = self.ctx.sql(&insert_query).await?.collect().await?;
+            // we don't need physical table for transient tables
+            if !transient {
+                // Copy data from InMemory table to created table
+                let insert_query =
+                    format!("INSERT INTO {new_table_full_name} SELECT * FROM {new_table_name}");
+                let result = self.execute_with_custom_plan(&insert_query, warehouse_name).await?;
+                // self.ctx.sql(&insert_query).await?.collect().await?;
 
-            // Drop InMemory table
-            let drop_query = format!("DROP TABLE {new_table_name}");
-            self.ctx.sql(&drop_query).await?.collect().await?;
-
-            Ok(result)
+                // Drop InMemory table
+                let drop_query = format!("DROP TABLE {new_table_name}");
+                self.ctx.sql(&drop_query).await?.collect().await?;
+                return Ok(result);
+            }
+            Ok(created_entity_response())
         } else {
             Err(datafusion::error::DataFusionError::NotImplemented(
                 "Only CREATE TABLE statements are supported".to_string(),
@@ -155,15 +159,33 @@ impl SqlExecutor {
         }
     }
 
-    pub async fn create_schema(&self, name: SchemaName, warehouse_name: &str) -> Result<Vec<RecordBatch>> {
+    pub async fn create_schema(
+        &self,
+        name: SchemaName,
+        warehouse_name: &str,
+    ) -> Result<Vec<RecordBatch>> {
         match name {
             SchemaName::Simple(schema_name) => {
                 println!("Creating simple schema: {:?}", schema_name);
                 let catalog = self.ctx.catalog(warehouse_name).unwrap();
                 let iceberg_catalog = catalog.as_any().downcast_ref::<IcebergCatalog>().unwrap();
                 let rest_catalog = iceberg_catalog.catalog();
-                let namespace: Vec<String> = schema_name.0.iter().map(|ident| ident.value.clone()).collect();
-                rest_catalog.create_namespace(&Namespace::try_new(&namespace).unwrap(), None).await.unwrap();
+                let namespace_vec: Vec<String> = schema_name
+                    .0
+                    .iter()
+                    .map(|ident| ident.value.clone())
+                    .collect();
+                let single_layer_namespace = vec![namespace_vec.join(".")];
+                if rest_catalog
+                    .load_namespace(&Namespace::try_new(&single_layer_namespace).unwrap())
+                    .await
+                    .is_err()
+                {
+                    rest_catalog
+                        .create_namespace(&Namespace::try_new(&namespace_vec).unwrap(), None)
+                        .await
+                        .unwrap();
+                }
             }
             _ => {
                 return Err(datafusion::error::DataFusionError::NotImplemented(
@@ -171,33 +193,26 @@ impl SqlExecutor {
                 ));
             }
         }
-        let schema = Arc::new(ArrowSchema::new(vec![Field::new(
-            "count",
-            DataType::UInt64,
-            false,
-        )]));
-        Ok(vec![RecordBatch::try_new(
-            schema,
-            vec![Arc::new(UInt64Array::from(vec![0]))],
-        )?])
+        Ok(created_entity_response())
     }
 
-    pub async fn get_custom_logical_plan(&self, query: &String) -> Result<LogicalPlan> {
+    pub async fn get_custom_logical_plan(&self, query: &String, warehouse_name: &str) -> Result<LogicalPlan> {
         let state = self.ctx.state();
         let dialect = state.config().options().sql_parser.dialect.as_str();
-        let statement = state.sql_to_statement(query, dialect)?;
+        let mut statement = state.sql_to_statement(query, dialect)?;
+        statement = self.update_statement_references(statement, warehouse_name);
+        println!("modified query: {:?}", statement);
 
         if let DFStatement::Statement(s) = statement.clone() {
-            let references = state.resolve_table_references(&statement)?;
-            println!("References: {:?}", references);
             let mut ctx_provider = CustomContextProvider {
                 state: &state,
                 tables: HashMap::new(),
             };
 
+            let references = state.resolve_table_references(&statement)?;
+            println!("References: {:?}", references);
             for reference in references {
                 let resolved = self.resolve_table_ref(reference);
-
                 if let Entry::Vacant(v) = ctx_provider.tables.entry(resolved.to_string()) {
                     if let Ok(schema) = self.schema_for_ref(resolved.clone()) {
                         if let Some(table) = schema.table(&resolved.table).await? {
@@ -206,7 +221,6 @@ impl SqlExecutor {
                     }
                 }
             }
-
             for catalog in self.ctx.state().catalog_list().catalog_names() {
                 let provider = self.ctx.state().catalog_list().catalog(&catalog).unwrap();
                 for schema in provider.schema_names() {
@@ -224,7 +238,7 @@ impl SqlExecutor {
                     }
                 }
             }
-            println!("Tables: {:?}", ctx_provider.tables.keys());
+            // println!("Tables: {:?}", ctx_provider.tables.keys());
             let planner = ExtendedSqlToRel::new(&ctx_provider);
             planner.sql_statement_to_plan(*s)
         } else {
@@ -268,8 +282,92 @@ impl SqlExecutor {
             })
     }
 
-    pub async fn execute_with_custom_plan(&self, query: &String) -> Result<Vec<RecordBatch>> {
-        let plan = self.get_custom_logical_plan(query).await?;
+    pub async fn execute_with_custom_plan(&self, query: &String, warehouse_name: &str) -> Result<Vec<RecordBatch>> {
+        let plan = self.get_custom_logical_plan(query, warehouse_name).await?;
         self.ctx.execute_logical_plan(plan).await?.collect().await
+    }
+
+    fn modify_selects_with_qualify(&self, query: &mut Query) {
+        match &mut *query.body {
+            SetExpr::Select(select) => {
+                if let Some(qualify_expr) = &select.qualify {
+                    if let Expr::BinaryOp { left, op, right } = qualify_expr {
+                        if matches!(op, BinaryOperator::Eq) {
+                            let mut inner_select = select.clone();
+                            inner_select.projection.push(
+                                SelectItem::ExprWithAlias {
+                                    expr: *(left.clone()),
+                                    alias: Ident { value: "qualify_alias".to_string(), quote_style: None }
+                                }
+                            );
+                            inner_select.qualify = None;
+                            let subquery = Query {
+                                with: None,
+                                body: Box::new(SetExpr::Select(inner_select)),
+                                order_by: None,
+                                limit: None,
+                                limit_by: vec![],
+                                offset: None,
+                                fetch: None,
+                                locks: vec![],
+                                for_clause: None,
+                                settings: None,
+                                format_clause: None,
+                            };
+                            let outer_select = Select {
+                                distinct: None,
+                                top: None,
+                                projection: vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident { value: "*".to_string(),
+                                    quote_style: None }))],
+                                into: None,
+                                from: vec![TableWithJoins {
+                                    relation: TableFactor::Derived {
+                                        lateral: false,
+                                        subquery: Box::new(subquery),
+                                        alias: None,
+                                    },
+                                    joins: vec![],
+                                }],
+                                lateral_views: vec![],
+                                prewhere: None,
+                                selection: Some(Expr::BinaryOp {
+                                    left: Box::new(Expr::Identifier(Ident { value: "qualify_alias".to_string(), quote_style: None })),
+                                    op: BinaryOperator::Eq,
+                                    right: Box::new(*right.clone())
+                                }),
+                                group_by: GroupByExpr::Expressions(vec![], vec![]),
+                                cluster_by: vec![],
+                                distribute_by: vec![],
+                                sort_by: vec![],
+                                having: None,
+                                named_window: vec![],
+                                qualify: None,
+                                window_before_qualify: false,
+                                value_table_mode: None,
+                                connect_by: None,
+                            };
+
+                            *query.body = SetExpr::Select(Box::new(outer_select));
+                        } else {
+                            println!("QUALIFY expression is a binary operation, but not an equality.");
+                        }
+                    } else {
+                        println!("QUALIFY expression is not a binary operation.");
+                    }
+                }
+            }
+            SetExpr::Query(inner_query) => {
+                self.modify_selects_with_qualify(inner_query);
+            }
+            // Handle any other query patterns if required
+            _ => {}
+        }
+
+        // Recursively check the CTEs (Common Table Expressions) and modify them if applicable
+        if let Some(with) = &mut query.with {
+            for cte in &mut with.cte_tables {
+                self.modify_selects_with_qualify(&mut cte.query);
+            }
+        }
     }
 }

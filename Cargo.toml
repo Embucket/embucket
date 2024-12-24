@@ -4,6 +4,8 @@ members = [
     "crates/catalog",
     "crates/control_plane", 
     "crates/nexus", "tests/sql-parser",
+    "crates/nexus",
+    "crates/dev",
 ]
 resolver= "2"
 
