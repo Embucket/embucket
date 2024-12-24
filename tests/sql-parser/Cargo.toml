@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "sql_parser_validator"
-path = "test_parser.rs"
+path = "src/test_parser.rs"
 
 [dependencies]
 sqlparser = { version = "0.53.0", features = ["visitor"] }
