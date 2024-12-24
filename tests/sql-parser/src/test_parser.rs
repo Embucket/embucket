@@ -1,4 +1,3 @@
-use simple_logger::SimpleLogger;
 use sqlparser::dialect::SnowflakeDialect;
 use sqlparser::parser::Parser;
 use std::io::{self, BufRead, BufReader, Read};
@@ -49,8 +48,6 @@ fn read_sql_file(file_path: &str) -> io::Result<String> {
 
 #[test]
 fn validate_sql_syntax_in_files() {
-    //SimpleLogger::new().init().unwrap();
-
     let testlist_file_env = env::var("TESTLIST_FILE").ok();
     let directory = "sql-tests"; // Current directory
     let testlist_files = if let Some(testlist_file) = testlist_file_env {
