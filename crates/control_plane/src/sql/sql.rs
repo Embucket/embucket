@@ -14,11 +14,8 @@ use datafusion::logical_expr::{LogicalPlan, ScalarUDF};
 use datafusion::sql::parser::Statement as DFStatement;
 use datafusion::sql::sqlparser::ast::{
     CreateTable as CreateTableStatement, Ident, ObjectName, Query, SchemaName, Statement,
-    TableFactor, TableWithJoins,
+    TableFactor, TableWithJoins, SetExpr, GroupByExpr, Expr, SelectItem, Select, BinaryOperator
 };
-use datafusion::sql::sqlparser::ast::{ObjectName, Statement, CreateTable as CreateTableStatement, SetExpr, Query, Value, GroupByExpr};
-use datafusion::datasource::default_table_source::provider_as_source;
-use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
 use datafusion_functions_json::register_all;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
@@ -30,7 +27,6 @@ use regex;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
-use datafusion::sql::sqlparser::ast::{ TableFactor, TableWithJoins, Select, Expr, BinaryOperator, SelectItem, Ident};
 
 
 pub struct SqlExecutor {
@@ -121,49 +117,7 @@ impl SqlExecutor {
 
             // Replace the name of table that needs creation (for ex. "warehouse"."database"."table" -> "table")
             // And run the query - this will create an InMemory table
-            let modified_statement = Statement::CreateTable(CreateTableStatement {
-                or_replace,
-                temporary,
-                external,
-                global,
-                if_not_exists,
-                transient,
-                volatile,
-                columns,
-                constraints,
-                hive_distribution,
-                hive_formats,
-                table_properties,
-                with_options,
-                file_format,
-                query,
-                without_rowid,
-                like,
-                clone,
-                engine,
-                comment,
-                auto_increment_offset,
-                default_charset,
-                collation,
-                on_commit,
-                on_cluster,
-                primary_key,
-                order_by,
-                partition_by,
-                cluster_by,
-                clustered_by,
-                options,
-                strict,
-                copy_grants,
-                enable_schema_evolution,
-                change_tracking,
-                data_retention_time_in_days,
-                max_data_extension_time_in_days,
-                default_ddl_collation,
-                with_aggregation_policy,
-                with_row_access_policy,
-                with_tags,
-                location: location.clone(),
+            let modified_statement = CreateTableStatement {
                 name: ObjectName {
                     0: vec![new_table_name.clone()],
                 },
