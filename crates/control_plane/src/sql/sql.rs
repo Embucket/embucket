@@ -42,7 +42,8 @@ impl SqlExecutor {
 
     pub async fn query(&self, query: &String, warehouse_name: &String) -> Result<Vec<RecordBatch>> {
         let state = self.ctx.state();
-        let dialect = state.config().options().sql_parser.dialect.as_str();
+        //let dialect = state.config().options().sql_parser.dialect.as_str();
+        let dialect = "Snowflake";
         // Update query to use custom JSON functions
         let query = self.preprocess_query(query);
         let mut statement = state.sql_to_statement(&query, dialect)?;
