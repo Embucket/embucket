@@ -20,41 +20,49 @@ impl DateAddFunc {
                     //Interval
                     TypeSignature::Exact(vec![
                         DataType::Interval(IntervalUnit::YearMonth),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Date32,
                     ]),
                     TypeSignature::Exact(vec![
                         DataType::Interval(IntervalUnit::MonthDayNano),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Date32,
                     ]),
                     TypeSignature::Exact(vec![
                         DataType::Interval(IntervalUnit::DayTime),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Date32,
                     ]),
                     //Add to Timestamps
                     //Duration
                     TypeSignature::Exact(vec![
                         DataType::Duration(TimeUnit::Second),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Timestamp(TimeUnit::Second, None),
                     ]),
                     TypeSignature::Exact(vec![
                         DataType::Duration(TimeUnit::Millisecond),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Timestamp(TimeUnit::Millisecond, None),
                     ]),
                     TypeSignature::Exact(vec![
                         DataType::Duration(TimeUnit::Microsecond),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Timestamp(TimeUnit::Microsecond, None),
                     ]),
                     TypeSignature::Exact(vec![
                         DataType::Duration(TimeUnit::Nanosecond),
-                        DataType::Int32,
+                        DataType::Int64,
                         DataType::Timestamp(TimeUnit::Nanosecond, None),
                     ]),
+                    //testing for such a query in curl "select dateadd('\''0 days'\'', 3,'\''2024-12-26'\'')"
+                    //it asked for this specifc signature
+                    TypeSignature::Exact(vec![
+                        DataType::Interval(IntervalUnit::MonthDayNano),
+                        DataType::Int64,
+                        DataType::Timestamp(TimeUnit::Nanosecond, None),
+                    ]),
+                    //Add time support
                 ], 
                 Volatility::Immutable
             )
@@ -80,7 +88,7 @@ impl ScalarUDFImpl for DateAddFunc {
         Ok(arg_types[2].clone())
     }
     fn invoke(&self, args: &[ColumnarValue]) -> datafusion::error::Result<ColumnarValue> {
-        //DISREGARD
+        //DON'T DISREGARD
         // ScalarValue
         // if let (
         //     ColumnarValue::Scalar(date_or_time_part), 
@@ -101,4 +109,5 @@ impl ScalarUDFImpl for DateAddFunc {
         // }
         Ok(args[2].clone())
     }
+    //TODO add aliases
 }
