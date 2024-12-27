@@ -1,5 +1,5 @@
 use arrow::datatypes::{DataType, IntervalUnit, TimeUnit};
-use datafusion::{common::exec_err, logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, TypeSignature, Volatility}};
+use datafusion::{common::exec_err, logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, TypeSignature, Volatility}, scalar::ScalarValue};
 
 #[derive(Debug)]
 pub struct DateAddFunc {
@@ -75,12 +75,13 @@ impl ScalarUDFImpl for DateAddFunc {
         &self.signature
     }
 
-    fn return_type(&self, _arg_types: &[DataType]) -> datafusion::error::Result<DataType> {
+    fn return_type(&self, arg_types: &[DataType]) -> datafusion::error::Result<DataType> {
         //TODO: add a match
-        Ok(DataType::Timestamp(TimeUnit::Nanosecond, None))
+        Ok(arg_types[2].clone())
     }
     fn invoke(&self, args: &[ColumnarValue]) -> datafusion::error::Result<ColumnarValue> {
         //DISREGARD
+        // ScalarValue
         // if let (
         //     ColumnarValue::Scalar(date_or_time_part), 
         //     ColumnarValue::Scalar(value),
@@ -88,7 +89,7 @@ impl ScalarUDFImpl for DateAddFunc {
         // ) = (&args[0], &args[1], &args[2])  {
         //     match &date_or_time_part.data_type() {
         //         DataType::Duration(time_unit) => {
-        //             date_or_time_expr.
+        //             date_or_time_expr.add(date_or_time_part)
         //         },
         //         DataType::Interval(interval_unit) => {
 
@@ -98,6 +99,6 @@ impl ScalarUDFImpl for DateAddFunc {
         //         }
         //     }   
         // }
-        todo!()
+        Ok(args[2].clone())
     }
 }

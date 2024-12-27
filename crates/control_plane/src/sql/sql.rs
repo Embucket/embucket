@@ -28,6 +28,8 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::functions::dateadd::DateAddFunc;
+
 pub struct SqlExecutor {
     ctx: SessionContext,
 }
@@ -35,6 +37,7 @@ pub struct SqlExecutor {
 impl SqlExecutor {
     pub fn new(mut ctx: SessionContext) -> Self {
         ctx.register_udf(ScalarUDF::from(ParseJsonFunc::new()));
+        ctx.register_udf(ScalarUDF::from(DateAddFunc::new()));
         register_all(&mut ctx).expect("Cannot register UDF JSON funcs");
         Self { ctx }
     }
