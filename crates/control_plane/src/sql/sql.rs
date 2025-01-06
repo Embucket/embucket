@@ -18,10 +18,8 @@ use datafusion::logical_expr::{LogicalPlan, ScalarUDF};
 use datafusion::sql::parser::Statement as DFStatement;
 use datafusion::sql::sqlparser::ast::{
     CreateTable as CreateTableStatement, Expr, Ident, ObjectName, Query, SchemaName,
-    Statement, TableFactor, TableWithJoins, SetExpr, GroupByExpr, Expr, SelectItem, Select, BinaryOperator
+    Statement, TableFactor, TableWithJoins, SetExpr, GroupByExpr,  SelectItem, Select, BinaryOperator
 };
-use datafusion::sql::sqlparser::ast::{ObjectName, Statement, CreateTable as CreateTableStatement, SetExpr, Query, Value, GroupByExpr};
-use datafusion::datasource::default_table_source::provider_as_source;
 use datafusion_functions_json::register_all;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use iceberg_rust::catalog::create::CreateTable as CreateTableCatalog;
@@ -35,7 +33,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use datafusion::error::DataFusionError;
 use iceberg_rust::spec::arrow::schema::new_fields_with_ids;
-use datafusion::sql::sqlparser::ast::{ TableFactor, TableWithJoins, Select, Expr, BinaryOperator, SelectItem, Ident};
 
 
 pub struct SqlExecutor {
