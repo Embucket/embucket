@@ -20,7 +20,7 @@ serde_yaml = { workspace = true }
 serde = { workspace = true }
 iceberg = { workspace = true }
 indexmap = { version = "2.7.0" }
-slatedb = { workspace = true, version = "0.3.0" }
+slatedb = { workspace = true }
 object_store = { workspace = true }
 utils = { path = "../utils" }
 utoipa = { workspace = true }
