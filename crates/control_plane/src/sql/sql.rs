@@ -35,6 +35,7 @@ use datafusion::error::DataFusionError;
 use iceberg_rust::spec::arrow::schema::new_fields_with_ids;
 
 
+
 pub struct SqlExecutor {
     ctx: SessionContext,
 }
