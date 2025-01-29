@@ -13,7 +13,7 @@ use datafusion::execution::SessionStateBuilder;
 use datafusion::prelude::{CsvReadOptions, SessionConfig};
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use datafusion_iceberg::planner::IcebergQueryPlanner;
-use iceberg_rest_catalog::apis::configuration::Configuration;
+use iceberg_rest_catalog::apis::configuration::{ApiKey, BasicAuth, Configuration};
 use iceberg_rest_catalog::catalog::RestCatalog;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
@@ -213,16 +213,23 @@ impl ControlService for ControlServiceImpl {
         let warehouse = self.get_warehouse(*warehouse_id).await?;
         let storage_profile = self.get_profile(warehouse.storage_profile_id).await?;
 
+        // let api_key_with_prefix = ApiKey {
+        //     prefix: Some("Bearer".to_string()),
+        //     key: "klc4/u9+TVOqsZKCHcoin0HgSLw=:CI4ktHhqQ84i7YEMY07qQ7hzKD4wN8ZHOJSVQ5XsP4Y=".to_string(),
+        // };
+
         let config = {
             let mut config = Configuration::new();
-            config.base_path = "http://0.0.0.0:3000/catalog".to_string();
+            config.base_path = "https://wv37264.us-east-2.aws.snowflakecomputing.com/polaris/api/catalog".to_string();
+            config.bearer_access_token = Some("ver:1-hint:30921863173-ETMsDgAAAZSYkdsDABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEP9JOQkeMlguioCF+WASRQUAAACgG1jQ8yMQPHTXslMk4kzLL4Lv2E8+kozt9GfIUtoXMs4F7TDW09mNePL1u7PK/q17bGxGG1nzHizkEXpd5SIW+kM8Ao5IVFrEuqTE8Ky5fWxKW9YlMHiIxyWlnAjc/B4l6lD46DUsXOSHcLve6cyRNsu7ysC1ebz8DSCq4f8Wk6ClUrSlp/Qo8iX41a2SDxlOGb5VAOaltgUtGym8DW37XQAUbtH2h9DhinPNJ1B20rpSoZiYD98=".to_string());
             config
         };
         let object_store = storage_profile
             .get_object_store_builder()
             .context(crate::error::InvalidStorageProfileSnafu)?;
         let rest_client = RestCatalog::new(
-            Some(warehouse_id.to_string().as_str()),
+            // Some(warehouse_id.to_string().as_str()),
+            Some("demo_catalog"),
             config,
             object_store,
         );
@@ -234,7 +241,8 @@ impl ControlService for ControlServiceImpl {
             .build();
         let ctx = SessionContext::new_with_state(state);
 
-        let catalog_name = warehouse.name.clone();
+        // let catalog_name = warehouse.name.clone();
+        let catalog_name = "demo_catalog";
         ctx.register_catalog(catalog_name.clone(), Arc::new(catalog));
 
         // TODO: Should be shared context

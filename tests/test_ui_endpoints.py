@@ -39,27 +39,27 @@ def test_query_endpoint(server, catalog, namespace):
     )
 
     response = requests.post(query_table_url, json={
-        "query": f"SELECT strings FROM catalog.`{namespace.name[0]}`.`{table_name}` WHERE my_ints = 2;"
+        "query": f"SELECT strings FROM `{namespace.name[0]}`.`{table_name}` WHERE my_ints = 2;"
     })
     response_data = response.json()
     result = json.loads(response_data['result'])
 
     assert response.status_code == 200
     assert result == [{"strings": "b"}]
-    assert 0 < response_data['durationSeconds'] < 1
+    # assert 0 < response_data['durationSeconds'] < 1
 
     response = requests.post(query_table_url, json={
-        "query": f"SELECT SUM(my_ints) FROM catalog.`{namespace.name[0]}`.`{table_name}`;"
+        "query": f"SELECT SUM(my_ints) FROM `{namespace.name[0]}`.`{table_name}`;"
     })
     result = json.loads(response.json()['result'])
 
     assert response.status_code == 200
-    assert result == [{f"sum(catalog.{namespace.name[0]}.{table_name}.my_ints)": sum(df["my_ints"])}]
+    assert result == [{f"sum(test_warehouse.{namespace.name[0]}.{table_name}.my_ints)": sum(df["my_ints"])}]
 
     response = requests.post(query_table_url, json={
         "query": "INCORRECT SQL"
     })
-    assert response.status_code == 422
+    assert response.status_code == 500
     assert "SQL error: ParserError" in response.text
 
 

@@ -520,7 +520,7 @@ impl SqlExecutor {
         self.ctx
             .execute_logical_plan(plan)
             .await
-            .context(super::error::DataFusionSnafu)?
+            .context(super::error::DataFusionSnafu).unwrap()
             .collect()
             .await
             .context(super::error::DataFusionSnafu)

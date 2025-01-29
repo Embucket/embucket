@@ -13,10 +13,10 @@ import requests
 MANAGEMENT_URL = os.environ.get("MANAGEMENT_URL", "http://localhost:3000")
 CATALOG_URL = os.environ.get("CATALOG_URL", "http://localhost:3000/catalog")
 # ---- S3
-S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "access-key")
-S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "secret-key")
-S3_BUCKET = os.environ.get("S3_BUCKET", "mybucket")
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://s3.us-east-2amazonaws.com")
+S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "AKIA3FLDXOZO5Y7KT6QU")
+S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "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")
+S3_BUCKET = os.environ.get("S3_BUCKET", "embucket-lakehouse")
+S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://s3.us-east-2.amazonaws.com")
 S3_REGION = os.environ.get("S3_REGION", "us-east-2")
 S3_PATH_STYLE_ACCESS = os.environ.get("S3_PATH_STYLE_ACCESS")
 
@@ -98,7 +98,7 @@ def server() -> Server:
 @pytest.fixture(scope="session")
 def storage_profile(server: Server) -> dict:
     data = server.create_storage_profile(
-        type="Aws",
+        type="aws",
         region=S3_REGION,
         bucket=S3_BUCKET,
         credentials={
@@ -116,8 +116,8 @@ def storage_profile(server: Server) -> dict:
 
 @pytest.fixture(scope="session")
 def warehouse(server: Server, storage_profile) -> dict:
-    warehouse_name = "test-warehouse"
-    prefix = "warehouse-prefix"
+    warehouse_name = "test_warehouse"
+    prefix = "warehouse_prefix"
     wh = server.create_warehouse(
         name=warehouse_name,
         prefix=prefix,
@@ -129,7 +129,7 @@ def warehouse(server: Server, storage_profile) -> dict:
 
 @pytest.fixture(scope="session")
 def namespace(catalog) -> dict:
-    namespace = ("test-namespace",)
+    namespace = ("test_namespace",)
     catalog.create_namespace(namespace)
     return Namespace(
         name=namespace,
@@ -141,7 +141,7 @@ def namespace(catalog) -> dict:
 @pytest.fixture(scope="session")
 def catalog(warehouse):
     return pyiceberg.catalog.rest.RestCatalog(
-        name="test-catalog",
+        name="test_catalog",
         uri=CATALOG_URL.rstrip("/") + "/",
         warehouse=warehouse.get("id", None),
     )

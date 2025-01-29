@@ -388,7 +388,7 @@ impl Catalog for CatalogImpl {
         let data = object_store
             .get(&path)
             .await
-            .context(error::ObjectStoreSnafu)?;
+            .context(error::ObjectStoreSnafu).unwrap();
         let bytes = data.bytes().await.context(error::ObjectStoreSnafu)?;
         let metadata: TableMetadata = serde_json::from_slice(&bytes).context(error::SerdeSnafu)?;
         let table = Table {
