@@ -149,6 +149,63 @@ For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Contributors
 
 <!-- readme: contributors -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/osipovartem">
+                    <img src="https://avatars.githubusercontent.com/u/59066880?v=4" width="100;" alt="osipovartem"/>
+                    <br />
+                    <sub><b>Artem Osipov</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/andheroe">
+                    <img src="https://avatars.githubusercontent.com/u/3786879?v=4" width="100;" alt="andheroe"/>
+                    <br />
+                    <sub><b>andheroe</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/rampage644">
+                    <img src="https://avatars.githubusercontent.com/u/3313924?v=4" width="100;" alt="rampage644"/>
+                    <br />
+                    <sub><b>Sergei Turukin</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/slyons">
+                    <img src="https://avatars.githubusercontent.com/u/41403?v=4" width="100;" alt="slyons"/>
+                    <br />
+                    <sub><b>Scott Lyons</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/Vedin">
+                    <img src="https://avatars.githubusercontent.com/u/22378647?v=4" width="100;" alt="Vedin"/>
+                    <br />
+                    <sub><b>Denys Tsomenko</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/YaroslavLitvinov">
+                    <img src="https://avatars.githubusercontent.com/u/1463350?v=4" width="100;" alt="YaroslavLitvinov"/>
+                    <br />
+                    <sub><b>Yaroslav Litvinov</b></sub>
+                </a>
+            </td>
+		</tr>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/DanCodedThis">
+                    <img src="https://avatars.githubusercontent.com/u/94703934?v=4" width="100;" alt="DanCodedThis"/>
+                    <br />
+                    <sub><b>DanCodedThis</b></sub>
+                </a>
+            </td>
+		</tr>
+	<tbody>
+</table>
 <!-- readme: contributors -end -->
 
 ## 📜 License  
