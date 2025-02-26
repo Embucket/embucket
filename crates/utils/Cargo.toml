@@ -16,5 +16,10 @@ slatedb = { workspace = true }
 snafu = { workspace = true }
 uuid = { workspace = true }
 
+[dev-dependencies]
+tokio = { workspace = true }
+object_store = { workspace = true }
+chrono = { workspace = true }
+
 [lints]
 workspace = true

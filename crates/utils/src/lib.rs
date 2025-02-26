@@ -217,3 +217,140 @@ pub trait Repository {
     fn prefix() -> &'static str;
     fn collection_key() -> &'static str;
 }
+
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use object_store::memory::InMemory;
+    use object_store::path::Path;
+    use object_store::ObjectStore;
+    use slatedb::config::DbOptions;
+    use slatedb::db::Db as SlateDb;
+    use std::sync::Arc;
+    use serde::{Deserialize, Serialize};
+    use chrono::{DateTime, TimeZone, Utc};
+    use tokio;
+
+    pub type QueryHistoryResult<T> = Result<T>;
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct HistoryItem {
+        pub id: Uuid,
+        pub query: String,
+        pub start_time: DateTime<Utc>,
+        pub end_time: DateTime<Utc>,
+        pub status_code: u16,
+    }
+
+    impl Entity for HistoryItem {
+        fn id(&self) -> Uuid {
+            self.id
+        }
+    }
+
+    #[async_trait]
+    pub trait QueryHistoryRepository: Send + Sync {
+        async fn create(&self, params: &HistoryItem) -> QueryHistoryResult<()>;
+        async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem>;
+        async fn delete(&self, id: Uuid) -> QueryHistoryResult<()>;
+        async fn list(&self) -> QueryHistoryResult<Vec<HistoryItem>>;
+    }
+
+    pub struct QueryHistoryRepositoryDb {
+        db: Arc<Db>,
+    }
+
+    impl QueryHistoryRepositoryDb {
+        pub const fn new(db: Arc<Db>) -> Self {
+            Self { db }
+        }
+    }
+
+    impl Repository for QueryHistoryRepositoryDb {
+        type Entity = HistoryItem;
+
+        fn db(&self) -> &Db {
+            &self.db
+        }
+
+        fn prefix() -> &'static str {
+            "qh"
+        }
+
+        fn collection_key() ->  &'static str {
+            "qh.items"
+        }
+    }
+
+    #[async_trait]
+    impl QueryHistoryRepository for QueryHistoryRepositoryDb {
+        async fn create(&self, entity: &HistoryItem) -> QueryHistoryResult<()> {
+            Repository::_create(self, entity).await.map_err(Into::into)
+        }
+
+        async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem> {
+            Repository::_get(self, id).await.map_err(Into::into)
+        }
+
+        async fn delete(&self, id: Uuid) -> QueryHistoryResult<()> {
+            Repository::_delete(self, id).await.map_err(Into::into)
+        }
+
+        async fn list(&self) -> QueryHistoryResult<Vec<HistoryItem>> {
+            Repository::_list(self).await.map_err(Into::into)
+        }
+    }
+
+    async fn create_slate_db() -> Db {
+        let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let options = DbOptions::default();
+        Db::new(
+            SlateDb::open_with_opts(Path::from("/tmp/test_kv_store"), options, object_store)
+                .await
+                .unwrap(),
+        )
+    }
+
+    fn newHistoryItem(prev: Option<HistoryItem>) -> HistoryItem {
+        match prev {
+            Some(item) => {
+                let end_ts = item.end_time.timestamp();
+                HistoryItem {
+                    id: Uuid::new_v4(),
+                    query: String::from(format!("SELECT {}", item.start_time)),
+                    start_time: DateTime::from_timestamp(end_ts + 1, 0).unwrap(),
+                    end_time: DateTime::from_timestamp(end_ts + 2, 0).unwrap(),
+                    status_code: 200,
+                }
+            }
+            _ => {
+                let start_ts = Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap().timestamp();
+                let end_ts = start_ts + 1;
+                HistoryItem {
+                    id: Uuid::new_v4(),
+                    query: String::from(format!("SELECT {start_ts}")),
+                    start_time: DateTime::from_timestamp(start_ts, 0).unwrap(),
+                    end_time: DateTime::from_timestamp(end_ts, 0).unwrap(),
+                    status_code: 200,
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_slatedb_scan() {
+        let db = Arc::new(create_slate_db().await);
+        let repo = QueryHistoryRepositoryDb::new(db.clone());
+        let mut item: Option<HistoryItem> = None;
+        for _ in 1..101 {
+            item = Some(newHistoryItem(item));
+            let _res = repo.create(&item.clone().unwrap()).await;
+
+        }
+        assert_eq!(Arc::as_ptr(&repo.db), Arc::as_ptr(&db));
+    }
+}
