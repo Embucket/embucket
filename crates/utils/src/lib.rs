@@ -33,6 +33,9 @@ pub enum Error {
     #[snafu(display("SlateDB error: {source} while fetching key {key}"))]
     KeyGet { key: String, source: SlateDBError },
 
+    #[snafu(display("SlateDB error: {source} while scanning range {start_key}..{end_key}"))]
+    Scan { start_key: String, end_key: String, source: SlateDBError },
+
     #[snafu(display("Error serializing value: {source}"))]
     SerializeValue { source: serde_json::Error },
 
@@ -227,23 +230,33 @@ mod tests {
     use object_store::memory::InMemory;
     use object_store::path::Path;
     use object_store::ObjectStore;
-    use slatedb::config::DbOptions;
+    use slatedb::{config::DbOptions, db_iter::DbIterator};
     use slatedb::db::Db as SlateDb;
-    use std::sync::Arc;
+    use std::{ops::RangeBounds, sync::Arc};
     use serde::{Deserialize, Serialize};
     use chrono::{DateTime, TimeZone, Utc};
     use tokio;
+    use bytes::Bytes;
+    use std::time::{Duration, SystemTime};
+    use tracing;
+    use futures::future::join_all;
 
     pub type QueryHistoryResult<T> = Result<T>;
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
-    #[serde(rename_all = "kebab-case")]
+    #[serde(rename_all = "camelCase")]
     pub struct HistoryItem {
         pub id: Uuid,
         pub query: String,
         pub start_time: DateTime<Utc>,
         pub end_time: DateTime<Utc>,
         pub status_code: u16,
+    }
+
+    impl HistoryItem {
+        pub fn key(&self) -> String {
+            self.start_time.timestamp().to_string()
+        }
     }
 
     impl Entity for HistoryItem {
@@ -258,6 +271,11 @@ mod tests {
         async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem>;
         async fn delete(&self, id: Uuid) -> QueryHistoryResult<()>;
         async fn list(&self) -> QueryHistoryResult<Vec<HistoryItem>>;
+        async fn scan(&self, start_key: Bytes, end_key:Bytes) -> QueryHistoryResult<DbIterator>;
+        // async fn scan2<K, T>(&self, range: T) -> QueryHistoryResult<DbIterator>
+        // where
+        //     K: AsRef<[u8]>,
+        //     T: RangeBounds<K>;
     }
 
     pub struct QueryHistoryRepositoryDb {
@@ -289,7 +307,8 @@ mod tests {
     #[async_trait]
     impl QueryHistoryRepository for QueryHistoryRepositoryDb {
         async fn create(&self, entity: &HistoryItem) -> QueryHistoryResult<()> {
-            Repository::_create(self, entity).await.map_err(Into::into)
+            self.db.put(entity.key().as_str(), &entity).await?;
+            Ok(())
         }
 
         async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem> {
@@ -303,6 +322,30 @@ mod tests {
         async fn list(&self) -> QueryHistoryResult<Vec<HistoryItem>> {
             Repository::_list(self).await.map_err(Into::into)
         }
+
+        // async fn scan2<K, T>(&self, range: T) -> QueryHistoryResult<DbIterator>
+        // where
+        //     K: AsRef<[u8]>,
+        //     T: RangeBounds<K>,
+        // {
+        //     let start = range
+        //         .start_bound()
+        //         .map(|b| Bytes::copy_from_slice(b.as_ref()));
+        //     let end = range
+        //         .end_bound()
+        //         .map(|b| Bytes::copy_from_slice(b.as_ref()));
+        //     // let range = (start, end);
+                        
+            
+        // }
+
+        async fn scan(&self, start_key: Bytes, end_key:Bytes) -> QueryHistoryResult<DbIterator> {
+            Ok(self.db.0.scan(&start_key..=&end_key).await.context(ScanSnafu {
+                start_key: String::from_utf8(start_key.to_vec()).unwrap_or("Can't convert start_key".to_string()),
+                end_key: String::from_utf8(end_key.to_vec()).unwrap_or("Can't convert start_key".to_string()),
+            })?)
+        }
+        
     }
 
     async fn create_slate_db() -> Db {
@@ -346,11 +389,83 @@ mod tests {
         let db = Arc::new(create_slate_db().await);
         let repo = QueryHistoryRepositoryDb::new(db.clone());
         let mut item: Option<HistoryItem> = None;
-        for _ in 1..101 {
-            item = Some(newHistoryItem(item));
-            let _res = repo.create(&item.clone().unwrap()).await;
+        
+        let started = SystemTime::now();
+        println!("Create QueryHistory items {:?}", SystemTime::now().duration_since(started));
 
+        const COUNT: usize = 1000;
+        let mut items: Vec<HistoryItem> = vec![];
+        for n in 0..COUNT {
+            item = Some(newHistoryItem(item));
+            items.push(item.clone().unwrap());
         }
+        println!("QueryHistory items created {:?}", SystemTime::now().duration_since(started));
+
+        let write_count_in_blocking_mode = 1;
+        let mut fut = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            if i < write_count_in_blocking_mode {
+                let _res = repo.create(&item).await;
+                if i+1 == write_count_in_blocking_mode {
+                    println!(
+                        "QueryHistory items count={} part-1 stored in blocking mode {:?}", 
+                        write_count_in_blocking_mode, 
+                        SystemTime::now().duration_since(started)
+                    );
+                }
+            } else {
+                fut.push(repo.create(&item))
+            }
+        }
+        join_all(fut).await;
+        println!(
+            "Rest of QueryHistory items count={} stored in non blocking mode {:?}", 
+            items.len()-write_count_in_blocking_mode,
+            SystemTime::now().duration_since(started)
+        );
+
+        // repo.scan(start_key, end_key);
+        let mut iter = repo.db.0.scan(..).await.unwrap();
+        let mut i = 0;
+        while let Ok(Some(item)) = iter.next().await {
+            assert_eq!(
+                item.key,
+                Bytes::from(items[i].key())
+            );
+            assert_eq!(
+                item.value,
+                Bytes::from(ser::to_string(&items[i]).context(SerializeValueSnafu).unwrap())
+            );
+            i += 1;
+        }
+        assert_eq!(i, COUNT);
         assert_eq!(Arc::as_ptr(&repo.db), Arc::as_ptr(&db));
+        println!("QueryHistory items retrieved and checked {:?}", SystemTime::now().duration_since(started));
+
+        let mut iter = repo.db.0.scan(Bytes::from(items[0].key())..).await.unwrap();
+        let mut i = 0;
+        while let Ok(Some(item)) = iter.next().await {
+            assert_eq!(
+                item.key,
+                Bytes::from(items[i].key())
+            );
+            assert_eq!(
+                item.value,
+                Bytes::from(ser::to_string(&items[i]).context(SerializeValueSnafu).unwrap())
+            );
+            i += 1;
+        }
+        assert_eq!(i, COUNT);
+        assert_eq!(Arc::as_ptr(&repo.db), Arc::as_ptr(&db));
+        println!("QueryHistory items retrieved and checked again {:?}", SystemTime::now().duration_since(started));
+
+        // Create QueryHistory items Ok(40ns)
+        // QueryHistory items created Ok(1.481968ms)
+        // QueryHistory items count=1 part-1 stored in blocking mode Ok(100.554187ms)
+        // Rest of QueryHistory items count=999 stored in non blocking mode Ok(237.127829ms)
+        // QueryHistory items retrieved and checked Ok(256.275055ms)
+        // QueryHistory items retrieved and checked again Ok(269.152919ms)
+
+        assert_eq!(0,1);
     }
 }
