@@ -27,3 +27,5 @@ pub mod service; // This will expose everything inside service.rs
 pub mod error;
 
 pub mod utils;
+
+pub mod history;
