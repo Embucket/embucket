@@ -4,6 +4,7 @@ members = [
   "bin/bucketd",
   "crates/catalog",
   "crates/control_plane",
+  "crates/history",
   "crates/nexus",
   "crates/runtime",
   "crates/utils",
