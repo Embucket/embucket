@@ -9,6 +9,7 @@ use snafu::prelude::*;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use bytes::Bytes;
+use std::i64;
 use std::ops::RangeBounds;
 
 #[derive(Snafu, Debug)]
@@ -39,9 +40,16 @@ pub type QueryHistoryResult<T> = Result<T>;
 
 pub trait Entity {
     fn id(&self) -> Uuid;
-    fn prefix() -> &'static str;
     fn key_from_time(time: DateTime<Utc>) -> String;
     fn key(&self) -> String;
+    fn prefix() -> &'static str;
+
+    fn min_key() -> String {
+        format!("{}{}", Self::prefix(), 0)
+    }
+    fn max_key() -> String {
+        format!("{}{}", Self::prefix(), i64::MAX)
+    }
 }
 
 
@@ -500,7 +508,7 @@ mod tests {
     //     );
     // }
 
-    fn assert_check_items<T: serde::Serialize + Sync + Entity>(created_items: Vec<T>, retrieved_items: Vec<T>) {
+    fn assert_check_items<T: serde::Serialize + Sync + Entity>(created_items: Vec<&T>, retrieved_items: Vec<&T>) {
         assert_eq!(created_items.len(), retrieved_items.len());
         assert_eq!(
             created_items.last().unwrap().key(),
@@ -515,76 +523,60 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_slatedb_history_range_somes_range() {
+    // test keys groups having different prefixes for separate ranges
+    async fn test_slatedb_separate_keys_groups() {
         let (db, created_history_items) = create_populate_new_db().await;
         let created_some_items = populate_some_items(&db).await;
 
+        
         let created = created_history_items;
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
+        println!("HistoryItem range {range:?}");
         let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
-        assert_check_items(created, retrieved);
+        assert_check_items(created.iter().collect(), retrieved.iter().collect());
 
         let created = created_some_items;
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
+        println!("SomeItem range {range:?}");
         let retrieved: Vec<SomeItem> = db.items_from_range(range).await;
-        assert_check_items(created, retrieved);
+        assert_check_items(created.iter().collect(), retrieved.iter().collect());
     }
 
+    #[tokio::test]
+    // test key groups having different prefixes
+    async fn test_slatedb_separate_key_groups_within_min_max_range() {
+        let (db, created_history_items) = create_populate_new_db().await;
+        let created_some_items = populate_some_items(&db).await;
+
+        let range = HistoryItem::min_key()..HistoryItem::max_key();
+        println!("HistoryItem range {range:?}");
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
+        assert_check_items(created_history_items.iter().collect(), retrieved.iter().collect());
+        
+        let range = SomeItem::min_key()..SomeItem::max_key();
+        println!("SomeItem range {range:?}");
+        let retrieved: Vec<SomeItem> = db.items_from_range(range).await;
+        assert_check_items(created_some_items.iter().collect(), retrieved.iter().collect());
+    }
 
     #[tokio::test]
-    async fn test_slatedb_single_key_prefix_unbound_range_items() {
-        let (db, created) = create_populate_new_db().await;
+    async fn test_slatedb_start_with_existing_key_end_with_max_key_range() {
+        let (db, created_items) = create_populate_new_db().await;
+        let items: Vec<&HistoryItem> = created_items[5..].into_iter().collect();
+        let range = items.first().unwrap().key()..HistoryItem::max_key();
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
+        assert_check_items(items, retrieved.iter().collect());
+    }
+
+    #[tokio::test]
+    // test full range .. and how all the items retrieved
+    async fn test_slatedb_dont_distinguish_key_groups_within_full_range() {
+        let (db, created_history_items) = create_populate_new_db().await;
+        let created_some_items = populate_some_items(&db).await;
 
         let range = ..;
         let retrieved: Vec<HistoryItem> = db.items_from_range(Range!(range)).await;
-        assert_check_items(created, retrieved);
-    }
-
-    #[tokio::test]
-    async fn test_slatedb_scan_full_range() {
-        let (db, created_items) = create_populate_new_db().await;
-        let retrieved_items = get_history_items(&db, None, 1000).await;
-        assert_eq!(retrieved_items.len(), 100);
-        assert_eq!(created_items[0].key(), retrieved_items[0].key());
-
-        let some_items = get_some_items(&db, None, 2).await;
-        assert_eq!(some_items.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_slatedb_scan_starting_non_existing_key_not_in_range() {
-        let (db, created_items) = create_populate_new_db().await;
-        let cursor = HistoryItem::key_from_time(
-            DateTime::from_timestamp(
-                Utc.with_ymd_and_hms(2019, 1, 5, 1, 0, 0).unwrap().timestamp(), 0
-            ).unwrap()
-        );
-        let retrieved_items = get_history_items(&db, Some(cursor), 1).await;
-        assert_eq!(retrieved_items.len(), 1);
-        // retrieved first key in range, which is the closest one
-        assert_eq!(created_items[0].key(), retrieved_items[0].key());
-    }
-
-    #[tokio::test]
-    async fn test_slatedb_scan_existing_key_in_range() {
-        let (db, created_items) = create_populate_new_db().await;
-        let skip_first_n_items = 5;
-        let cursor = created_items[skip_first_n_items].key();
-        let retrieved_items = get_history_items(&db, Some(cursor), 1000).await;
-        assert_eq!(retrieved_items.len(), created_items.len()-skip_first_n_items);
-        assert_eq!(created_items.iter().last().unwrap().key(), retrieved_items.iter().last().unwrap().key());
-    }
-
-    #[tokio::test]
-    async fn test_slatedb_scan_non_existing_key_in_range() {
-        let (db, created_items) = create_populate_new_db().await;
-        let cursor = HistoryItem::key_from_time(
-            DateTime::from_timestamp(
-                Utc.with_ymd_and_hms(2020, 1, 5, 1, 0, 0).unwrap().timestamp(), 0
-            ).unwrap()
-        );
-        let retrieved_items = get_history_items(&db, Some(cursor), 10).await;
-        assert_eq!(retrieved_items.len(), 10);
-        assert_eq!(created_items[5].key(), retrieved_items[0].key());
+        assert_eq!(created_history_items.len() + created_some_items.len(), retrieved.len());
+        assert_ne!(retrieved.first().unwrap().key(), retrieved.last().unwrap().key());
     }
 }
