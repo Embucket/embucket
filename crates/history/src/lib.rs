@@ -16,4 +16,4 @@
 // under the License.
 
 // query history implementation
-pub mod history;
+pub mod history_db;

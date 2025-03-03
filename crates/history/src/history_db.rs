@@ -1,5 +1,4 @@
-use async_trait::async_trait;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::de;
 use serde_json::ser;
 use slatedb::db::Db as SlateDb;
@@ -13,7 +12,6 @@ use std::i64;
 use std::ops::RangeBounds;
 
 #[derive(Snafu, Debug)]
-//#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("SlateDB error: {source}"))]
     Database { source: SlateDBError },
@@ -113,7 +111,7 @@ impl Entity for HistoryItem {
     }
 }
 
-// Kind of cast for range, for cases if for range 
+// Kind of cast for range, for cases when for range 
 // trait `RangeBounds<bytes::Bytes>` is not implemented.
 macro_rules! RangeAsRef {
     { $range: ident } => {
@@ -128,9 +126,8 @@ macro_rules! RangeAsRef {
     }
 }
 
-// Retrieve keys bounds from range, and return as Bytes array
-// as trait `RangeBounds<bytes::Bytes>` is not implemented for Range
-macro_rules! Range {
+// To be used with the RangeFull
+macro_rules! RangeFull {
     { $range: ident } => {
         (
             $range
@@ -159,26 +156,6 @@ impl DbWrapper {
         return self.0.close().await.context(DatabaseSnafu)
     }
 
-    /// Deletes a key-value pair from the database.
-    ///
-    /// # Errors
-    ///
-    /// This function will return a `DbError` if the underlying database operation fails.
-    pub async fn delete(&self, key: &str) -> Result<()> {
-        self.0.delete(key.as_bytes()).await.context(DatabaseSnafu)
-    }
-
-    /// Stores a key-value pair in the database.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `SerializeError` if the value cannot be serialized to JSON.
-    /// Returns a `DbError` if the underlying database operation fails.
-    pub async fn _put<T: serde::Serialize + Sync>(&self, key: &str, value: &T) -> Result<()> {
-        let serialized = ser::to_vec(value).context(SerializeValueSnafu)?;
-        self.0.put(key.as_bytes(), serialized.as_ref()).await.context(DatabaseSnafu)
-    }
-
     /// Stores template object in the database.
     ///
     /// # Errors
@@ -191,6 +168,11 @@ impl DbWrapper {
         self.0.put(entity.key().as_bytes(), serialized.as_ref()).await.context(DatabaseSnafu)
     }
 
+    /// Iterator For iterating on range
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DbError` if the underlying database operation fails.
     pub async fn range_iterator<K, T>(&self, range: T) -> Result<DbIterator<'_>>
     where
         K: AsRef<[u8]>,
@@ -199,7 +181,13 @@ impl DbWrapper {
         self.0.scan(RangeAsRef!(range)).await.context(DatabaseSnafu)
     }
 
-    async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(&self, range: R) -> Vec<T> 
+    /// Fetch items from database
+    ///
+    /// # Errors
+    ///
+    /// Returns a `DeserializeError` if the value cannot be serialized to JSON.
+    /// Returns a `DbError` if the underlying database operation fails.    
+    pub async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(&self, range: R, limit: Option<u16>) -> Vec<T> 
     where
         K: AsRef<[u8]>,
         R: RangeBounds<K>,
@@ -211,36 +199,14 @@ impl DbWrapper {
                     items.push(
                         de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
                     );
+                    if items.len() >= limit.unwrap_or(u16::MAX).into() {
+                        break;
+                    }
                 }
                 items
             },
             Err(e) => { println!("Error: {}", e); vec![] }
         }
-    }
-
-    pub async fn _get_page<T: for<'de> serde::de::Deserialize<'de> + Entity>(&self, key: Option<String>, count: u16) -> Result<Vec<T>>{
-        let mut iter = match key {
-            Some(k) => {
-                let range_key = Bytes::from(k);
-                self.0.scan(range_key..).await
-            }
-            _ => self.0.scan(..).await,
-        }.unwrap();    // TODO: handle error
-
-        let mut items: Vec<T> = vec![];
-        while let Ok(Some(item)) = iter.next().await {
-            items.push(
-                de::from_slice(&item.value).context(DeserializeValueSnafu)?
-            );
-            if items.len() >= count.into() { break };
-        }
-
-        Ok(items)
-    }
-
-    pub async fn get_page(&self, key: Option<String>, count: u16) -> Result<Vec<HistoryItem>> {
-        // using wrapper to get rid from template un result type
-        self._get_page(key, count).await
     }
 
     /// Retrieves a value from the database by its key.
@@ -264,36 +230,6 @@ impl DbWrapper {
     }
 }
 
-#[async_trait]
-pub trait Repository {
-    type Entity: Entity + Serialize + DeserializeOwned + Send + Sync;
-
-    fn db(&self) -> &DbWrapper;
-
-    async fn _create(&self, entity: &Self::Entity) -> Result<()> {
-        let key = format!("{}.{}", Self::prefix(), entity.id());
-        self.db()._put(&key, &entity).await?;
-        Ok(())
-    }
-
-    async fn _get(&self, id: Uuid) -> Result<Self::Entity> {
-        let key = format!("{}.{}", Self::prefix(), id);
-        let entity = self.db().get(&key).await?;
-        let entity = entity.ok_or(Error::KeyNotFound)?;
-        Ok(entity)
-    }
-
-    async fn _delete(&self, id: Uuid) -> Result<()> {
-        let key = format!("{}.{}", Self::prefix(), id);
-
-        self.db().delete(&key).await?;
-        Ok(())
-    }   
-
-    fn prefix() -> &'static str;
-    fn collection_key() -> &'static str;
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 #[allow(clippy::expect_used)]
@@ -302,7 +238,7 @@ mod tests {
     use object_store::memory::InMemory;
     use object_store::path::Path;
     use object_store::ObjectStore;
-    use slatedb::{config::DbOptions};
+    use slatedb::config::DbOptions;
     use slatedb::db::Db as SlateDb;
     use std::sync::Arc;
     use chrono::{DateTime, TimeZone, Utc};
@@ -311,67 +247,6 @@ mod tests {
     use std::time::SystemTime;
     use futures::future::join_all;
 
-    // #[async_trait]
-    // pub trait QueryHistoryRepository: Send + Sync {
-        // async fn create(&self, params: &HistoryItem) -> QueryHistoryResult<()>;
-        // async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem>;
-        // async fn delete(&self, id: Uuid) -> QueryHistoryResult<()>;
-        // async fn scan(&self, start_key: Bytes, end_key:Bytes) -> QueryHistoryResult<DbIterator>;
-        // async fn scan2<K, T>(&self, range: T) -> QueryHistoryResult<DbIterator>
-        // where
-        //     K: AsRef<[u8]>,
-        //     T: RangeBounds<K>;
-    // }
-
-    // pub struct QueryHistoryRepositoryDb {
-    //     db: Arc<DbWrapper>,
-    // }
-
-    // impl QueryHistoryRepositoryDb {
-    //     pub const fn new(db: Arc<DbWrapper>) -> Self {
-    //         Self { db }
-    //     }
-    // }
-
-    // impl Repository for QueryHistoryRepositoryDb {
-    //     type Entity = HistoryItem;
-
-    //     fn db(&self) -> &DbWrapper {
-    //         &self.db
-    //     }
-
-    //     fn prefix() -> &'static str {
-    //         "qh"
-    //     }
-
-    //     fn collection_key() ->  &'static str {
-    //         "qh.items"
-    //     }
-    // }
-
-    // #[async_trait]
-    // impl QueryHistoryRepository for QueryHistoryRepositoryDb {
-        // async fn create(&self, entity: &HistoryItem) -> QueryHistoryResult<()> {
-        //     self.db._put(entity.key().as_str(), &entity).await?;
-        //     Ok(())
-        // }
-
-        // async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem> {
-        //     Repository::_get(self, id).await.map_err(Into::into)
-        // }
-
-        // async fn delete(&self, id: Uuid) -> QueryHistoryResult<()> {
-        //     Repository::_delete(self, id).await.map_err(Into::into)
-        // }
-
-        // async fn scan(&self, start_key: Bytes, end_key:Bytes) -> QueryHistoryResult<DbIterator> {
-        //     Ok(self.db.0.scan(&start_key..=&end_key).await.context(ScanSnafu {
-        //         start_key: String::from_utf8(start_key.to_vec()).unwrap_or("Can't convert start_key".to_string()),
-        //         end_key: String::from_utf8(end_key.to_vec()).unwrap_or("Can't convert start_key".to_string()),
-        //     })?)
-        // }
-        
-    //}
 
     async fn create_slate_db() -> DbWrapper {
         let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
@@ -403,7 +278,6 @@ mod tests {
 
     async fn create_populate_new_db() -> (Arc<DbWrapper>, Vec<HistoryItem>) {
         let db = Arc::new(create_slate_db().await);
-        // let repo = QueryHistoryRepositoryDb::new(db.clone());
         let mut item: Option<HistoryItem> = None;
         
         let started = SystemTime::now();
@@ -469,45 +343,6 @@ mod tests {
         items
     }
 
-    async fn get_history_items(db: &Arc<DbWrapper>, cursor: Option<String>, page_size: u16) -> Vec<HistoryItem> {
-        println!("fetch {} history items from cursor: {:?}", page_size, cursor);
-        if let Ok(page_items) = db._get_page(cursor, page_size).await {
-            // page_items.iter().for_each(|x| println!("{:?}", x));
-            println!("Fetched count: {:?}\n", page_items.len());
-            page_items
-        } else {
-            vec![]
-        }
-    }
-
-    async fn get_some_items(db: &Arc<DbWrapper>, cursor: Option<String>, page_size: u16) -> Vec<SomeItem> {
-        println!("fetch {} some items from cursor: {:?}", page_size, cursor);
-        if let Ok(page_items) = db._get_page(cursor, page_size).await {
-            // page_items.iter().for_each(|x| println!("{:?}", x));
-            println!("Fetched count: {:?}\n", page_items.len());
-            page_items
-        } else {
-            vec![]
-        }
-    }
-
-    // async fn assert_check_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(
-    //     db: &DbWrapper,
-    //     range: R,
-    //     items: Vec<T>,
-    // )
-    // where
-    //     K: AsRef<[u8]>,
-    //     R: RangeBounds<K>,    
-    // {
-    //     let retrieved_items: Vec<T> = db.items_from_range(range).await;
-    //     assert_eq!(items.len(), retrieved_items.len());
-    //     assert_eq!(
-    //         items.last().unwrap().key(),
-    //         retrieved_items.last().unwrap().key(),
-    //     );
-    // }
-
     fn assert_check_items<T: serde::Serialize + Sync + Entity>(created_items: Vec<&T>, retrieved_items: Vec<&T>) {
         assert_eq!(created_items.len(), retrieved_items.len());
         assert_eq!(
@@ -528,17 +363,16 @@ mod tests {
         let (db, created_history_items) = create_populate_new_db().await;
         let created_some_items = populate_some_items(&db).await;
 
-        
         let created = created_history_items;
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
         println!("HistoryItem range {range:?}");
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await;
         assert_check_items(created.iter().collect(), retrieved.iter().collect());
 
         let created = created_some_items;
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
         println!("SomeItem range {range:?}");
-        let retrieved: Vec<SomeItem> = db.items_from_range(range).await;
+        let retrieved: Vec<SomeItem> = db.items_from_range(range, None).await;
         assert_check_items(created.iter().collect(), retrieved.iter().collect());
     }
 
@@ -550,13 +384,25 @@ mod tests {
 
         let range = HistoryItem::min_key()..HistoryItem::max_key();
         println!("HistoryItem range {range:?}");
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await;
         assert_check_items(created_history_items.iter().collect(), retrieved.iter().collect());
         
         let range = SomeItem::min_key()..SomeItem::max_key();
         println!("SomeItem range {range:?}");
-        let retrieved: Vec<SomeItem> = db.items_from_range(range).await;
+        let retrieved: Vec<SomeItem> = db.items_from_range(range, None).await;
         assert_check_items(created_some_items.iter().collect(), retrieved.iter().collect());
+    }
+
+    #[tokio::test]
+    // test keys groups having different prefixes for separate ranges
+    async fn test_slatedb_limit() {
+        let (db, created_history_items) = create_populate_new_db().await;
+        let created = created_history_items;
+        let range = created.first().unwrap().key()..=created.last().unwrap().key();
+        let limit: usize = 10;
+        println!("HistoryItem range {range:?}, limit {limit}");
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, Some(limit as u16)).await;
+        assert_check_items(created[0..limit].iter().collect(), retrieved.iter().collect());
     }
 
     #[tokio::test]
@@ -564,7 +410,7 @@ mod tests {
         let (db, created_items) = create_populate_new_db().await;
         let items: Vec<&HistoryItem> = created_items[5..].into_iter().collect();
         let range = items.first().unwrap().key()..HistoryItem::max_key();
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await;
         assert_check_items(items, retrieved.iter().collect());
     }
 
@@ -575,7 +421,7 @@ mod tests {
         let created_some_items = populate_some_items(&db).await;
 
         let range = ..;
-        let retrieved: Vec<HistoryItem> = db.items_from_range(Range!(range)).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(RangeFull!(range), None).await;
         assert_eq!(created_history_items.len() + created_some_items.len(), retrieved.len());
         assert_ne!(retrieved.first().unwrap().key(), retrieved.last().unwrap().key());
     }
