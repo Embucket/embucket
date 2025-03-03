@@ -3,11 +3,13 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::de;
 use serde_json::ser;
 use slatedb::db::Db as SlateDb;
+use slatedb::db_iter::DbIterator;
 use slatedb::error::SlateDBError;
 use snafu::prelude::*;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use bytes::Bytes;
+use std::ops::RangeBounds;
 
 #[derive(Snafu, Debug)]
 //#[snafu(visibility(pub(crate)))]
@@ -103,6 +105,22 @@ impl Entity for HistoryItem {
     }
 }
 
+// Retrieve keys bounds from range, and return as Bytes array
+// as trait `RangeBounds<bytes::Bytes>` is not implemented for Range
+macro_rules! Range {
+    { $range: ident } => {
+        (
+            $range
+            .start_bound()
+            .map(|b| Bytes::copy_from_slice(b.as_ref())),
+            $range
+            .end_bound()
+            .map(|b| Bytes::copy_from_slice(b.as_ref()))
+        )
+    }
+}
+
+
 pub struct DbWrapper(SlateDb);
 
 impl DbWrapper {
@@ -149,6 +167,14 @@ impl DbWrapper {
     {
         let serialized = ser::to_vec(entity).context(SerializeValueSnafu)?;
         self.0.put(entity.key().as_bytes(), serialized.as_ref()).await.context(DatabaseSnafu)
+    }
+
+    pub async fn range_iterator<K, T>(&self, range: T) -> Result<DbIterator<'_>>
+    where
+        K: AsRef<[u8]>,
+        T: RangeBounds<K>,
+    {
+        self.0.scan(Range!(range)).await.context(DatabaseSnafu)
     }
 
     pub async fn _get_page<T: for<'de> serde::de::Deserialize<'de> + Entity>(&self, key: Option<String>, count: u16) -> Result<Vec<T>>{
@@ -360,7 +386,7 @@ mod tests {
             COUNT, SystemTime::now().duration_since(started)
         );
 
-        let mut iter =  db.0.scan(..).await.unwrap();
+        let mut iter =  db.0.scan((..)).await.unwrap();
         let mut i = 0;
         while let Ok(Some(item)) = iter.next().await {
             assert_eq!(
@@ -390,8 +416,8 @@ mod tests {
             SomeItem{
                 id: Uuid::new_v4(),
                 query: "SELECT 2".to_string(),
-                start_time: DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap(),
-                end_time: DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap(),
+                start_time: DateTime::from_timestamp(Utc::now().timestamp(), 1).unwrap(),
+                end_time: DateTime::from_timestamp(Utc::now().timestamp(), 1).unwrap(),
                 status_code: 0,
             }
         ];
@@ -400,6 +426,25 @@ mod tests {
         }
         
         items
+    }
+
+    async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(db: &Arc<DbWrapper>, range: R) -> Vec<T> 
+    where
+        K: AsRef<[u8]>,
+        R: RangeBounds<K>,    
+    {
+        match db.range_iterator(range).await {
+            Ok(mut iter) => {
+                let mut items: Vec<T> = vec![];
+                while let Ok(Some(item)) = iter.next().await {
+                    items.push(
+                        de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
+                    );
+                }
+                items 
+            },
+            Err(e) => { println!("Error: {}", e); vec![] }
+        }
     }
 
     async fn get_history_items(db: &Arc<DbWrapper>, cursor: Option<String>, page_size: u16) -> Vec<HistoryItem> {
@@ -424,6 +469,25 @@ mod tests {
         }
     }    
 
+    async fn check_items_assert<T: for<'de> serde::de::Deserialize<'de> + Entity>(db: &DbWrapper, created_items: Vec<T>) {
+        let items_range = created_items.first().unwrap().key()..=created_items.last().unwrap().key();
+        let mut iter = db.range_iterator(items_range.clone()).await.unwrap();
+        let mut retrieved_items: Vec<T> = vec![];
+        while let Ok(Some(item)) = iter.next().await {
+            retrieved_items.push(
+                de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
+            );
+        }
+        println!("created_items {:?} range: {items_range:?}", T::prefix());
+        println!("(retrieved_items: {:?} range: {:?}", T::prefix(), retrieved_items.first().unwrap().key()..=retrieved_items.last().unwrap().key());
+        assert_eq!(created_items.len(), retrieved_items.len());
+        assert_eq!(
+            created_items.last().unwrap().key(),
+            retrieved_items.last().unwrap().key(),
+        );
+    }
+
+
     #[tokio::test]
     async fn test_slatedb_all_history_items() {
         let (db, created_history_items) = create_populate_new_db().await;
@@ -432,21 +496,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_slatedb_all_history_and_some_items() {
+    async fn test_slatedb_history_range_somes_range() {
         let (db, created_history_items) = create_populate_new_db().await;
         let created_some_items = populate_some_items(&db).await;
-        let retrieved_history_items = get_history_items(&db, None, 10000).await;
-        let retrieved_some_items = get_some_items(&db, None, 10000).await;
-        assert_eq!(retrieved_history_items.len(), created_history_items.len());
-        assert_eq!(
-            retrieved_history_items.last().unwrap().key(),
-            created_history_items.last().unwrap().key(),
-        );
-        assert_eq!(retrieved_some_items.len(), created_some_items.len());
-        assert_eq!(
-            retrieved_some_items.last().unwrap().key(),
-            created_some_items.last().unwrap().key(),
-        );
+        check_items_assert(&db, created_history_items).await;
+        check_items_assert(&db, created_some_items).await;
     }
 
     #[tokio::test]
