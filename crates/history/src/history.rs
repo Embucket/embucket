@@ -37,6 +37,7 @@ pub type QueryHistoryResult<T> = Result<T>;
 
 pub trait Entity {
     fn id(&self) -> Uuid;
+    fn prefix() -> &'static str;
     fn key_from_time(time: DateTime<Utc>) -> String;
     fn key(&self) -> String;
 }
@@ -59,8 +60,12 @@ impl Entity for SomeItem {
         self.id
     }
 
+    fn prefix() -> &'static str {
+        "si."
+    }
+
     fn key_from_time(time: DateTime<Utc>) -> String {
-        format!("si.{}", time.to_string())
+        format!("{}{}", Self::prefix(), time.to_string())
     }
 
     fn key(&self) -> String {
@@ -85,8 +90,12 @@ impl Entity for HistoryItem {
         self.id
     }
 
+    fn prefix() -> &'static str {
+        "hi."
+    }
+
     fn key_from_time(time: DateTime<Utc>) -> String {
-        format!("hi.{}", time.to_string())
+        format!("{}{}", Self::prefix(), time.to_string())
     }
 
     fn key(&self) -> String {
@@ -150,7 +159,7 @@ impl DbWrapper {
             }
             _ => self.0.scan(..).await,
         }.unwrap();    // TODO: handle error
-        
+
         let mut items: Vec<T> = vec![];
         while let Ok(Some(item)) = iter.next().await {
             items.push(
