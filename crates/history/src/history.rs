@@ -105,9 +105,9 @@ impl Entity for HistoryItem {
     }
 }
 
-// Retrieve keys bounds from range, and return as Bytes array
-// as trait `RangeBounds<bytes::Bytes>` is not implemented for Range
-macro_rules! Range {
+// Kind of cast for range, for cases if for range 
+// trait `RangeBounds<bytes::Bytes>` is not implemented.
+macro_rules! RangeAsRef {
     { $range: ident } => {
         (
             $range
@@ -120,6 +120,20 @@ macro_rules! Range {
     }
 }
 
+// Retrieve keys bounds from range, and return as Bytes array
+// as trait `RangeBounds<bytes::Bytes>` is not implemented for Range
+macro_rules! Range {
+    { $range: ident } => {
+        (
+            $range
+            .start_bound()
+            .map(|b| Bytes::copy_from_slice(b)),
+            $range
+            .end_bound()
+            .map(|b| Bytes::copy_from_slice(b))
+        )
+    }
+}
 
 pub struct DbWrapper(SlateDb);
 
@@ -174,7 +188,26 @@ impl DbWrapper {
         K: AsRef<[u8]>,
         T: RangeBounds<K>,
     {
-        self.0.scan(Range!(range)).await.context(DatabaseSnafu)
+        self.0.scan(RangeAsRef!(range)).await.context(DatabaseSnafu)
+    }
+
+    async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(&self, range: R) -> Vec<T> 
+    where
+        K: AsRef<[u8]>,
+        R: RangeBounds<K>,
+    {
+        match self.range_iterator(range).await {
+            Ok(mut iter) => {
+                let mut items: Vec<T> = vec![];
+                while let Ok(Some(item)) = iter.next().await {
+                    items.push(
+                        de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
+                    );
+                }
+                items
+            },
+            Err(e) => { println!("Error: {}", e); vec![] }
+        }
     }
 
     pub async fn _get_page<T: for<'de> serde::de::Deserialize<'de> + Entity>(&self, key: Option<String>, count: u16) -> Result<Vec<T>>{
@@ -261,7 +294,7 @@ mod tests {
     use object_store::memory::InMemory;
     use object_store::path::Path;
     use object_store::ObjectStore;
-    use slatedb::{config::DbOptions, db_iter::DbIterator};
+    use slatedb::{config::DbOptions};
     use slatedb::db::Db as SlateDb;
     use std::sync::Arc;
     use chrono::{DateTime, TimeZone, Utc};
@@ -270,9 +303,9 @@ mod tests {
     use std::time::SystemTime;
     use futures::future::join_all;
 
-    #[async_trait]
-    pub trait QueryHistoryRepository: Send + Sync {
-        async fn create(&self, params: &HistoryItem) -> QueryHistoryResult<()>;
+    // #[async_trait]
+    // pub trait QueryHistoryRepository: Send + Sync {
+        // async fn create(&self, params: &HistoryItem) -> QueryHistoryResult<()>;
         // async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem>;
         // async fn delete(&self, id: Uuid) -> QueryHistoryResult<()>;
         // async fn scan(&self, start_key: Bytes, end_key:Bytes) -> QueryHistoryResult<DbIterator>;
@@ -280,40 +313,40 @@ mod tests {
         // where
         //     K: AsRef<[u8]>,
         //     T: RangeBounds<K>;
-    }
+    // }
 
-    pub struct QueryHistoryRepositoryDb {
-        db: Arc<DbWrapper>,
-    }
+    // pub struct QueryHistoryRepositoryDb {
+    //     db: Arc<DbWrapper>,
+    // }
 
-    impl QueryHistoryRepositoryDb {
-        pub const fn new(db: Arc<DbWrapper>) -> Self {
-            Self { db }
-        }
-    }
+    // impl QueryHistoryRepositoryDb {
+    //     pub const fn new(db: Arc<DbWrapper>) -> Self {
+    //         Self { db }
+    //     }
+    // }
 
-    impl Repository for QueryHistoryRepositoryDb {
-        type Entity = HistoryItem;
+    // impl Repository for QueryHistoryRepositoryDb {
+    //     type Entity = HistoryItem;
 
-        fn db(&self) -> &DbWrapper {
-            &self.db
-        }
+    //     fn db(&self) -> &DbWrapper {
+    //         &self.db
+    //     }
 
-        fn prefix() -> &'static str {
-            "qh"
-        }
+    //     fn prefix() -> &'static str {
+    //         "qh"
+    //     }
 
-        fn collection_key() ->  &'static str {
-            "qh.items"
-        }
-    }
+    //     fn collection_key() ->  &'static str {
+    //         "qh.items"
+    //     }
+    // }
 
-    #[async_trait]
-    impl QueryHistoryRepository for QueryHistoryRepositoryDb {
-        async fn create(&self, entity: &HistoryItem) -> QueryHistoryResult<()> {
-            self.db._put(entity.key().as_str(), &entity).await?;
-            Ok(())
-        }
+    // #[async_trait]
+    // impl QueryHistoryRepository for QueryHistoryRepositoryDb {
+        // async fn create(&self, entity: &HistoryItem) -> QueryHistoryResult<()> {
+        //     self.db._put(entity.key().as_str(), &entity).await?;
+        //     Ok(())
+        // }
 
         // async fn get(&self, id: Uuid) -> QueryHistoryResult<HistoryItem> {
         //     Repository::_get(self, id).await.map_err(Into::into)
@@ -330,7 +363,7 @@ mod tests {
         //     })?)
         // }
         
-    }
+    //}
 
     async fn create_slate_db() -> DbWrapper {
         let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
@@ -362,7 +395,7 @@ mod tests {
 
     async fn create_populate_new_db() -> (Arc<DbWrapper>, Vec<HistoryItem>) {
         let db = Arc::new(create_slate_db().await);
-        let repo = QueryHistoryRepositoryDb::new(db.clone());
+        // let repo = QueryHistoryRepositoryDb::new(db.clone());
         let mut item: Option<HistoryItem> = None;
         
         let started = SystemTime::now();
@@ -386,7 +419,7 @@ mod tests {
             COUNT, SystemTime::now().duration_since(started)
         );
 
-        let mut iter =  db.0.scan((..)).await.unwrap();
+        let mut iter =  db.0.scan(..).await.unwrap();
         let mut i = 0;
         while let Ok(Some(item)) = iter.next().await {
             assert_eq!(
@@ -401,7 +434,7 @@ mod tests {
         }
         assert_eq!(i, items.len());
 
-        (repo.db, items)
+        (db, items)
     }
 
     async fn populate_some_items(db: &Arc<DbWrapper>) -> Vec<SomeItem>{
@@ -428,25 +461,6 @@ mod tests {
         items
     }
 
-    async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(db: &Arc<DbWrapper>, range: R) -> Vec<T> 
-    where
-        K: AsRef<[u8]>,
-        R: RangeBounds<K>,    
-    {
-        match db.range_iterator(range).await {
-            Ok(mut iter) => {
-                let mut items: Vec<T> = vec![];
-                while let Ok(Some(item)) = iter.next().await {
-                    items.push(
-                        de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
-                    );
-                }
-                items 
-            },
-            Err(e) => { println!("Error: {}", e); vec![] }
-        }
-    }
-
     async fn get_history_items(db: &Arc<DbWrapper>, cursor: Option<String>, page_size: u16) -> Vec<HistoryItem> {
         println!("fetch {} history items from cursor: {:?}", page_size, cursor);
         if let Ok(page_items) = db._get_page(cursor, page_size).await {
@@ -467,40 +481,63 @@ mod tests {
         } else {
             vec![]
         }
-    }    
+    }
 
-    async fn check_items_assert<T: for<'de> serde::de::Deserialize<'de> + Entity>(db: &DbWrapper, created_items: Vec<T>) {
-        let items_range = created_items.first().unwrap().key()..=created_items.last().unwrap().key();
-        let mut iter = db.range_iterator(items_range.clone()).await.unwrap();
-        let mut retrieved_items: Vec<T> = vec![];
-        while let Ok(Some(item)) = iter.next().await {
-            retrieved_items.push(
-                de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
-            );
-        }
-        println!("created_items {:?} range: {items_range:?}", T::prefix());
-        println!("(retrieved_items: {:?} range: {:?}", T::prefix(), retrieved_items.first().unwrap().key()..=retrieved_items.last().unwrap().key());
+    // async fn assert_check_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(
+    //     db: &DbWrapper,
+    //     range: R,
+    //     items: Vec<T>,
+    // )
+    // where
+    //     K: AsRef<[u8]>,
+    //     R: RangeBounds<K>,    
+    // {
+    //     let retrieved_items: Vec<T> = db.items_from_range(range).await;
+    //     assert_eq!(items.len(), retrieved_items.len());
+    //     assert_eq!(
+    //         items.last().unwrap().key(),
+    //         retrieved_items.last().unwrap().key(),
+    //     );
+    // }
+
+    fn assert_check_items<T: serde::Serialize + Sync + Entity>(created_items: Vec<T>, retrieved_items: Vec<T>) {
         assert_eq!(created_items.len(), retrieved_items.len());
         assert_eq!(
             created_items.last().unwrap().key(),
             retrieved_items.last().unwrap().key(),
         );
-    }
-
-
-    #[tokio::test]
-    async fn test_slatedb_all_history_items() {
-        let (db, created_history_items) = create_populate_new_db().await;
-        let retrieved_history_items = get_history_items(&db, None, 10000).await;
-        assert_eq!(retrieved_history_items.len(), created_history_items.len());
+        for (i, item) in created_items.iter().enumerate() {
+            assert_eq!(
+                Bytes::from(ser::to_string(&item).context(SerializeValueSnafu).unwrap()),
+                Bytes::from(ser::to_string(&retrieved_items[i]).context(SerializeValueSnafu).unwrap()),
+            );    
+        }
     }
 
     #[tokio::test]
     async fn test_slatedb_history_range_somes_range() {
         let (db, created_history_items) = create_populate_new_db().await;
         let created_some_items = populate_some_items(&db).await;
-        check_items_assert(&db, created_history_items).await;
-        check_items_assert(&db, created_some_items).await;
+
+        let created = created_history_items;
+        let range = created.first().unwrap().key()..=created.last().unwrap().key();
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range).await;
+        assert_check_items(created, retrieved);
+
+        let created = created_some_items;
+        let range = created.first().unwrap().key()..=created.last().unwrap().key();
+        let retrieved: Vec<SomeItem> = db.items_from_range(range).await;
+        assert_check_items(created, retrieved);
+    }
+
+
+    #[tokio::test]
+    async fn test_slatedb_single_key_prefix_unbound_range_items() {
+        let (db, created) = create_populate_new_db().await;
+
+        let range = ..;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(Range!(range)).await;
+        assert_check_items(created, retrieved);
     }
 
     #[tokio::test]
