@@ -25,7 +25,7 @@ pub enum Error {
     #[snafu(display("Error serializing value: {source}"))]
     SerializeValue { source: serde_json::Error },
 
-    #[snafu(display("Deserialize error: {source}"))]
+    #[snafu(display("Error deserializing value: {source}"))]
     DeserializeValue { source: serde_json::Error },
 
     #[snafu(display("Key Not found"))]
@@ -187,26 +187,21 @@ impl DbWrapper {
     ///
     /// Returns a `DeserializeError` if the value cannot be serialized to JSON.
     /// Returns a `DbError` if the underlying database operation fails.    
-    pub async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(&self, range: R, limit: Option<u16>) -> Vec<T> 
+    pub async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(&self, range: R, limit: Option<u16>) -> Result<Vec<T>> 
     where
         K: AsRef<[u8]>,
         R: RangeBounds<K>,
     {
-        match self.range_iterator(range).await {
-            Ok(mut iter) => {
-                let mut items: Vec<T> = vec![];
-                while let Ok(Some(item)) = iter.next().await {
-                    items.push(
-                        de::from_slice(&item.value).context(DeserializeValueSnafu).unwrap()
-                    );
-                    if items.len() >= limit.unwrap_or(u16::MAX).into() {
-                        break;
-                    }
-                }
-                items
-            },
-            Err(e) => { println!("Error: {}", e); vec![] }
+        let mut iter = self.range_iterator(range).await?;
+        let mut items: Vec<T> = vec![];
+        while let Ok(Some(item)) = iter.next().await {
+            let item = de::from_slice(&item.value).context(DeserializeValueSnafu)?;
+            items.push(item);
+            if items.len() >= limit.unwrap_or(u16::MAX).into() {
+                break;
+            }
         }
+        Ok(items)
     }
 
     /// Retrieves a value from the database by its key.
@@ -225,7 +220,7 @@ impl DbWrapper {
             })?;
         value.map_or_else(
             || Ok(None),
-            |bytes| de::from_slice(&bytes).context(DeserializeValueSnafu), //.map_err(|e| Error::Deserialize { source: e}),
+            |bytes| de::from_slice(&bytes).context(DeserializeValueSnafu),
         )
     }
 }
@@ -366,13 +361,13 @@ mod tests {
         let created = created_history_items;
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
         println!("HistoryItem range {range:?}");
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await.unwrap();
         assert_check_items(created.iter().collect(), retrieved.iter().collect());
 
         let created = created_some_items;
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
         println!("SomeItem range {range:?}");
-        let retrieved: Vec<SomeItem> = db.items_from_range(range, None).await;
+        let retrieved: Vec<SomeItem> = db.items_from_range(range, None).await.unwrap();
         assert_check_items(created.iter().collect(), retrieved.iter().collect());
     }
 
@@ -384,12 +379,12 @@ mod tests {
 
         let range = HistoryItem::min_key()..HistoryItem::max_key();
         println!("HistoryItem range {range:?}");
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await.unwrap();
         assert_check_items(created_history_items.iter().collect(), retrieved.iter().collect());
         
         let range = SomeItem::min_key()..SomeItem::max_key();
         println!("SomeItem range {range:?}");
-        let retrieved: Vec<SomeItem> = db.items_from_range(range, None).await;
+        let retrieved: Vec<SomeItem> = db.items_from_range(range, None).await.unwrap();
         assert_check_items(created_some_items.iter().collect(), retrieved.iter().collect());
     }
 
@@ -401,7 +396,7 @@ mod tests {
         let range = created.first().unwrap().key()..=created.last().unwrap().key();
         let limit: usize = 10;
         println!("HistoryItem range {range:?}, limit {limit}");
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range, Some(limit as u16)).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, Some(limit as u16)).await.unwrap();
         assert_check_items(created[0..limit].iter().collect(), retrieved.iter().collect());
     }
 
@@ -410,7 +405,7 @@ mod tests {
         let (db, created_items) = create_populate_new_db().await;
         let items: Vec<&HistoryItem> = created_items[5..].into_iter().collect();
         let range = items.first().unwrap().key()..HistoryItem::max_key();
-        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(range, None).await.unwrap();
         assert_check_items(items, retrieved.iter().collect());
     }
 
@@ -421,7 +416,7 @@ mod tests {
         let created_some_items = populate_some_items(&db).await;
 
         let range = ..;
-        let retrieved: Vec<HistoryItem> = db.items_from_range(RangeFull!(range), None).await;
+        let retrieved: Vec<HistoryItem> = db.items_from_range(RangeFull!(range), None).await.unwrap();
         assert_eq!(created_history_items.len() + created_some_items.len(), retrieved.len());
         assert_ne!(retrieved.first().unwrap().key(), retrieved.last().unwrap().key());
     }

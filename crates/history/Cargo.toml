@@ -19,5 +19,8 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 
+[dev-dependencies]
+tracing = { workspace = true }
+
 [lints]
 workspace = true
