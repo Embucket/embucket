@@ -30,19 +30,15 @@ use utoipa::OpenApi;
 #[openapi(
     paths(
         query,
-        history,
     ),
     components(
         schemas(
             QueryResponse,
             QueryPayload,
-            HistoryResponse,
-            HistoryPayload,
         )
     ),
     tags(
         (name = "query", description = "Query management endpoints."),
-        (name = "history", description = "History access endpoint.")
     )
 )]
 pub struct ApiDoc;
@@ -75,39 +71,6 @@ pub async fn query(
         .context(model_error::QuerySnafu)?;
     let duration = start.elapsed();
     Ok(Json(QueryResponse {
-        query: request.query.clone(),
-        result,
-        duration_seconds: duration.as_secs_f32(),
-    }))
-}
-
-#[utoipa::path(
-    get,
-    path = "/ui/history",
-    operation_id = "getHistory",
-    tags = ["hitory"],
-    responses(
-        (status = 200, description = "Returns requested query history", body = HistoryResponse),
-        (status = 422, description = "Unprocessable entity", body = NexusError),
-        (status = 500, description = "Internal server error", body = NexusError)
-    )
-)]
-#[tracing::instrument(level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
-// Add time sql took
-pub async fn history(
-    DFSessionId(session_id): DFSessionId,
-    State(state): State<AppState>,
-    Json(payload): Json<HistoryPayload>,
-) -> NexusResult<Json<HistoryResponse>> {
-    let request: HistoryPayload = payload;
-    let start = Instant::now();
-    let result = state
-        .control_svc
-        .query_table(&session_id, &request.query)
-        .await
-        .context(model_error::QuerySnafu)?;
-    let duration = start.elapsed();
-    Ok(Json(HistoryResponse {
         query: request.query.clone(),
         result,
         duration_seconds: duration.as_secs_f32(),
