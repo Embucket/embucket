@@ -149,6 +149,7 @@ mod tests {
             ControlServiceImpl::new(
                 Arc::new(storage_profile_repo),
                 Arc::new(warehouse_repo),
+                db.clone(),
                 config,
             )
         };

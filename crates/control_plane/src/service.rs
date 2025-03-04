@@ -20,11 +20,13 @@ use crate::models::{ColumnInfo, Credentials, StorageProfile, StorageProfileCreat
 use crate::models::{Warehouse, WarehouseCreateRequest};
 use crate::repository::{StorageProfileRepository, WarehouseRepository};
 use crate::utils::{convert_record_batches, Config, S3Client, S3ClientValidation};
+use crate::history::HistoryItem;
 use arrow::record_batch::RecordBatch;
 use arrow_json::writer::JsonArray;
 use arrow_json::WriterBuilder;
 use async_trait::async_trait;
 use bytes::Bytes;
+use chrono::Utc;
 use datafusion::execution::SessionStateBuilder;
 use datafusion::prelude::{CsvReadOptions, SessionConfig, SessionContext};
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
@@ -43,6 +45,7 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+use utils::Db;
 
 #[async_trait]
 pub trait ControlService: Send + Sync {
@@ -107,6 +110,7 @@ pub struct ControlServiceImpl {
     storage_profile_repo: Arc<dyn StorageProfileRepository>,
     warehouse_repo: Arc<dyn WarehouseRepository>,
     df_sessions: Arc<RwLock<HashMap<String, SqlExecutor>>>,
+    query_history_db: Arc<Db>,
     config: Config,
 }
 
@@ -114,6 +118,7 @@ impl ControlServiceImpl {
     pub fn new(
         storage_profile_repo: Arc<dyn StorageProfileRepository>,
         warehouse_repo: Arc<dyn WarehouseRepository>,
+        query_history_db: Arc<Db>,
         config: Config,
     ) -> Self {
         let df_sessions = Arc::new(RwLock::new(HashMap::new()));
@@ -121,6 +126,7 @@ impl ControlServiceImpl {
             storage_profile_repo,
             warehouse_repo,
             df_sessions,
+            query_history_db,
             config,
         }
     }
@@ -276,6 +282,7 @@ impl ControlService for ControlServiceImpl {
         session_id: &str,
         query: &str,
     ) -> ControlPlaneResult<(Vec<RecordBatch>, Vec<ColumnInfo>)> {
+        let start_time = Utc::now();
         let sessions = self.df_sessions.read().await;
         let executor =
             sessions
@@ -346,6 +353,15 @@ impl ControlService for ControlServiceImpl {
             .context(error::ExecutionSnafu)?
             .into_iter()
             .collect::<Vec<_>>();
+
+        #[allow(unused_must_use)] 
+        self.query_history_db.put_iteratable(&HistoryItem {
+            id: Uuid::new_v4(),
+            query: query.clone(),
+            start_time: start_time,
+            end_time: Utc::now(),
+            status_code: 200,
+        });
 
         let data_format = self.config().data_format;
         // Add columns dbt metadata to each field
@@ -579,6 +595,11 @@ mod tests {
     use mockall::mock;
     use rusoto_s3::GetBucketAclOutput;
     use std::env;
+    use object_store::memory::InMemory;
+    use object_store::path::Path;
+    use object_store::ObjectStore;
+    use slatedb::config::DbOptions;   
+    use slatedb::db::Db as SlateDb; 
 
     mock! {
         pub S3Client {}
@@ -589,10 +610,21 @@ mod tests {
         }
     }
 
-    fn service() -> ControlServiceImpl {
+    async fn create_slate_db_object_store_in_memory() -> Db {
+        let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let options = DbOptions::default();
+        Db::new(
+            SlateDb::open_with_opts(Path::from("/tmp/test_kv_store"), options, object_store)
+                .await
+                .unwrap(),
+        )
+    }
+
+    async fn service() -> ControlServiceImpl {
         let storage_repo = Arc::new(InMemoryStorageProfileRepository::default());
         let warehouse_repo = Arc::new(InMemoryWarehouseRepository::default());
-        ControlServiceImpl::new(storage_repo, warehouse_repo, Config::new("json"))
+        let query_history_db = Arc::new(create_slate_db_object_store_in_memory().await);
+        ControlServiceImpl::new(storage_repo, warehouse_repo, query_history_db, Config::new("json"))
     }
 
     fn storage_profile_req() -> StorageProfileCreateRequest {
@@ -620,7 +652,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_profile() {
-        let service = service();
+        let service = service().await;
         let mut request = storage_profile_req();
 
         let profile = service.create_profile(&request).await.unwrap();
@@ -643,7 +675,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_credentials() {
-        let service = service();
+        let service = service().await;
         let mut request = storage_profile_req();
         request.validate_credentials = Some(true);
 
@@ -679,7 +711,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_profile() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
 
         let profile = service.create_profile(&request).await.unwrap();
@@ -689,7 +721,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_profile() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
 
         let profile = service.create_profile(&request).await.unwrap();
@@ -701,7 +733,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_profiles() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
         let request_2 = storage_profile_req();
 
@@ -713,7 +745,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_warehouse() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
         let profile = service.create_profile(&request).await.unwrap();
 
@@ -732,7 +764,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_warehouse_by_name() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
         let profile = service.create_profile(&request).await.unwrap();
         let wh_request = warehouse_req("test_warehouse", profile.id);
@@ -747,7 +779,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_warehouse() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
         let profile = service.create_profile(&request).await.unwrap();
         let wh_request = warehouse_req("test_warehouse", profile.id);
@@ -763,7 +795,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_non_empty_storage_profile() {
-        let service = service();
+        let service = service().await;
         let request = storage_profile_req();
         let profile = service.create_profile(&request).await.unwrap();
         let wh_request = warehouse_req("test_warehouse", profile.id);
@@ -781,7 +813,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_session() {
-        let service = service();
+        let service = service().await;
         let session_id = "test_session".to_string();
         let result = service.create_session(session_id.clone()).await;
         assert!(result.is_ok());
@@ -797,7 +829,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_session() {
-        let service = service();
+        let service = service().await;
         let session_id = "test_session".to_string();
         let _ = service.create_session(session_id.clone()).await;
         let result = service.delete_session(session_id.clone()).await;
@@ -808,7 +840,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_non_existent_session() {
-        let service = service();
+        let service = service().await;
         let session_id = "non_existent_session".to_string();
         let result = service.delete_session(session_id.clone()).await;
         assert!(result.is_ok());
@@ -819,8 +851,9 @@ mod tests {
     async fn _test_queries(
         storage_repo: Arc<dyn StorageProfileRepository>,
         warehouse_repo: Arc<dyn WarehouseRepository>,
+        query_history_db: Arc<Db>,
     ) {
-        let service = ControlServiceImpl::new(storage_repo, warehouse_repo, Config::new("json"));
+        let service = ControlServiceImpl::new(storage_repo, warehouse_repo, query_history_db, Config::new("json"));
         service
             .create_session("TEST_SESSION".to_string())
             .await
@@ -859,6 +892,7 @@ mod tests {
         _test_queries(
             Arc::new(InMemoryStorageProfileRepository::default()),
             Arc::new(InMemoryWarehouseRepository::default()),
+            Arc::new(create_slate_db_object_store_in_memory().await),
         )
         .await;
     }

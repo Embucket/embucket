@@ -28,6 +28,7 @@ use utoipa::openapi::{ObjectBuilder, Ref, RefOr, Type};
 use utoipa::{PartialSchema, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
+use control_plane::history::HistoryItem;
 
 #[must_use]
 pub fn get_table_id(ident: &CatalogModels::TableIdent) -> Uuid {
@@ -403,4 +404,22 @@ pub struct SchemaWrapper(Schema);
 pub struct TableUploadPayload {
     #[schema(format = "binary")]
     pub upload_file: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryResponse {
+    pub result: String,
+    // pub history_items: Vec<HistoryItem>,
+}
+
+impl HistoryResponse {
+    #[allow(clippy::new_without_default)]
+    #[must_use]
+    pub const fn new(result: String, history_items: Vec<HistoryItem>) -> Self {
+        Self {
+            result,
+            // history_items,
+        }
+    }
 }

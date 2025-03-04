@@ -36,7 +36,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 pub type QueryHistoryResult<T> = Result<T>;
 
-pub trait Entity {
+pub trait QueryHistoryEntity {
     fn id(&self) -> Uuid;
     fn key_from_time(time: DateTime<Utc>) -> String;
     fn key(&self) -> String;
@@ -63,7 +63,7 @@ pub struct SomeItem {
 
 
 
-impl Entity for SomeItem {
+impl QueryHistoryEntity for SomeItem {
     fn id(&self) -> Uuid {
         self.id
     }
@@ -93,7 +93,7 @@ pub struct HistoryItem {
     pub status_code: u16,
 }
 
-impl Entity for HistoryItem {
+impl QueryHistoryEntity for HistoryItem {
     fn id(&self) -> Uuid {
         self.id
     }
@@ -162,7 +162,7 @@ impl DbWrapper {
     ///
     /// Returns a `SerializeError` if the value cannot be serialized to JSON.
     /// Returns a `DbError` if the underlying database operation fails.
-    pub async fn put<T: serde::Serialize + Sync + Entity>(&self, entity: &T) -> Result<()>
+    pub async fn put<T: serde::Serialize + Sync + QueryHistoryEntity>(&self, entity: &T) -> Result<()>
     {
         let serialized = ser::to_vec(entity).context(SerializeValueSnafu)?;
         self.0.put(entity.key().as_bytes(), serialized.as_ref()).await.context(DatabaseSnafu)
@@ -187,7 +187,7 @@ impl DbWrapper {
     ///
     /// Returns a `DeserializeError` if the value cannot be serialized to JSON.
     /// Returns a `DbError` if the underlying database operation fails.    
-    pub async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + Entity>(&self, range: R, limit: Option<u16>) -> Result<Vec<T>> 
+    pub async fn items_from_range<K, R, T: for<'de> serde::de::Deserialize<'de> + Sync + QueryHistoryEntity>(&self, range: R, limit: Option<u16>) -> Result<Vec<T>> 
     where
         K: AsRef<[u8]>,
         R: RangeBounds<K>,
@@ -202,26 +202,6 @@ impl DbWrapper {
             }
         }
         Ok(items)
-    }
-
-    /// Retrieves a value from the database by its key.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `DbError` if the underlying database operation fails.
-    /// Returns a `DeserializeError` if the value cannot be deserialized from JSON.
-    pub async fn get<T: for<'de> serde::de::Deserialize<'de>>(
-        &self,
-        key: &str,
-    ) -> Result<Option<T>> {
-        let value: Option<bytes::Bytes> =
-            self.0.get(key.as_bytes()).await.context(KeyGetSnafu {
-                key: key.to_string(),
-            })?;
-        value.map_or_else(
-            || Ok(None),
-            |bytes| de::from_slice(&bytes).context(DeserializeValueSnafu),
-        )
     }
 }
 
@@ -338,7 +318,7 @@ mod tests {
         items
     }
 
-    fn assert_check_items<T: serde::Serialize + Sync + Entity>(created_items: Vec<&T>, retrieved_items: Vec<&T>) {
+    fn assert_check_items<T: serde::Serialize + Sync + QueryHistoryEntity>(created_items: Vec<&T>, retrieved_items: Vec<&T>) {
         assert_eq!(created_items.len(), retrieved_items.len());
         assert_eq!(
             created_items.last().unwrap().key(),
