@@ -60,9 +60,9 @@ impl TableRepository for TableRepositoryDb {
     async fn put(&self, params: &Table) -> CatalogResult<()> {
         let key = format!("{TBLPREFIX}.{}", params.ident);
         self.db.put(&key, &params).await?;
-        self.db
-            .append(&format!("{TBLPREFIX}.{}", params.ident.database), key)
-            .await?;
+        // self.db
+        //     .append(&format!("{TBLPREFIX}.{}", params.ident.database), key)
+        //     .await?;
         Ok(())
     }
 
@@ -78,19 +78,19 @@ impl TableRepository for TableRepositoryDb {
     async fn delete(&self, id: &TableIdent) -> CatalogResult<()> {
         let key = format!("{TBLPREFIX}.{id}");
         self.db.delete(&key).await?;
-        self.db
-            .remove(&format!("{TBLPREFIX}.{}", id.database), &key)
-            .await?;
+        // self.db
+        //     .remove(&format!("{TBLPREFIX}.{}", id.database), &key)
+        //     .await?;
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", err, skip(self))]
     async fn list(&self, db: &DatabaseIdent) -> CatalogResult<Vec<Table>> {
         let key = &format!("{TBLPREFIX}.{db}");
-        let keys = self.db.keys(key).await?;
-        let futures = keys.iter().map(|key| self.db.get(key)).collect::<Vec<_>>();
-        let results = futures::future::try_join_all(futures).await?;
-        let entities = results.into_iter().flatten().collect::<Vec<_>>();
+        let entities: Vec<Table> = self.db.keys(key).await?;
+        //let futures = keys.iter().map(|key| self.db.get(key)).collect::<Vec<_>>();
+        //let results = futures::future::try_join_all(futures).await?;
+        //let entities = results.into_iter().flatten().collect::<Vec<_>>();
         Ok(entities)
     }
 }
@@ -101,9 +101,9 @@ impl DatabaseRepository for DatabaseRepositoryDb {
     async fn put(&self, params: &Database) -> CatalogResult<()> {
         let key = format!("{DBPREFIX}.{}", params.ident);
         self.db.put(&key, &params).await?;
-        self.db
-            .append(&format!("{DBPREFIX}.{}", params.ident.warehouse), key)
-            .await?;
+        // self.db
+        //     .append(&format!("{DBPREFIX}.{}", params.ident.warehouse), key)
+        //     .await?;
         Ok(())
     }
 
@@ -119,19 +119,19 @@ impl DatabaseRepository for DatabaseRepositoryDb {
     async fn delete(&self, id: &DatabaseIdent) -> CatalogResult<()> {
         let key = format!("{DBPREFIX}.{id}");
         self.db.delete(&key).await?;
-        self.db
-            .remove(&format!("{DBPREFIX}.{}", id.warehouse), &key)
-            .await?;
+        // self.db
+        //     .remove(&format!("{DBPREFIX}.{}", id.warehouse), &key)
+        //     .await?;
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", err, skip(self))]
     async fn list(&self, wh: &WarehouseIdent) -> CatalogResult<Vec<Database>> {
         let key = &format!("{DBPREFIX}.{wh}");
-        let keys = self.db.keys(key).await?;
-        let futures = keys.iter().map(|key| self.db.get(key)).collect::<Vec<_>>();
-        let results = futures::future::try_join_all(futures).await?;
-        let entities = results.into_iter().flatten().collect::<Vec<_>>();
+        let entities: Vec<Database> = self.db.keys(key).await?;
+        //let futures = keys.iter().map(|key| self.db.get(key)).collect::<Vec<_>>();
+        //let results = futures::future::try_join_all(futures).await?;
+        //let entities = results.into_iter().flatten().collect::<Vec<_>>();
         Ok(entities)
     }
 }

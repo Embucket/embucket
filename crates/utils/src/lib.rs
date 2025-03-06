@@ -23,6 +23,7 @@ use slatedb::db::Db as SlateDb;
 use slatedb::error::SlateDBError;
 use snafu::prelude::*;
 use uuid::Uuid;
+use bytes::Bytes;
 
 #[derive(Snafu, Debug)]
 //#[snafu(visibility(pub(crate)))]
@@ -110,59 +111,68 @@ impl Db {
     ///
     /// Returns a `DbError` if the underlying database operation fails.
     /// Returns a `DeserializeError` if the value cannot be deserialized from JSON.
-    pub async fn keys(&self, key: &str) -> Result<Vec<String>> {
-        let keys: Option<Vec<String>> = self.get(key).await?;
-        Ok(keys.unwrap_or_default())
+    pub async fn keys<T: for<'de> serde::de::Deserialize<'de>>(&self, key: &str) -> Result<Vec<T>> {
+        let start = format!("{key}.");
+        let end = format!("{key}.ffffffff-ffff-4fff-bfff-ffffffffffff");
+        let range = Bytes::from(start)..Bytes::from(end);
+        let mut test= self.0.scan(range).await.unwrap();
+        let mut keys: Vec<T> = vec![];
+        while let Ok(Some(value)) = test.next().await {
+            let value = de::from_slice(&value.value).context(DeserializeValueSnafu)?;
+            keys.push(value);
+        }
+        //let keys: Option<Vec<String>> = self.get(key).await?;
+        Ok(keys)
     }
 
-    /// Appends a value to a list stored in the database.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `DbError` if the database operations fail, or
-    /// `SerializeError`/`DeserializeError` if the value cannot be serialized or deserialized.
-    pub async fn append(&self, key: &str, value: String) -> Result<()> {
-        self.modify(key, |all_keys: &mut Vec<String>| {
-            if !all_keys.contains(&value) {
-                all_keys.push(value.clone());
-            }
-        })
-        .await?;
-        Ok(())
-    }
+    // / Appends a value to a list stored in the database.
+    // /
+    // / # Errors
+    // /
+    // / Returns a `DbError` if the database operations fail, or
+    // / `SerializeError`/`DeserializeError` if the value cannot be serialized or deserialized.
+    // pub async fn append(&self, key: &str, value: String) -> Result<()> {
+    //     self.modify(key, |all_keys: &mut Vec<String>| {
+    //         if !all_keys.contains(&value) {
+    //             all_keys.push(value.clone());
+    //         }
+    //     })
+    //     .await?;
+    //     Ok(())
+    // }
 
-    /// Removes a value from a list stored in the database.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `DbError` if the database operations fail, or
-    /// `SerializeError`/`DeserializeError` if the value cannot be serialized or deserialized.
-    pub async fn remove(&self, key: &str, value: &str) -> Result<()> {
-        self.modify(key, |all_keys: &mut Vec<String>| {
-            all_keys.retain(|key| *key != value);
-        })
-        .await?;
-        Ok(())
-    }
+    // / Removes a value from a list stored in the database.
+    // /
+    // / # Errors
+    // /
+    // / Returns a `DbError` if the database operations fail, or
+    // / `SerializeError`/`DeserializeError` if the value cannot be serialized or deserialized.
+    // pub async fn remove(&self, key: &str, value: &str) -> Result<()> {
+    //     self.modify(key, |all_keys: &mut Vec<String>| {
+    //         all_keys.retain(|key| *key != value);
+    //     })
+    //     .await?;
+    //     Ok(())
+    // }
 
-    /// Modifies a value in the database using the provided closure.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `DbError` if the database operations fail, or
-    /// `SerializeError`/`DeserializeError` if the value cannot be serialized or deserialized.
-    pub async fn modify<T>(&self, key: &str, f: impl Fn(&mut T) + Send) -> Result<()>
-    where
-        T: serde::Serialize + DeserializeOwned + Default + Sync + Send,
-    {
-        let mut value: T = self.get(key).await?.unwrap_or_default();
+    // / Modifies a value in the database using the provided closure.
+    // /
+    // / # Errors
+    // /
+    // / Returns a `DbError` if the database operations fail, or
+    // / `SerializeError`/`DeserializeError` if the value cannot be serialized or deserialized.
+    // pub async fn modify<T>(&self, key: &str, f: impl Fn(&mut T) + Send) -> Result<()>
+    // where
+    //     T: serde::Serialize + DeserializeOwned + Default + Sync + Send,
+    // {
+    //     let mut value: T = self.get(key).await?.unwrap_or_default();
 
-        f(&mut value);
+    //     f(&mut value);
 
-        self.put(key, &value).await?;
+    //     self.put(key, &value).await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 impl From<Error> for iceberg::Error {
@@ -185,7 +195,7 @@ pub trait Repository {
     async fn _create(&self, entity: &Self::Entity) -> Result<()> {
         let key = format!("{}.{}", Self::prefix(), entity.id());
         self.db().put(&key, &entity).await?;
-        self.db().append(Self::collection_key(), key).await?;
+        //self.db().append(Self::collection_key(), key).await?;
         Ok(())
     }
 
@@ -199,18 +209,18 @@ pub trait Repository {
     async fn _delete(&self, id: Uuid) -> Result<()> {
         let key = format!("{}.{}", Self::prefix(), id);
         self.db().delete(&key).await?;
-        self.db().remove(Self::collection_key(), &key).await?;
+        //self.db().remove(Self::collection_key(), &key).await?;
         Ok(())
     }
 
     async fn _list(&self) -> Result<Vec<Self::Entity>> {
-        let keys = self.db().keys(Self::collection_key()).await?;
-        let futures = keys
-            .iter()
-            .map(|key| self.db().get(key))
-            .collect::<Vec<_>>();
-        let results = futures::future::try_join_all(futures).await?;
-        let entities = results.into_iter().flatten().collect::<Vec<Self::Entity>>();
+        let entities: Vec<<Self as Repository>::Entity> = self.db().keys(Self::collection_key()).await?;
+        // let futures = keys
+        //     .iter()
+        //     .map(|key| self.db().get(key))
+        //     .collect::<Vec<_>>();
+        // let results = futures::future::try_join_all(futures).await?;
+        // let entities = results.into_iter().flatten().collect::<Vec<Self::Entity>>();
         Ok(entities)
     }
 
