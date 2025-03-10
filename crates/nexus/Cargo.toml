@@ -10,7 +10,7 @@ utoipa = { workspace = true }
 
 [dependencies]
 anyhow = "1.0.89"
-arrow = { version = "54.1.0" }
+arrow = { version = "54.2.1" }
 async-trait = { workspace = true }
 axum = { workspace = true }
 axum-macros = { workspace = true }

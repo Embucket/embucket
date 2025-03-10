@@ -113,7 +113,7 @@ impl Db {
     /// Returns a `DeserializeError` if the value cannot be deserialized from JSON.
     pub async fn keys<T: for<'de> serde::de::Deserialize<'de>>(&self, key: &str) -> Result<Vec<T>> {
         let start = format!("{key}.");
-        let end = format!("{key}.ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ");
+        let end = format!("{key}.\x7F");
         let range = Bytes::from(start)..Bytes::from(end);
         let mut test= self.0.scan(range).await.unwrap();
         let mut keys: Vec<T> = vec![];

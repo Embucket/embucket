@@ -7,8 +7,8 @@ license-file = {workspace = true}
 
 [dependencies]
 
-arrow = { version = "54.1.0" }
-arrow-json = { version = "54.1.0" }
+arrow = { version = "54.2.1" }
+arrow-json = { version = "54.2.1" }
 async-trait = { workspace = true }
 base64 = { version = "0.22.1" }
 bytes = { version = "1.8.0" }
