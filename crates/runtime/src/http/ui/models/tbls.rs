@@ -15,10 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//pub mod common;
-pub mod databases;
-pub mod query;
-pub mod schemas;
-pub mod volumes;
-pub mod tbls;
-//pub mod tables;
+use serde::{Deserialize, Serialize};
+use utoipa::{PartialSchema, ToSchema};
+use validator::Validate;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TableUploadPayload {
+    #[schema(format = "binary")]
+    pub upload_file: String,
+}
