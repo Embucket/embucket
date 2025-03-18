@@ -37,6 +37,7 @@ use axum::routing::{delete, post};
 use axum::Router;
 use tower_http::sensitive_headers::SetSensitiveHeadersLayer;
 use utoipa::OpenApi;
+use crate::http::ui::handlers::tbls::upload_data_to_table;
 
 #[derive(OpenApi)]
 #[openapi(info(
@@ -91,10 +92,10 @@ pub fn create_router() -> Router<AppState> {
         //     "/warehouses/{warehouseId}/databases/{databaseName}/tables/{tableName}/settings",
         //     get(get_settings).post(update_table_properties),
         // )
-        // .route(
-        //     "/warehouses/{warehouseId}/databases/{databaseName}/tables/{tableName}/upload",
-        //     post(upload_data_to_table),
-        // )
+        .route(
+            "/databases{databaseName}/schemas/{schemaName}/tables/{tableName}/upload",
+            post(upload_data_to_table),
+        )
         // .route(
         //     "/warehouses/{warehouseId}/databases/{databaseName}/tables/{tableName}/snapshots",
         //     get(get_snapshots),

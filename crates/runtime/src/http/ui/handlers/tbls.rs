@@ -31,6 +31,24 @@ use utoipa::OpenApi;
 use icebucket_metastore::IceBucketTableIdent;
 use crate::http::session::DFSessionId;
 use crate::http::ui::models::tbls::TableUploadPayload;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        upload_data_to_table,
+    ),
+    components(
+        schemas(
+            TableUploadPayload,
+            ErrorResponse,
+        )
+    ),
+    tags(
+        (name = "tables", description = "Tables management endpoints.")
+    )
+)]
+pub struct ApiDoc;
+
 #[utoipa::path(
     post,
     path = "/ui/databases/{databaseName}/schemas/{schemaName}/tables/{tableName}/upload",
