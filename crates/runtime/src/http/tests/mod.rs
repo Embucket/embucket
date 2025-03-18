@@ -27,5 +27,7 @@ pub mod databases;
 #[cfg(test)]
 pub mod common;
 
+#[cfg(test)]
+pub mod upload_data_tbls;
 //#[cfg(test)]
 //pub mod router_tests;

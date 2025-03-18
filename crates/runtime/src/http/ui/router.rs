@@ -93,7 +93,7 @@ pub fn create_router() -> Router<AppState> {
         //     get(get_settings).post(update_table_properties),
         // )
         .route(
-            "/databases{databaseName}/schemas/{schemaName}/tables/{tableName}/upload",
+            "/databases/{databaseName}/schemas/{schemaName}/tables/{tableName}/upload",
             post(upload_data_to_table),
         )
         // .route(

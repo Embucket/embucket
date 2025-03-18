@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use axum::extract::multipart::MultipartError;
 use crate::http::metastore::error::MetastoreAPIError;
 use axum::response::{IntoResponse, Response};
 use snafu::prelude::*;
@@ -30,6 +31,12 @@ pub enum UIError {
     Metastore {
         source: icebucket_metastore::error::MetastoreError,
     },
+    #[snafu(display("Malformed multipart message"))]
+    MalformedMultipart {
+        source: axum::extract::multipart::MultipartError,
+    },
+    #[snafu(display("Malformed file upload request"))]
+    MalformedFileUploadRequest,
 }
 pub type UIResult<T> = Result<T, UIError>;
 
@@ -38,6 +45,14 @@ impl IntoResponse for UIError {
         match self {
             Self::Execution { source } => source.into_response(),
             Self::Metastore { source } => MetastoreAPIError(source).into_response(),
+            Self::MalformedMultipart { source } => source.into_response(),
+            Self::MalformedFileUploadRequest => http::StatusCode::UNPROCESSABLE_ENTITY.into_response(),
         }
+    }
+}
+
+impl From<MultipartError> for UIError {
+    fn from(value: MultipartError) -> Self {
+        UIError::MalformedMultipart { source: value }
     }
 }

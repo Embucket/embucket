@@ -25,6 +25,7 @@ use axum::{
     Json,
 };
 use axum::extract::Multipart;
+use snafu::{OptionExt, ResultExt};
 use icebucket_metastore::error::MetastoreError;
 use icebucket_metastore::models::{IceBucketSchema, IceBucketSchemaIdent};
 use utoipa::OpenApi;
@@ -83,12 +84,12 @@ pub async fn upload_data_to_table(
             .await?;
         match next_field {
             Some(field) => {
-                if field.name().ok_or(UIError::Execution)? != "uploadFile" {
+                if field.name().ok_or(UIError::MalformedFileUploadRequest)? != "uploadFile" {
                     continue;
                 }
                 let file_name = field
                     .file_name()
-                    .ok_or(UIError::Execution)?
+                    .ok_or(UIError::MalformedFileUploadRequest)?
                     .to_string();
                 let data = field
                     .bytes()
