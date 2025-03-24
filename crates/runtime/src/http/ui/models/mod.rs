@@ -24,5 +24,5 @@
 //pub mod warehouse;
 pub mod history;
 pub mod worksheet;
-
 pub mod databases_navigation;
+pub mod table;
