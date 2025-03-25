@@ -21,7 +21,7 @@ use crate::http::ui::models::databases_navigation::{
 };
 use crate::http::{
     error::ErrorResponse,
-    ui::error::{UIError, UIResult},
+    ui::error::{UIApiError, UIResult, CRUDErrorType},
 };
 use axum::{extract::State, Json};
 use utoipa::OpenApi;
@@ -61,7 +61,7 @@ pub async fn get_databases_navigation(
         .metastore
         .list_databases()
         .await
-        .map_err(|e| UIError::Metastore { source: e })?;
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::List(e)))?;
 
     let mut databases: Vec<NavigationDatabase> = vec![];
     for rw_database in rw_databases {
@@ -69,7 +69,7 @@ pub async fn get_databases_navigation(
             .metastore
             .list_schemas(&rw_database.ident)
             .await
-            .map_err(|e| UIError::Metastore { source: e })?;
+            .map_err(|e| UIApiError::Metastore(CRUDErrorType::List(e)))?;
 
         let mut schemas: Vec<NavigationSchema> = vec![];
         for rw_schema in rw_schemas {
@@ -77,7 +77,7 @@ pub async fn get_databases_navigation(
                 .metastore
                 .list_tables(&rw_schema.ident)
                 .await
-                .map_err(|e| UIError::Metastore { source: e })?;
+                .map_err(|e| UIApiError::Metastore(CRUDErrorType::List(e)))?;
 
             let mut tables: Vec<NavigationTable> = vec![];
             for rw_table in rw_tables {

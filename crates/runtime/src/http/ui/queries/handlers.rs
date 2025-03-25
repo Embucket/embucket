@@ -24,7 +24,7 @@ use crate::{
     execution::query::IceBucketQueryContext,
     http::{
         error::ErrorResponse,
-        ui::queries::errors::{QueriesAPIError, QueriesResult},
+        ui::error::{UIApiError, UIResult, QueryErrorType},
     },
 };
 use axum::{
@@ -67,12 +67,12 @@ pub async fn query(
     State(state): State<AppState>,
     Path(worksheet_id): Path<WorksheetId>,
     Json(request): Json<QueryPayload>,
-) -> QueriesResult<Json<QueryResponse>> {
+) -> UIResult<Json<QueryResponse>> {
     let worksheet = state
         .history
         .get_worksheet(worksheet_id)
         .await
-        .map_err(|e| QueriesAPIError::QueryWorksheet { source: e })?;
+        .map_err(|e| UIApiError::Query(QueryErrorType::Worksheet(e)))?;
 
     let query_context = IceBucketQueryContext {
         database: request
@@ -90,7 +90,7 @@ pub async fn query(
         .execution_svc
         .query_table(&session_id, worksheet, &request.query, query_context)
         .await
-        .map_err(|e| QueriesAPIError::QueryExecution { source: e })?;
+        .map_err(|e| UIApiError::Query(QueryErrorType::Execute(e)))?;
     let duration = start.elapsed();
     Ok(Json(QueryResponse {
         id,
@@ -126,19 +126,19 @@ pub async fn history(
     Query(params): Query<GetHistoryItemsParams>,
     State(state): State<AppState>,
     Path(worksheet_id): Path<WorksheetId>,
-) -> QueriesResult<Json<QueriesResponse>> {
+) -> UIResult<Json<QueriesResponse>> {
     // check if worksheet is exists (get and waste entire worksheet)
     state
         .history
         .get_worksheet(worksheet_id)
         .await
-        .map_err(|e| QueriesAPIError::Queries { source: e })?;
+        .map_err(|e| UIApiError::Query(QueryErrorType::History(e)))?;
 
     let items = state
         .history
         .query_history(worksheet_id, params.cursor, params.limit)
         .await
-        .map_err(|e| QueriesAPIError::Queries { source: e })?;
+        .map_err(|e| UIApiError::Query(QueryErrorType::History(e)))?;
     let next_cursor = if let Some(last_item) = items.last() {
         last_item.next_cursor()
     } else {

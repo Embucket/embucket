@@ -18,9 +18,9 @@
 use crate::http::error::ErrorResponse;
 use crate::http::state::AppState;
 use crate::http::ui::worksheets::{
-    errors::{WorksheetsAPIError, WorksheetsResult},
     WorksheetPayload, WorksheetResponse, WorksheetsResponse,
 };
+use crate::http::ui::error::{UIApiError, UIResult, CRUDErrorType};
 use axum::{
     extract::{Path, State},
     Json,
@@ -57,12 +57,12 @@ pub struct ApiDoc;
 // Add time sql took
 pub async fn worksheets(
     State(state): State<AppState>,
-) -> WorksheetsResult<Json<WorksheetsResponse>> {
+) -> UIResult<Json<WorksheetsResponse>> {
     let items = state
         .history
         .get_worksheets()
         .await
-        .map_err(|e| WorksheetsAPIError::List { source: e })?;
+        .map_err(|e| UIApiError::Worksheet(CRUDErrorType::List(e)))?;
     Ok(Json(WorksheetsResponse { items }))
 }
 
@@ -109,13 +109,13 @@ pub async fn worksheets(
 pub async fn create_worksheet(
     State(state): State<AppState>,
     Json(payload): Json<WorksheetPayload>,
-) -> WorksheetsResult<Json<WorksheetResponse>> {
+) -> UIResult<Json<WorksheetResponse>> {
     let request = Worksheet::new(payload.content);
     let worksheet = state
         .history
         .add_worksheet(request)
         .await
-        .map_err(|e| WorksheetsAPIError::Create { source: e })?;
+        .map_err(|e| UIApiError::Worksheet(CRUDErrorType::Create(e)))?;
     Ok(Json(WorksheetResponse { data: worksheet }))
 }
 
@@ -139,12 +139,12 @@ pub async fn create_worksheet(
 pub async fn worksheet(
     State(state): State<AppState>,
     Path(worksheet_id): Path<WorksheetId>,
-) -> WorksheetsResult<Json<WorksheetResponse>> {
+) -> UIResult<Json<WorksheetResponse>> {
     let worksheet = state
         .history
         .get_worksheet(worksheet_id)
         .await
-        .map_err(|e| WorksheetsAPIError::Get { source: e })?;
+        .map_err(|e| UIApiError::Worksheet(CRUDErrorType::Get(e)))?;
     Ok(Json(WorksheetResponse { data: worksheet }))
 }
 
@@ -167,12 +167,12 @@ pub async fn worksheet(
 pub async fn delete_worksheet(
     State(state): State<AppState>,
     Path(worksheet_id): Path<WorksheetId>,
-) -> WorksheetsResult<()> {
+) -> UIResult<()> {
     state
         .history
         .delete_worksheet(worksheet_id)
         .await
-        .map_err(|e| WorksheetsAPIError::Delete { source: e })
+        .map_err(|e| UIApiError::Worksheet(CRUDErrorType::Delete(e)))
 }
 
 #[utoipa::path(
@@ -196,12 +196,12 @@ pub async fn update_worksheet(
     State(state): State<AppState>,
     Path(worksheet_id): Path<WorksheetId>,
     Json(payload): Json<WorksheetPayload>,
-) -> WorksheetsResult<()> {
+) -> UIResult<()> {
     let mut worksheet = state
         .history
         .get_worksheet(worksheet_id)
         .await
-        .map_err(|e| WorksheetsAPIError::Update { source: e })?;
+        .map_err(|e| UIApiError::Worksheet(CRUDErrorType::Update(e)))?;
 
     if let Some(name) = payload.name {
         worksheet.set_name(name);
@@ -215,5 +215,5 @@ pub async fn update_worksheet(
         .history
         .update_worksheet(worksheet)
         .await
-        .map_err(|e| WorksheetsAPIError::Update { source: e })
+        .map_err(|e| UIApiError::Worksheet(CRUDErrorType::Update(e)))
 }

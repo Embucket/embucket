@@ -32,7 +32,7 @@ pub enum RuntimeHttpError {
     },
     #[snafu(transparent)]
     UI {
-        source: crate::http::ui::error::UIError,
+        source: crate::http::ui::error::UIApiError,
     },
 }
 

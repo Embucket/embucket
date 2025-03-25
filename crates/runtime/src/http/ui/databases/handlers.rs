@@ -19,7 +19,7 @@ use crate::http::state::AppState;
 use crate::http::{
     error::ErrorResponse,
     metastore::handlers::QueryParameters,
-    ui::databases::errors::{DatabasesAPIError, DatabasesResult},
+    ui::error::{UIApiError, UIResult, CRUDErrorType},
     ui::databases::models::{DatabasePayload, DatabaseResponse, DatabasesResponse},
 };
 use axum::{
@@ -69,18 +69,16 @@ pub struct ApiDoc;
 pub async fn create_database(
     State(state): State<AppState>,
     Json(database): Json<DatabasePayload>,
-) -> DatabasesResult<Json<DatabaseResponse>> {
+) -> UIResult<Json<DatabaseResponse>> {
     database
         .data
         .validate()
-        .map_err(|e| DatabasesAPIError::Create {
-            source: MetastoreError::Validation { source: e },
-        })?;
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Create(MetastoreError::Validation { source: e })))?;
     state
         .metastore
         .create_database(&database.data.ident.clone(), database.data)
         .await
-        .map_err(|e| DatabasesAPIError::Create { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Create(e)))
         .map(|o| Json(DatabaseResponse { data: o.data }))
 }
 
@@ -101,15 +99,13 @@ pub async fn create_database(
 pub async fn get_database(
     State(state): State<AppState>,
     Path(database_name): Path<String>,
-) -> DatabasesResult<Json<DatabaseResponse>> {
+) -> UIResult<Json<DatabaseResponse>> {
     match state.metastore.get_database(&database_name).await {
         Ok(Some(db)) => Ok(Json(DatabaseResponse { data: db.data })),
-        Ok(None) => Err(DatabasesAPIError::Get {
-            source: MetastoreError::DatabaseNotFound {
-                db: database_name.clone(),
-            },
-        }),
-        Err(e) => Err(DatabasesAPIError::Get { source: e }),
+        Ok(None) => Err(UIApiError::Metastore(CRUDErrorType::Get(MetastoreError::DatabaseNotFound {
+            db: database_name.clone(),
+        }))),
+        Err(e) => Err(UIApiError::Metastore(CRUDErrorType::Get(e))),
     }
 }
 
@@ -131,12 +127,12 @@ pub async fn delete_database(
     State(state): State<AppState>,
     Query(query): Query<QueryParameters>,
     Path(database_name): Path<String>,
-) -> DatabasesResult<()> {
+) -> UIResult<()> {
     state
         .metastore
         .delete_database(&database_name, query.cascade.unwrap_or_default())
         .await
-        .map_err(|e| DatabasesAPIError::Delete { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Delete(e)))
 }
 
 #[utoipa::path(
@@ -159,19 +155,17 @@ pub async fn update_database(
     State(state): State<AppState>,
     Path(database_name): Path<String>,
     Json(database): Json<DatabasePayload>,
-) -> DatabasesResult<Json<DatabaseResponse>> {
+) -> UIResult<Json<DatabaseResponse>> {
     database
         .data
         .validate()
-        .map_err(|e| DatabasesAPIError::Update {
-            source: MetastoreError::Validation { source: e },
-        })?;
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Update(MetastoreError::Validation { source: e })))?;
     //TODO: Implement database renames
     state
         .metastore
         .update_database(&database_name, database.data)
         .await
-        .map_err(|e| DatabasesAPIError::Update { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Update(e)))
         .map(|o| Json(DatabaseResponse { data: o.data }))
 }
 
@@ -188,12 +182,12 @@ pub async fn update_database(
 #[tracing::instrument(level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn list_databases(
     State(state): State<AppState>,
-) -> DatabasesResult<Json<DatabasesResponse>> {
+) -> UIResult<Json<DatabasesResponse>> {
     state
         .metastore
         .list_databases()
         .await
-        .map_err(|e| DatabasesAPIError::List { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::List(e)))
         .map(|o| {
             Json(DatabasesResponse {
                 items: o.into_iter().map(|x| x.data).collect(),

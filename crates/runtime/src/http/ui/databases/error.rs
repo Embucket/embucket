@@ -21,6 +21,7 @@ use axum::Json;
 use http::StatusCode;
 use icebucket_metastore::error::MetastoreError;
 use snafu::prelude::*;
+use crate::http::ui::error::IntoStatusCode;
 
 pub type DatabasesResult<T> = Result<T, DatabasesAPIError>;
 
@@ -37,10 +38,6 @@ pub enum DatabasesAPIError {
     Update { source: MetastoreError },
     #[snafu(display("Get databases error: {source}"))]
     List { source: MetastoreError },
-}
-
-trait IntoStatusCode {
-    fn status_code(&self) -> StatusCode;
 }
 
 // Select which status code to return.

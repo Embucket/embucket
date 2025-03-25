@@ -19,7 +19,7 @@ use crate::http::state::AppState;
 use crate::http::{
     error::ErrorResponse,
     metastore::handlers::QueryParameters,
-    ui::volumes::errors::{VolumesAPIError, VolumesResult},
+    ui::error::{UIApiError, UIResult, CRUDErrorType},
     ui::volumes::models::{VolumePayload, VolumeResponse, VolumesResponse},
 };
 use axum::{
@@ -70,18 +70,16 @@ pub struct ApiDoc;
 pub async fn create_volume(
     State(state): State<AppState>,
     Json(volume): Json<VolumePayload>,
-) -> VolumesResult<Json<VolumeResponse>> {
+) -> UIResult<Json<VolumeResponse>> {
     volume
         .data
         .validate()
-        .map_err(|e| VolumesAPIError::Create {
-            source: MetastoreError::Validation { source: e },
-        })?;
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Create(MetastoreError::Validation { source: e })))?;
     state
         .metastore
         .create_volume(&volume.data.ident.clone(), volume.data)
         .await
-        .map_err(|e| VolumesAPIError::Create { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Create(e)))
         .map(|o| Json(VolumeResponse { data: o.data }))
 }
 
@@ -103,15 +101,13 @@ pub async fn create_volume(
 pub async fn get_volume(
     State(state): State<AppState>,
     Path(volume_name): Path<String>,
-) -> VolumesResult<Json<VolumeResponse>> {
+) -> UIResult<Json<VolumeResponse>> {
     match state.metastore.get_volume(&volume_name).await {
         Ok(Some(volume)) => Ok(Json(VolumeResponse { data: volume.data })),
-        Ok(None) => Err(VolumesAPIError::Get {
-            source: MetastoreError::VolumeNotFound {
-                volume: volume_name.clone(),
-            },
-        }),
-        Err(e) => Err(VolumesAPIError::Get { source: e }),
+        Ok(None) => Err(UIApiError::Metastore(CRUDErrorType::Get(MetastoreError::VolumeNotFound {
+            volume: volume_name.clone(),
+        }))),
+        Err(e) => Err(UIApiError::Metastore(CRUDErrorType::Get(e))),
     }
 }
 
@@ -134,12 +130,12 @@ pub async fn delete_volume(
     State(state): State<AppState>,
     Query(query): Query<QueryParameters>,
     Path(volume_name): Path<String>,
-) -> VolumesResult<()> {
+) -> UIResult<()> {
     state
         .metastore
         .delete_volume(&volume_name, query.cascade.unwrap_or_default())
         .await
-        .map_err(|e| VolumesAPIError::Delete { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Delete(e)))
 }
 
 #[utoipa::path(
@@ -162,18 +158,16 @@ pub async fn update_volume(
     State(state): State<AppState>,
     Path(volume_name): Path<String>,
     Json(volume): Json<VolumePayload>,
-) -> VolumesResult<Json<VolumeResponse>> {
+) -> UIResult<Json<VolumeResponse>> {
     volume
         .data
         .validate()
-        .map_err(|e| VolumesAPIError::Update {
-            source: MetastoreError::Validation { source: e },
-        })?;
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Update(MetastoreError::Validation { source: e })))?;
     state
         .metastore
         .update_volume(&volume_name, volume.data)
         .await
-        .map_err(|e| VolumesAPIError::Update { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Update(e)))
         .map(|o| Json(VolumeResponse { data: o.data }))
 }
 
@@ -188,12 +182,12 @@ pub async fn update_volume(
     )
 )]
 #[tracing::instrument(level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
-pub async fn list_volumes(State(state): State<AppState>) -> VolumesResult<Json<VolumesResponse>> {
+pub async fn list_volumes(State(state): State<AppState>) -> UIResult<Json<VolumesResponse>> {
     state
         .metastore
         .list_volumes()
         .await
-        .map_err(|e| VolumesAPIError::List { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::List(e)))
         // TODO: use deref
         .map(|o| {
             Json(VolumesResponse {

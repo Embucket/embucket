@@ -19,7 +19,7 @@ use crate::http::state::AppState;
 use crate::http::{
     error::ErrorResponse,
     metastore::handlers::QueryParameters,
-    ui::schemas::errors::{SchemasAPIError, SchemasResult},
+    ui::error::{UIApiError, UIResult, CRUDErrorType},
     ui::schemas::models::{SchemaPayload, SchemaResponse, SchemasResponse},
 };
 use axum::{
@@ -74,12 +74,12 @@ pub async fn create_schema(
     State(state): State<AppState>,
     Path(database_name): Path<String>,
     Json(schema): Json<SchemaPayload>,
-) -> SchemasResult<Json<SchemaResponse>> {
+) -> UIResult<Json<SchemaResponse>> {
     state
         .metastore
         .create_schema(&schema.data.ident.clone(), schema.data)
         .await
-        .map_err(|e| SchemasAPIError::Create { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Create(e)))
         .map(|rw_object| {
             Json(SchemaResponse {
                 data: rw_object.data,
@@ -106,20 +106,18 @@ pub async fn create_schema(
 pub async fn get_schema(
     State(state): State<AppState>,
     Path((database_name, schema_name)): Path<(String, String)>,
-) -> SchemasResult<Json<SchemaResponse>> {
+) -> UIResult<Json<SchemaResponse>> {
     let schema_ident = IceBucketSchemaIdent {
         database: database_name.clone(),
         schema: schema_name.clone(),
     };
     match state.metastore.get_schema(&schema_ident).await {
         Ok(Some(schema)) => Ok(Json(SchemaResponse { data: schema.data })),
-        Ok(None) => Err(SchemasAPIError::Get {
-            source: MetastoreError::SchemaNotFound {
-                db: database_name.clone(),
-                schema: schema_name.clone(),
-            },
-        }),
-        Err(e) => Err(SchemasAPIError::Get { source: e }),
+        Ok(None) => Err(UIApiError::Metastore(CRUDErrorType::Get(MetastoreError::SchemaNotFound {
+            db: database_name.clone(),
+            schema: schema_name.clone(),
+        }))),
+        Err(e) => Err(UIApiError::Metastore(CRUDErrorType::Get(e))),
     }
 }
 
@@ -143,13 +141,13 @@ pub async fn delete_schema(
     State(state): State<AppState>,
     Query(query): Query<QueryParameters>,
     Path((database_name, schema_name)): Path<(String, String)>,
-) -> SchemasResult<()> {
+) -> UIResult<()> {
     let schema_ident = IceBucketSchemaIdent::new(database_name, schema_name);
     state
         .metastore
         .delete_schema(&schema_ident, query.cascade.unwrap_or_default())
         .await
-        .map_err(|e| SchemasAPIError::Delete { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Delete(e)))
 }
 
 #[utoipa::path(
@@ -173,14 +171,14 @@ pub async fn update_schema(
     State(state): State<AppState>,
     Path((database_name, schema_name)): Path<(String, String)>,
     Json(schema): Json<SchemaPayload>,
-) -> SchemasResult<Json<SchemaResponse>> {
+) -> UIResult<Json<SchemaResponse>> {
     let schema_ident = IceBucketSchemaIdent::new(database_name, schema_name);
     // TODO: Implement schema renames
     state
         .metastore
         .update_schema(&schema_ident, schema.data)
         .await
-        .map_err(|e| SchemasAPIError::Update { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::Update(e)))
         .map(|rw_object| {
             Json(SchemaResponse {
                 data: rw_object.data,
@@ -205,12 +203,12 @@ pub async fn update_schema(
 pub async fn list_schemas(
     State(state): State<AppState>,
     Path(database_name): Path<String>,
-) -> SchemasResult<Json<SchemasResponse>> {
+) -> UIResult<Json<SchemasResponse>> {
     state
         .metastore
         .list_schemas(&database_name)
         .await
-        .map_err(|e| SchemasAPIError::List { source: e })
+        .map_err(|e| UIApiError::Metastore(CRUDErrorType::List(e)))
         .map(|rw_objects| {
             Json(SchemasResponse {
                 items: rw_objects

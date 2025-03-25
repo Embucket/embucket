@@ -21,6 +21,7 @@ use axum::Json;
 use http::status::StatusCode;
 use icebucket_history::store::WorksheetsStoreError;
 use snafu::prelude::*;
+use crate::http::ui::error::IntoStatusCode;
 
 pub type QueriesResult<T> = Result<T, QueriesAPIError>;
 
@@ -35,10 +36,6 @@ pub enum QueriesAPIError {
     QueryWorksheet { source: WorksheetsStoreError }, // query worksheet error
     #[snafu(display("Error getting queries: {source}"))]
     Queries { source: WorksheetsStoreError },
-}
-
-trait IntoStatusCode {
-    fn status_code(&self) -> StatusCode;
 }
 
 // Select which status code to return.
