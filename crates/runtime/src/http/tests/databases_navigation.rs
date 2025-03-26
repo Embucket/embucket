@@ -17,10 +17,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::HashMap;
 use crate::http::ui::databases::models::DatabasePayload;
 use crate::http::ui::models::databases_navigation::NavigationDatabase;
 use crate::http::ui::queries::models::QueryPayload;
-use crate::http::ui::schemas::models::SchemaPayload;
+use crate::http::ui::schemas::models::CreateSchemaPayload;
 use crate::http::ui::tests::common::req;
 use crate::http::ui::tests::common::{ui_test_op, Entity, Op};
 use crate::http::ui::volumes::models::{VolumePayload, VolumeResponse};
@@ -59,9 +60,10 @@ async fn test_ui_databases_navigation() {
     let volume = res.json::<VolumeResponse>().await.unwrap();
 
     // Create database, Ok
+    let database_name = "test1".to_string();
     let expected1 = DatabasePayload {
         data: IceBucketDatabase {
-            ident: "test1".to_string(),
+            ident: database_name.clone(),
             properties: None,
             volume: volume.data.ident.clone(),
         },
@@ -85,19 +87,36 @@ async fn test_ui_databases_navigation() {
     assert_eq!(2, databases_navigation.len());
 
     // Create schema, Ok
-    let expected1 = SchemaPayload {
-        data: IceBucketSchema {
-            ident: IceBucketSchemaIdent {
-                schema: "testing1".to_string(),
-                database: expected1.data.ident.clone(),
-            },
-            properties: None,
-        },
+    let schema_name = "testing1".to_string();
+    let expected_schema1 = CreateSchemaPayload {
+        name: schema_name.clone(),
     };
     //1 SCHEMA
-    let _res = ui_test_op(addr, Op::Create, None, &Entity::Schema(expected1.clone())).await;
+    let schema_name = "testing1".to_string();
 
-    let res = req(&client, Method::GET, &url, String::new())
+    let schema_expected1 = IceBucketSchema {
+        ident: IceBucketSchemaIdent {
+            schema: schema_name.clone(),
+            database: database_name.clone(),
+        },
+        properties: Some(HashMap::new()),
+    };
+
+    let payload = CreateSchemaPayload {
+        name: schema_name.clone(),
+    };
+
+    //Create schema
+    let res = req(
+        &client,
+        Method::POST,
+        &format!(
+            "http://{addr}/ui/databases/{}/schemas",
+            database_name.clone()
+        )
+            .to_string(),
+        json!(payload).to_string(),
+    )
         .await
         .unwrap();
     assert_eq!(http::StatusCode::OK, res.status());
@@ -134,8 +153,8 @@ async fn test_ui_databases_navigation() {
 	    DVCE_CREATED_TSTAMP TIMESTAMP_NTZ(9),
 	    EVENT TEXT,
 	    EVENT_ID TEXT);",
-        expected1.data.ident.database.clone(),
-        expected1.data.ident.schema.clone(),
+        expected1.data.ident.clone(),
+        schema_name.clone(),
         "tested1"
     ));
 

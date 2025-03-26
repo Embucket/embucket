@@ -20,7 +20,7 @@
 use crate::http::ui::databases::models::DatabasePayload;
 use crate::http::ui::error::UIResponse;
 use crate::http::ui::queries::models::QueryPayload;
-use crate::http::ui::schemas::models::{CreateSchemaPayload, SchemaPayload};
+use crate::http::ui::schemas::models::CreateSchemaPayload;
 use crate::http::ui::tables::models::GetTable;
 use crate::http::ui::tests::common::{req, ui_test_op, Entity, Op};
 use crate::http::ui::volumes::models::VolumePayload;

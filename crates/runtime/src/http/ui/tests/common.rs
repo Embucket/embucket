@@ -18,7 +18,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use crate::http::ui::databases::models::DatabasePayload;
-use crate::http::ui::schemas::models::SchemaPayload;
+use crate::http::ui::schemas::models::CreateSchemaPayload;
 use crate::http::ui::volumes::models::VolumePayload;
 use http::Method;
 use reqwest::Response;
@@ -30,7 +30,7 @@ use std::net::SocketAddr;
 pub enum Entity {
     Volume(VolumePayload),
     Database(DatabasePayload),
-    Schema(SchemaPayload),
+    // Schema(CreateSchemaPayload),
 }
 
 #[derive(Debug)]
@@ -85,18 +85,18 @@ fn ui_op_endpoint(addr: SocketAddr, t: &Entity, op: &Op) -> String {
                 format!("http://{addr}/ui/databases/{}", db.data.ident)
             }
         },
-        Entity::Schema(sc) => match op {
-            Op::Create | Op::List => {
-                format!(
-                    "http://{addr}/ui/databases/{}/schemas",
-                    sc.data.ident.database
-                )
-            }
-            Op::Delete | Op::Get | Op::Update => format!(
-                "http://{addr}/ui/databases/{}/schemas/{}",
-                sc.data.ident.database, sc.data.ident.schema
-            ),
-        },
+        // Entity::Schema(sc) => match op {
+        //     Op::Create | Op::List => {
+        //         format!(
+        //             "http://{addr}/ui/databases/{}/schemas",
+        //             sc.data.ident.database
+        //         )
+        //     }
+        //     Op::Delete | Op::Get | Op::Update => format!(
+        //         "http://{addr}/ui/databases/{}/schemas/{}",
+        //         sc.data.ident.database, sc.data.ident.schema
+        //     ),
+        // },
     }
 }
 
@@ -111,7 +111,7 @@ pub async fn ui_test_op(addr: SocketAddr, op: Op, t_from: Option<&Entity>, t: &E
     let payload = match t {
         Entity::Volume(vol) => json!(vol).to_string(),
         Entity::Database(db) => json!(db).to_string(),
-        Entity::Schema(sc) => json!(sc).to_string(),
+        // Entity::Schema(sc) => json!(sc).to_string(),
     };
     match op {
         Op::Create => req(&client, Method::POST, &ui_url, payload).await.unwrap(),

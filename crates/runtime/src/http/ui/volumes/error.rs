@@ -22,12 +22,13 @@ use axum::Json;
 use http::StatusCode;
 use icebucket_metastore::error::MetastoreError;
 use snafu::prelude::*;
+
 pub type VolumesResult<T> = Result<T, VolumesAPIError>;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum VolumesAPIError {
-    #[snafu(display("Create {type_name} error: {source}"))]
+    #[snafu(display("Create volume error: {source}"))]
     Create { source: MetastoreError },
     #[snafu(display("Get volume error: {source}"))]
     Get { source: MetastoreError },
@@ -35,7 +36,7 @@ pub enum VolumesAPIError {
     Delete { source: MetastoreError },
     #[snafu(display("Update volume error: {source}"))]
     Update { source: MetastoreError },
-    #[snafu(display("Get volume error: {0}"))]
+    #[snafu(display("Get volume error: {source}"))]
     List { source: MetastoreError },
 }
 
