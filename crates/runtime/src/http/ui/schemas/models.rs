@@ -15,26 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use icebucket_metastore::models::IceBucketSchema;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use icebucket_metastore::IceBucketSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SchemaPayload {
-    #[serde(flatten)]
-    pub data: IceBucketSchema,
-}
+pub type Schema = IceBucketSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct SchemaResponse {
-    #[serde(flatten)]
-    pub data: IceBucketSchema,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct SchemasResponse {
-    pub items: Vec<IceBucketSchema>,
+pub struct CreateSchemaPayload {
+    pub(crate) name: String,
 }
