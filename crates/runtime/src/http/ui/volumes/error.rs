@@ -28,7 +28,7 @@ pub type VolumesResult<T> = Result<T, VolumesAPIError>;
 #[snafu(visibility(pub(crate)))]
 pub enum VolumesAPIError {
     #[snafu(display("Create {type_name} error: {source}"))]
-    Create { type_name: String, source: MetastoreError },
+    Create { source: MetastoreError },
     #[snafu(display("Get volume error: {source}"))]
     Get { source: MetastoreError },
     #[snafu(display("Delete volume error: {source}"))]

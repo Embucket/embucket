@@ -17,19 +17,19 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use crate::http::tests::common::req;
-use crate::http::tests::common::{ui_test_op, Entity, Op};
-use crate::http::ui::models::schemas::CreateSchemaPayload;
+use std::collections::HashMap;
 use crate::tests::run_icebucket_test_server;
 use http::Method;
-use icebucket_metastore::{
-    IceBucketDatabase, IceBucketSchema, IceBucketVolume, IceBucketVolumeType,
-};
+use icebucket_metastore::{IceBucketDatabase, IceBucketSchema, IceBucketSchemaIdent, IceBucketVolume, IceBucketVolumeType};
 use serde_json::json;
+use crate::http::ui::databases::models::DatabasePayload;
+use crate::http::ui::schemas::models::CreateSchemaPayload;
+use crate::http::ui::tests::common::{req, ui_test_op, Entity, Op};
+use crate::http::ui::volumes::models::VolumePayload;
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
-async fn test_ui_databases_navigation() {
+async fn test_ui_schemas() {
     let addr = run_icebucket_test_server().await;
     let client = reqwest::Client::new();
 
@@ -38,9 +38,11 @@ async fn test_ui_databases_navigation() {
         addr,
         Op::Create,
         None,
-        &Entity::Volume(IceBucketVolume {
-            ident: String::new(),
-            volume: IceBucketVolumeType::Memory,
+        &Entity::Volume(VolumePayload {
+            data: IceBucketVolume {
+                ident: String::new(),
+                volume: IceBucketVolumeType::Memory,
+            },
         }),
     )
         .await;
@@ -53,10 +55,28 @@ async fn test_ui_databases_navigation() {
         properties: None,
         volume: volume.ident.clone(),
     };
-    let _res = ui_test_op(addr, Op::Create, None, &Entity::Database(expected1.clone())).await;
+    let _res = ui_test_op(
+        addr,
+        Op::Create,
+        None,
+        &Entity::Database(DatabasePayload {
+            data: expected1.clone(),
+        }),
+    )
+        .await;
+
+    let schema_name = "testing1".to_string();
+
+    let schema_expected1 = IceBucketSchema {
+        ident: IceBucketSchemaIdent {
+            schema: schema_name.clone(),
+            database: database_name.clone(),
+        },
+        properties: Some(HashMap::new()),
+    };
 
     let payload = CreateSchemaPayload {
-        name: "testing1".to_string(),
+        name: schema_name.clone(),
     };
 
     //Create schema
@@ -73,7 +93,6 @@ async fn test_ui_databases_navigation() {
         .await
         .unwrap();
     assert_eq!(http::StatusCode::OK, res.status());
-    let _schema: IceBucketSchema = res.json().await.unwrap();
 
     //Delete existing schema
     let res = req(
