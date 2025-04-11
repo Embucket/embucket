@@ -56,11 +56,11 @@ use icebucket_metastore::{
     error::MetastoreError, IceBucketSchema, IceBucketSchemaIdent, IceBucketTableIdent,
     IceBucketTableUpdate, Metastore,
 };
+use icebucket_utils::list_config::ListConfig;
 use object_store::local::LocalFileSystem;
 use object_store::ObjectStore;
 use snafu::ResultExt;
 use url::Url;
-use icebucket_utils::list_config::ListConfig;
 
 type TableProviderCache = DashMap<String, Arc<dyn TableProvider>>;
 type SchemaProviderCache = DashMap<String, TableProviderCache>;
