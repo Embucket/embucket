@@ -60,6 +60,7 @@ use object_store::local::LocalFileSystem;
 use object_store::ObjectStore;
 use snafu::ResultExt;
 use url::Url;
+use icebucket_utils::list_config::ListConfig;
 
 type TableProviderCache = DashMap<String, Arc<dyn TableProvider>>;
 type SchemaProviderCache = DashMap<String, TableProviderCache>;
@@ -91,7 +92,7 @@ impl IceBucketDFMetastore {
 
         let databases = self
             .metastore
-            .list_databases(None, None)
+            .list_databases(ListConfig::default())
             .await
             .context(ex_error::MetastoreSnafu)?;
         for database in databases {
@@ -102,7 +103,7 @@ impl IceBucketDFMetastore {
             let db_seen_entry = seen.entry(database.ident.clone()).or_default();
             let schemas = self
                 .metastore
-                .list_schemas(&database.ident, None, None)
+                .list_schemas(&database.ident, ListConfig::default())
                 .await
                 .context(ex_error::MetastoreSnafu)?;
             for schema in schemas {
@@ -114,7 +115,7 @@ impl IceBucketDFMetastore {
                     .or_default();
                 let tables = self
                     .metastore
-                    .list_tables(&schema.ident, None, None)
+                    .list_tables(&schema.ident, ListConfig::default())
                     .await
                     .context(ex_error::MetastoreSnafu)?;
                 for table in tables {
@@ -596,7 +597,7 @@ impl IcebergCatalog for IceBucketIcebergBridge {
         };
         Ok(self
             .metastore
-            .list_tables(&schema_ident, None, None)
+            .list_tables(&schema_ident, ListConfig::default())
             .await
             .map_err(|e| IcebergError::External(Box::new(e)))?
             .iter()
@@ -617,13 +618,13 @@ impl IcebergCatalog for IceBucketIcebergBridge {
         let mut namespaces = Vec::new();
         let databases = self
             .metastore
-            .list_databases(None, None)
+            .list_databases(ListConfig::default())
             .await
             .map_err(|e| IcebergError::External(Box::new(e)))?;
         for database in databases {
             let schemas = self
                 .metastore
-                .list_schemas(&database.ident, None, None)
+                .list_schemas(&database.ident, ListConfig::default())
                 .await
                 .map_err(|e| IcebergError::External(Box::new(e)))?;
             for schema in schemas {
