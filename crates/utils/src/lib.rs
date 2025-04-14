@@ -17,6 +17,7 @@
 
 pub mod iterable;
 pub mod list_config;
+pub mod list_iterator;
 
 use crate::list_config::ListConfig;
 use async_trait::async_trait;
@@ -29,10 +30,11 @@ use slatedb::db::Db as SlateDb;
 use slatedb::db_iter::DbIterator;
 use slatedb::error::SlateDBError;
 use snafu::prelude::*;
-use std::ops::RangeBounds;
+use std::ops::{Deref, RangeBounds};
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::list_iterator::{ScanIterator, ScanIteratorBuilder};
 
 #[derive(Snafu, Debug)]
 //#[snafu(visibility(pub(crate)))]
@@ -62,7 +64,7 @@ pub enum Error {
     ScanFailed { source: SlateDBError },
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone)]
 pub struct Db(Arc<SlateDb>);
@@ -159,20 +161,21 @@ impl Db {
         // from cursor to end (looking not from the start)
         // and from cursor to prefix (search without starting at the start and looking to the end (no full scan))
         // more info in `list_config` file
-        let start = list_config.starts_with.clone().map_or_else(
+        let start = list_config.token.clone().map_or_else(
             || format!("{key}/"),
             |search_prefix| format!("{key}/{search_prefix}"),
         );
         let start = list_config
             .cursor
             .map_or_else(|| start, |cursor| format!("{key}/{cursor}\x00"));
-        let end = list_config.starts_with.map_or_else(
+        let end = list_config.token.map_or_else(
             || format!("{key}/\x7F"),
             |search_prefix| format!("{key}/{search_prefix}\x7F"),
         );
         let range = Bytes::from(start)..Bytes::from(end);
         let limit = list_config.limit.unwrap_or(usize::MAX);
         let mut iter = self.0.scan(range).await.context(ScanFailedSnafu)?;
+
         let mut objects: Vec<T> = vec![];
         while let Ok(Some(value)) = iter.next().await {
             let value = de::from_slice(&value.value).context(DeserializeValueSnafu)?;
@@ -182,6 +185,14 @@ impl Db {
             }
         }
         Ok(objects)
+    }
+
+
+    pub async fn scan_objects_builder<T: Send + for<'de> serde::de::Deserialize<'de>>(
+        &self,
+        key: &str,
+    ) -> ScanIteratorBuilder<T> {
+        ScanIterator::builder(self.0.clone(), key)
     }
 
     /// Stores template object in the database.
