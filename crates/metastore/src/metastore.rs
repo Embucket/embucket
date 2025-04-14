@@ -33,6 +33,7 @@ use object_store::{path::Path, ObjectStore, PutPayload};
 use serde::de::DeserializeOwned;
 use snafu::ResultExt;
 use uuid::Uuid;
+use icebucket_utils::list_iterator::{ScanIterator, ScanIteratorBuilder};
 
 #[async_trait]
 pub trait Metastore: std::fmt::Debug + Send + Sync {
@@ -145,6 +146,7 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
         &self,
         ident: &IceBucketTableIdent,
     ) -> MetastoreResult<Option<RwObject<IceBucketVolume>>>;
+    fn scan_databases(&self) -> ScanIteratorBuilder<RwObject<IceBucketDatabase>>;
 }
 
 ///
@@ -282,6 +284,17 @@ impl SlateDBMetastore {
         let mut properties = HashMap::new();
         Self::update_properties_timestamps(&mut properties);
         properties
+    }
+
+    fn scan_objects<T>(
+        &self,
+        scan_key: &str,
+    ) -> ScanIteratorBuilder<RwObject<T>>
+    where
+        T: serde::Serialize + DeserializeOwned + Eq + PartialEq + Send + Sync, {
+        self
+            .db
+            .scan_objects_builder::<RwObject<T>>(scan_key)
     }
 }
 
@@ -866,6 +879,9 @@ impl Metastore for SlateDBMetastore {
                 .clone()
         };
         self.get_volume(&volume_ident).await
+    }
+    fn scan_databases(&self) -> ScanIteratorBuilder<RwObject<IceBucketDatabase>> {
+        self.scan_objects(KEY_DATABASE)
     }
 }
 

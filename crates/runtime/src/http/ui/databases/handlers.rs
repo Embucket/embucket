@@ -30,6 +30,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use futures::StreamExt;
 use icebucket_metastore::error::MetastoreError;
 use icebucket_metastore::IceBucketDatabase;
 use icebucket_utils::list_config::ListConfig;
@@ -209,24 +210,43 @@ pub async fn list_databases(
     Query(parameters): Query<DatabasesParameters>,
     State(state): State<AppState>,
 ) -> DatabasesResult<Json<DatabasesResponse>> {
+    // state
+    //     .metastore
+    //     .list_databases(ListConfig::new(
+    //         parameters.cursor.clone(),
+    //         parameters.limit,
+    //         parameters.search,
+    //     ))
+    //     .await
+    //     .map_err(|e| DatabasesAPIError::List { source: e })
+    //     .map(|o| {
+    //         let next_cursor = o
+    //             .iter()
+    //             .last()
+    //             .map_or(String::new(), |rw_object| rw_object.ident.clone());
+    //         Json(DatabasesResponse {
+    //             items: o.into_iter().map(|x| x.data.into()).collect(),
+    //             current_cursor: parameters.cursor,
+    //             next_cursor,
+    //         })
+    //     })
     state
         .metastore
-        .list_databases(ListConfig::new(
-            parameters.cursor.clone(),
-            parameters.limit,
-            parameters.search,
-        ))
+        .scan_databases()
+        .cursor(parameters.cursor.clone())
+        .token(parameters.search)
+        .iter()
         .await
-        .map_err(|e| DatabasesAPIError::List { source: e })
+        .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })
         .map(|o| {
             let next_cursor = o
-                .iter()
                 .last()
                 .map_or(String::new(), |rw_object| rw_object.ident.clone());
             Json(DatabasesResponse {
-                items: o.into_iter().map(|x| x.data.into()).collect(),
+                items: o.into_iter().map(|x| x?.data.into()).collect(),
                 current_cursor: parameters.cursor,
                 next_cursor,
             })
         })
+
 }

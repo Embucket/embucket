@@ -20,20 +20,21 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use bytes::Bytes;
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, TryStream};
 use serde_json::de;
 use slatedb::db::Db as SlateDb;
 use slatedb::db_iter::DbIterator;
 use slatedb::error::SlateDBError;
 use snafu::prelude::*;
-use crate::{DeserializeValueSnafu, ScanFailedSnafu, Result};
+use crate::{DeserializeValueSnafu, ScanFailedSnafu, Result, Error};
 
 pub struct ScanIterator<'a, T> {
     inner: DbIterator<'a>,
     marker: PhantomData<T>,
+    _db: Arc<SlateDb>,
 }
 
-impl<T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator<T> {
+impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator<'a, T> {
     pub fn builder(db: Arc<SlateDb>, key: &str) -> ScanIteratorBuilder<T> {
         ScanIteratorBuilder {
             db,
@@ -45,11 +46,13 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator<T> {
     }
 }
 
-impl<T: Send + for<'de> serde::de::Deserialize<'de>> Stream for ScanIterator<T> {
+impl<T: Send + for<'de> serde::de::Deserialize<'de> + std::marker::Unpin> Stream for ScanIterator<'_, T> {
     type Item = Result<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.get_mut().inner.next().poll_unpin(cx) {
+        let mut test = self.get_mut().inner.next();
+        let mut test = Box::pin(&mut test);
+        match test.as_mut().poll_unpin(cx) {
             Poll::Ready(Ok(Some(item))) => {
                 let value = de::from_slice(&item.value).context(DeserializeValueSnafu)?;
                 Poll::Ready(Some(Ok(value)))
@@ -62,11 +65,16 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de>> Stream for ScanIterator<T> 
 }
 
 //TODO: is there a way to make result top level without try_next?
-impl<T: Send + for<'de> serde::de::Deserialize<'de>> StreamExt for ScanIterator<T> {
+// impl<T: Send + for<'de> serde::de::Deserialize<'de>> TryStream for ScanIterator<'_, T> {
+//     type Ok = T;
+//     type Error = Error;
+//
+//     fn try_poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<std::result::Result<Self::Ok, Self::Error>>> {
+//         self.poll_next(cx)
+//     }
+// }
 
-}
-
-pub(crate) struct ScanIteratorBuilder<'a, T> {
+pub struct ScanIteratorBuilder<'a, T> {
     db: Arc<SlateDb>,
     key: &'a str,
     //From where to start the scan range for SlateDB
@@ -88,7 +96,7 @@ pub(crate) struct ScanIteratorBuilder<'a, T> {
     marker: PhantomData<T>,
 }
 
-impl<T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<T> {
+impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<'a, T> {
     pub fn cursor(self, cursor: Option<String>) -> Self {
         Self {
             db: self.db,
@@ -107,7 +115,7 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<T> {
             marker: PhantomData,
         }
     }
-    pub async fn iter(self) -> Result<ScanIterator<T>> {
+    pub async fn iter(&'a self) -> Result<ScanIterator<'a, T>> {
         //We can look with respect to limit
         // from start to end (full scan),
         // from starts_with to start_with (search),
@@ -115,20 +123,22 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<T> {
         // and from cursor to prefix (search without starting at the start and looking to the end (no full scan))
         // more info in `list_config` file
         let start = self.token.clone().map_or_else(
-            || format!("{key}/"),
-            |search_prefix| format!("{key}/{search_prefix}"),
+            || format!("{}/", self.key),
+            |search_prefix| format!("{}/{search_prefix}", self.key),
         );
         let start = self
             .cursor
-            .map_or_else(|| start, |cursor| format!("{key}/{cursor}\x00"));
-        let end = self.token.map_or_else(
-            || format!("{key}/\x7F"),
-            |search_prefix| format!("{key}/{search_prefix}\x7F"),
+            .clone()
+            .map_or_else(|| start, |cursor| format!("{}/{cursor}\x00", self.key));
+        let end = self.token.clone().map_or_else(
+            || format!("{}/\x7F", self.key),
+            |search_prefix| format!("{}/{search_prefix}\x7F", self.key),
         );
         let range = Bytes::from(start)..Bytes::from(end);
         Ok(ScanIterator {
             inner: self.db.scan(range).await.context(ScanFailedSnafu)?,
             marker: PhantomData,
+            _db: self.db.clone(),
         })
     }
 }

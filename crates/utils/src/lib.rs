@@ -188,11 +188,11 @@ impl Db {
     }
 
 
-    pub async fn scan_objects_builder<T: Send + for<'de> serde::de::Deserialize<'de>>(
+    pub fn scan_objects_builder<T: Send + for<'de> serde::de::Deserialize<'de>>(
         &self,
         key: &str,
     ) -> ScanIteratorBuilder<T> {
-        ScanIterator::builder(self.0.clone(), key)
+        ScanIterator::<T>::builder(self.0.clone(), key)
     }
 
     /// Stores template object in the database.
