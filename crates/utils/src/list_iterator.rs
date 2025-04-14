@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use bytes::Bytes;
-use futures::{FutureExt, Stream};
+use futures::{FutureExt, Stream, StreamExt};
 use serde_json::de;
 use slatedb::db::Db as SlateDb;
 use slatedb::db_iter::DbIterator;
@@ -49,9 +49,21 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de>> Stream for ScanIterator<T> 
     type Item = Result<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        //TODO: rewrite
-        todo!()
+        match self.get_mut().inner.next().poll_unpin(cx) {
+            Poll::Ready(Ok(Some(item))) => {
+                let value = de::from_slice(&item.value).context(DeserializeValueSnafu)?;
+                Poll::Ready(Some(Ok(value)))
+            }
+            Poll::Ready(Ok(None)) => Poll::Ready(None),
+            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e.into()))),
+            Poll::Pending => Poll::Pending,
+        }
     }
+}
+
+//TODO: is there a way to make result top level without try_next?
+impl<T: Send + for<'de> serde::de::Deserialize<'de>> StreamExt for ScanIterator<T> {
+
 }
 
 pub(crate) struct ScanIteratorBuilder<'a, T> {
