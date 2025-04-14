@@ -50,9 +50,7 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de> + std::marker::Unpin> Stream
     type Item = Result<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut test = self.get_mut().inner.next();
-        let mut test = Box::pin(&mut test);
-        match test.as_mut().poll_unpin(cx) {
+        match self.get_mut().inner.next().poll(cx) {
             Poll::Ready(Ok(Some(item))) => {
                 let value = de::from_slice(&item.value).context(DeserializeValueSnafu)?;
                 Poll::Ready(Some(Ok(value)))
