@@ -17,7 +17,7 @@
 
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Range};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -30,52 +30,7 @@ use snafu::prelude::*;
 use crate::{DeserializeValueSnafu, ScanFailedSnafu, Result, Error};
 use crate::Error::Database;
 
-#[derive(Clone)]
-pub struct ScanIterator<'a, T> {
-    inner: Arc<DbIterator<'a>>,
-    marker: PhantomData<T>,
-}
-
-impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator<'a, T> {
-    pub fn builder(db: Arc<SlateDb>, key: &str) -> ScanIteratorBuilder<T> {
-        ScanIteratorBuilder {
-            db,
-            key,
-            cursor: None,
-            token: None,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<T: Send + for<'de> serde::de::Deserialize<'de> + std::marker::Unpin> Stream for ScanIterator<'_, T> {
-    type Item = Result<T>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let pinned = std::pin::pin!(self.get_mut().inner.next());
-        match pinned.poll(cx) {
-            Poll::Ready(Ok(Some(item))) => {
-                let value = de::from_slice(&item.value).context(DeserializeValueSnafu)?;
-                Poll::Ready(Some(Ok(value)))
-            }
-            Poll::Ready(Ok(None)) => Poll::Ready(None),
-            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(Database { source: e }))),
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-//TODO: is there a way to make result top level without try_next?
-// impl<T: Send + for<'de> serde::de::Deserialize<'de>> TryStream for ScanIterator<'_, T> {
-//     type Ok = T;
-//     type Error = Error;
-//
-//     fn try_poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<std::result::Result<Self::Ok, Self::Error>>> {
-//         self.poll_next(cx)
-//     }
-// }
-
-pub struct ScanIteratorBuilder<'a, T> {
+pub struct ScanIterator<'a, T: Send + for<'de> serde::de::Deserialize<'de>, F: FnMut(&T) -> bool, U, M: FnMut(&T) -> U> {
     db: Arc<SlateDb>,
     key: &'a str,
     //From where to start the scan range for SlateDB
@@ -93,36 +48,69 @@ pub struct ScanIteratorBuilder<'a, T> {
     // if we however had the cursor from cursor comment (line 21)
     // we could also go from `tested2\x00..tes\x7F` which would yield us "tested3" and "tested4" only excluding other names if any exist
     token: Option<String>,
+    limit: Option<usize>,
+    filter: Option<F>,
+    map: Option<M>,
     //Holding the type without the value
     marker: PhantomData<T>,
 }
 
-impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<'a, T> {
-    pub fn cursor(self, cursor: Option<String>) -> Self {
+impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>, F: FnMut(&T) -> bool, U, M: FnMut(&T) -> U> ScanIterator<'a, T, F, U, M> {
+    pub fn new(db: Arc<SlateDb>, key: &str) -> Self {
         Self {
-            db: self.db,
-            key: self.key,
-            cursor,
-            token: self.token,
-            marker: PhantomData,
+            db,
+            key,
+            cursor: None,
+            token: None,
+            limit: None,
+            filter: None,
+            map: None,
+            marker: Default::default(),
         }
     }
-    pub fn token(self, token: Option<String>) -> Self {
+    pub fn cursor(self, cursor: String) -> Self {
         Self {
-            db: self.db,
-            key: self.key,
-            cursor: self.cursor,
-            token,
-            marker: PhantomData,
+            cursor: Some(cursor),
+            ..self
         }
     }
-    pub async fn iter(&'a self) -> Result<ScanIterator<'a, T>> {
+    pub fn token(self, token: String) -> Self {
+        Self {
+            token: Some(token),
+            ..self
+        }
+    }
+    pub fn limit(self, limit: usize) -> Self {
+        Self {
+            limit: Some(limit),
+            ..self
+        }
+    }
+    pub fn filter<F>(self, f: F) -> Self
+    where
+        F: FnMut(&T) -> bool {
+        Self {
+            filter: Some(f),
+            ..self
+        }
+    }
+    pub fn map<F, U>(self, f: F) -> Self
+    where
+        F: FnMut(&T) -> U {
+        Self {
+            map: Some(f),
+            ..self
+        }
+    }
+    //fn sort_by<F>(&mut self, f: F) -> Self {
+    //
+    // }
+    pub async fn collect(self) -> Result<Vec<T>> {
         //We can look with respect to limit
         // from start to end (full scan),
         // from starts_with to start_with (search),
         // from cursor to end (looking not from the start)
         // and from cursor to prefix (search without starting at the start and looking to the end (no full scan))
-        // more info in `list_config` file
         let start = self.token.clone().map_or_else(
             || format!("{}/", self.key),
             |search_prefix| format!("{}/{search_prefix}", self.key),
@@ -135,11 +123,24 @@ impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<'a,
             || format!("{}/\x7F", self.key),
             |search_prefix| format!("{}/{search_prefix}\x7F", self.key),
         );
+        let limit = self.limit.unwrap_or(usize::MAX);
+        let filter = self.filter.unwrap_or(|_| true);
+        let map = self.map.unwrap_or(|x| x);
+
         let range = Bytes::from(start)..Bytes::from(end);
-        Ok(ScanIterator {
-            inner: Arc::new(self.db.scan(range).await.context(ScanFailedSnafu)?.into()),
-            marker: PhantomData,
-        })
+        let mut iter = self.db.scan(range).await.context(ScanFailedSnafu)?;
+
+        let mut objects: Vec<T> = vec![];
+        while let Ok(Some(value)) = iter.next().await {
+            let value = de::from_slice(&value.value).context(DeserializeValueSnafu)?;
+            if filter(&value) {
+                objects.push(map(&value));
+            }
+            if objects.len() >= limit {
+                break;
+            }
+        }
+        Ok(objects)
     }
 }
 
