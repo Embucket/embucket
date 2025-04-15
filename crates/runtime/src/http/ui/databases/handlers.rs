@@ -30,10 +30,9 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use icebucket_metastore::error::MetastoreError;
 use icebucket_metastore::IceBucketDatabase;
-use icebucket_utils::list_config::ListConfig;
 use utoipa::OpenApi;
 use validator::Validate;
 
@@ -230,23 +229,21 @@ pub async fn list_databases(
     //             next_cursor,
     //         })
     //     })
-    state
+    let iter = state
         .metastore
         .scan_databases()
         .cursor(parameters.cursor.clone())
         .token(parameters.search)
         .iter()
         .await
-        .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })
-        .map(|o| {
-            let next_cursor = o
-                .last()
-                .map_or(String::new(), |rw_object| rw_object.ident.clone());
-            Json(DatabasesResponse {
-                items: o.into_iter().map(|x| x?.data.into()).collect(),
-                current_cursor: parameters.cursor,
-                next_cursor,
-            })
-        })
+        .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })?;
+
+    let next_cursor = iter.clone().skip(iter.clone().count().await).next().await
+        .map_or(Ok(String::new()), |rw_object| rw_object?.ident.clone())?;
+    Json(DatabasesResponse {
+        items: iter.map(|x| x?.data.into()).collect(),
+        current_cursor: parameters.cursor,
+        next_cursor,
+    })
 
 }

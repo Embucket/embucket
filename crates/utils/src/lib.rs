@@ -188,10 +188,10 @@ impl Db {
     }
 
 
-    pub fn scan_objects_builder<T: Send + for<'de> serde::de::Deserialize<'de>>(
+    pub fn scan_objects_builder<'a, T: Send + for<'de> serde::de::Deserialize<'de>>(
         &self,
-        key: &str,
-    ) -> ScanIteratorBuilder<T> {
+        key: &'a str,
+    ) -> ScanIteratorBuilder<'a, T> {
         ScanIterator::<T>::builder(self.0.clone(), key)
     }
 

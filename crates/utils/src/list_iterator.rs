@@ -15,23 +15,25 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::future::Future;
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use bytes::Bytes;
-use futures::{FutureExt, Stream, StreamExt, TryStream};
+use futures::{Stream, StreamExt, TryStream};
 use serde_json::de;
 use slatedb::db::Db as SlateDb;
 use slatedb::db_iter::DbIterator;
-use slatedb::error::SlateDBError;
 use snafu::prelude::*;
 use crate::{DeserializeValueSnafu, ScanFailedSnafu, Result, Error};
+use crate::Error::Database;
 
+#[derive(Clone)]
 pub struct ScanIterator<'a, T> {
-    inner: DbIterator<'a>,
+    inner: Arc<DbIterator<'a>>,
     marker: PhantomData<T>,
-    _db: Arc<SlateDb>,
 }
 
 impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator<'a, T> {
@@ -50,13 +52,14 @@ impl<T: Send + for<'de> serde::de::Deserialize<'de> + std::marker::Unpin> Stream
     type Item = Result<T>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.get_mut().inner.next().poll(cx) {
+        let pinned = std::pin::pin!(self.get_mut().inner.next());
+        match pinned.poll(cx) {
             Poll::Ready(Ok(Some(item))) => {
                 let value = de::from_slice(&item.value).context(DeserializeValueSnafu)?;
                 Poll::Ready(Some(Ok(value)))
             }
             Poll::Ready(Ok(None)) => Poll::Ready(None),
-            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e.into()))),
+            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(Database { source: e }))),
             Poll::Pending => Poll::Pending,
         }
     }
@@ -134,9 +137,8 @@ impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIteratorBuilder<'a,
         );
         let range = Bytes::from(start)..Bytes::from(end);
         Ok(ScanIterator {
-            inner: self.db.scan(range).await.context(ScanFailedSnafu)?,
+            inner: Arc::new(self.db.scan(range).await.context(ScanFailedSnafu)?.into()),
             marker: PhantomData,
-            _db: self.db.clone(),
         })
     }
 }

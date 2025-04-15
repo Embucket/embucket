@@ -286,10 +286,10 @@ impl SlateDBMetastore {
         properties
     }
 
-    fn scan_objects<T>(
+    fn scan_objects<'a, T>(
         &self,
-        scan_key: &str,
-    ) -> ScanIteratorBuilder<RwObject<T>>
+        scan_key: &'a str,
+    ) -> ScanIteratorBuilder<'a, RwObject<T>>
     where
         T: serde::Serialize + DeserializeOwned + Eq + PartialEq + Send + Sync, {
         self
