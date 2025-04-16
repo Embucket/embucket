@@ -209,39 +209,46 @@ pub async fn list_databases(
     Query(parameters): Query<DatabasesParameters>,
     State(state): State<AppState>,
 ) -> DatabasesResult<Json<DatabasesResponse>> {
-    state
-        .metastore
-        .list_databases(ListConfig::new(
-            parameters.cursor.clone(),
-            parameters.limit,
-            parameters.search,
-        ))
-        .await
-        .map_err(|e| DatabasesAPIError::List { source: e })
-        .map(|o| {
-            let next_cursor = o
-                .iter()
-                .last()
-                .map_or(String::new(), |rw_object| rw_object.ident.clone());
-            Json(DatabasesResponse {
-                items: o.into_iter().map(|x| x.data.into()).collect(),
-                current_cursor: parameters.cursor,
-                next_cursor,
-            })
-        })
+    // state
+    //     .metastore
+    //     .list_databases(ListConfig::new(
+    //         parameters.cursor.clone(),
+    //         parameters.limit,
+    //         parameters.search,
+    //     ))
+    //     .await
+    //     .map_err(|e| DatabasesAPIError::List { source: e })
+    //     .map(|o| {
+    //         let next_cursor = o
+    //             .iter()
+    //             .last()
+    //             .map_or(String::new(), |rw_object| rw_object.ident.clone());
+    //         Json(DatabasesResponse {
+    //             items: o.into_iter().map(|x| x.data.into()).collect(),
+    //             current_cursor: parameters.cursor,
+    //             next_cursor,
+    //         })
+    //     })
     let iter = state
         .metastore
         .scan_databases()
         .cursor(parameters.cursor.clone())
         .token(parameters.search)
+        .limit(parameters.limit)
         .iter()
+        .await
+        .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })?
+        .collect()
         .await
         .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })?;
 
-    let next_cursor = iter.clone().skip(iter.clone().count().await).next().await
+    let next_cursor = iter
+        .clone()
+        .last()
         .map_or(Ok(String::new()), |rw_object| rw_object?.ident.clone())?;
+    let items: Vec<Database> = iter.map(|rw_object| rw_object?.data.into()).collect();
     Json(DatabasesResponse {
-        items: iter.map(|x| x?.data.into()).collect(),
+        items,
         current_cursor: parameters.cursor,
         next_cursor,
     })

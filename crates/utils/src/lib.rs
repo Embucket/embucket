@@ -17,7 +17,7 @@
 
 pub mod iterable;
 pub mod list_config;
-pub mod list_iterator;
+pub mod scan_iterator;
 
 use crate::list_config::ListConfig;
 use async_trait::async_trait;
@@ -34,7 +34,7 @@ use std::ops::{Deref, RangeBounds};
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::list_iterator::{ScanIterator, ScanIteratorBuilder};
+use crate::scan_iterator::{ScanIterator, VecScanIterator, VecScanIteratorBuilder};
 
 #[derive(Snafu, Debug)]
 //#[snafu(visibility(pub(crate)))]
@@ -191,8 +191,8 @@ impl Db {
     pub fn scan_objects_builder<'a, T: Send + for<'de> serde::de::Deserialize<'de>>(
         &self,
         key: &'a str,
-    ) -> ScanIteratorBuilder<'a, T> {
-        ScanIterator::<T>::builder(self.0.clone(), key)
+    ) -> VecScanIteratorBuilder<'a, T> {
+        VecScanIterator::builder(self.0.clone(), key)
     }
 
     /// Stores template object in the database.
