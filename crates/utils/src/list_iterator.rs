@@ -21,51 +21,58 @@ use std::ops::{Deref, DerefMut, Range};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{Stream, StreamExt, TryStream};
 use serde_json::de;
 use slatedb::db::Db as SlateDb;
-use slatedb::db_iter::DbIterator;
+use slatedb::db_iter::DbIterator as SlateDbIterator;
 use snafu::prelude::*;
 use crate::{DeserializeValueSnafu, ScanFailedSnafu, Result, Error};
 use crate::Error::Database;
 
-pub struct ScanIterator<'a, T: Send + for<'de> serde::de::Deserialize<'de>, F: FnMut(&T) -> bool, U, M: FnMut(&T) -> U> {
-    db: Arc<SlateDb>,
-    key: &'a str,
-    //From where to start the scan range for SlateDB
-    // ex: if we ended on "tested2", the cursor would be "tested2"
-    // and inside the `fn list_objects` in utils crate the start of the range would be "tested2\x00"
-    // ("\x00" is the smallest ASCII char to find anything after the "tested2" excluding it)
-    // and the whole range would be `tested2\x00..\x7F
-    // (`\x7F` is the largest ASCII char to find anything before it)
-    // if there are 4 tables `tested1..tested4` which would yield us "tested3" and "tested4" including other names if any exist
-    cursor: Option<String>,
-    //Search string, from where (and to where in lexicographical sort order) to do the search
-    // ex: if we want to find all the test tables it could be "tes" (if there are 4 tables `tested1..tested4`)
-    // the range would be `tes..tes\x7F` tables
-    // (`\x7F` is the largest ASCII char to find anything before it)
-    // if we however had the cursor from cursor comment (line 21)
-    // we could also go from `tested2\x00..tes\x7F` which would yield us "tested3" and "tested4" only excluding other names if any exist
-    token: Option<String>,
-    limit: Option<usize>,
-    filter: Option<F>,
-    map: Option<M>,
-    //Holding the type without the value
-    marker: PhantomData<T>,
+#[async_trait]
+pub trait ScanAsyncIterator {
+    type Next;
+    type Collectable;
+    async fn next(&mut self) -> Result<Self::Next>;
+    async fn collect(self) -> Result<Self::Collectable>;
 }
 
-impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>, F: FnMut(&T) -> bool, U, M: FnMut(&T) -> U> ScanIterator<'a, T, F, U, M> {
+pub struct ScanIteratorBuilder<'a, T> {
+    db: Arc<SlateDb>,
+    key: &'a str,
+    cursor: Option<String>,
+    token: Option<String>,
+    limit: Option<usize>,
+    phantom: PhantomData<T>,
+}
+
+pub struct ScanIterator<'a> {
+    inner: SlateDbIterator<'a>,
+}
+
+impl<'a, T, C: Send + for<'de> serde::de::Deserialize<'de>> ScanAsyncIterator for ScanIterator<'a> {
+    type Next = T;
+
+    type Collectable = Vec<C>;
+    async fn next(&mut self) -> Result<Self::Next> {
+        self.inner.next().await.map_err(|e| Database { source: e })
+    }
+
+    async fn collect(self) -> Result<Self::Collectable> {
+        todo!()
+    }
+}
+
+impl<'a> ScanIterator<'a> {
     pub fn new(db: Arc<SlateDb>, key: &str) -> Self {
         Self {
             db,
             key,
             cursor: None,
             token: None,
-            limit: None,
-            filter: None,
-            map: None,
-            marker: Default::default(),
+            limit: None
         }
     }
     pub fn cursor(self, cursor: String) -> Self {
@@ -86,62 +93,35 @@ impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>, F: FnMut(&T) -> bool, U
             ..self
         }
     }
-    pub fn filter<F>(self, f: F) -> Self
-    where
-        F: FnMut(&T) -> bool {
-        Self {
-            filter: Some(f),
-            ..self
-        }
-    }
-    pub fn map<F, U>(self, f: F) -> Self
-    where
-        F: FnMut(&T) -> U {
-        Self {
-            map: Some(f),
-            ..self
-        }
-    }
+    // pub fn filter<F>(self, f: F) -> Self
+    // where
+    //     F: FnMut(&T) -> bool {
+    //     Self {
+    //         filter: Some(f),
+    //         ..self
+    //     }
+    // }
+    // pub fn map<F, U>(self, f: F) -> Self
+    // where
+    //     F: FnMut(&T) -> U {
+    //     Self {
+    //         map: Some(f),
+    //         ..self
+    //     }
+    // }
     //fn sort_by<F>(&mut self, f: F) -> Self {
     //
     // }
-    pub async fn collect(self) -> Result<Vec<T>> {
-        //We can look with respect to limit
-        // from start to end (full scan),
-        // from starts_with to start_with (search),
-        // from cursor to end (looking not from the start)
-        // and from cursor to prefix (search without starting at the start and looking to the end (no full scan))
-        let start = self.token.clone().map_or_else(
-            || format!("{}/", self.key),
-            |search_prefix| format!("{}/{search_prefix}", self.key),
-        );
-        let start = self
-            .cursor
-            .clone()
-            .map_or_else(|| start, |cursor| format!("{}/{cursor}\x00", self.key));
-        let end = self.token.clone().map_or_else(
-            || format!("{}/\x7F", self.key),
-            |search_prefix| format!("{}/{search_prefix}\x7F", self.key),
-        );
-        let limit = self.limit.unwrap_or(usize::MAX);
-        let filter = self.filter.unwrap_or(|_| true);
-        let map = self.map.unwrap_or(|x| x);
+}
 
-        let range = Bytes::from(start)..Bytes::from(end);
-        let mut iter = self.db.scan(range).await.context(ScanFailedSnafu)?;
+pub struct FilterScanIter<'a, I: ScanIterator, T: Send + for<'de> serde::de::Deserialize<'de>, F: FnMut(&T) -> bool> {
+    iter: I,
+    filter: F,
+}
 
-        let mut objects: Vec<T> = vec![];
-        while let Ok(Some(value)) = iter.next().await {
-            let value = de::from_slice(&value.value).context(DeserializeValueSnafu)?;
-            if filter(&value) {
-                objects.push(map(&value));
-            }
-            if objects.len() >= limit {
-                break;
-            }
-        }
-        Ok(objects)
-    }
+pub struct MapScanIter<'a, I: ScanIterator, T: Send + for<'de> serde::de::Deserialize<'de>, U, M: FnMut(&T) -> U> {
+    iter: I,
+    map: M,
 }
 
 
