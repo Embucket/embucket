@@ -149,10 +149,15 @@ impl IntoResponse for ExecutionError {
             | Self::UrlParse { .. }
             | Self::JobError { .. }
             | Self::UploadFailed { .. } => http::StatusCode::BAD_REQUEST,
-            Self::Arrow { .. } => http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Arrow { .. }
+            | Self::S3Tables { .. }
+            | Self::Iceberg { .. }
+            | Self::CatalogListDowncast { .. }
+            | Self::RegisterCatalog { .. } => http::StatusCode::INTERNAL_SERVER_ERROR,
             Self::DatabaseNotFound { .. }
             | Self::TableNotFound { .. }
             | Self::SchemaNotFound { .. }
+            | Self::CatalogNotFound { .. }
             | Self::Metastore { .. }
             | Self::DataFusion { .. }
             | Self::DataFusionQuery { .. } => http::StatusCode::OK,
@@ -207,94 +212,4 @@ impl IntoResponse for ExecutionError {
         });
         (status_code, body).into_response()
     }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_in_result)]
-mod tests {
-
-    // TODO: Replace these with snapshot tests
-    /*#[test]
-        fn test_http_server_response() {
-            assert_ne!(
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-                DbtError::ControlService {
-                    source: ControlPlaneError::Execution {
-                        source: IceBucketSQLError::Arrow {
-                            source: ArrowError::ComputeError(String::new())
-                        }
-                    },
-                }
-                .into_response()
-                .status(),
-            );
-            assert_eq!(
-                http::StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                DbtError::ControlService {
-                    source: ControlPlaneError::Execution {
-                        source: IceBucketSQLError::Arrow {
-                            source: ArrowError::ComputeError(String::new())
-                        }
-                    },
-                }
-                .into_response()
-                .status(),
-            );
-            assert_eq!(
-                http::StatusCode::UNPROCESSABLE_ENTITY,
-                DbtError::ControlService {
-                    source: ControlPlaneError::Execution {
-                        source: IceBucketSQLError::DataFusion {
-                            source: DataFusionError::ArrowError(
-                                ArrowError::InvalidArgumentError(String::new()),
-                                Some(String::new()),
-                            )
-                        },
-                    },
-                }
-                .into_response()
-                .status(),
-            );
-            assert_eq!(
-                http::StatusCode::NOT_FOUND,
-                DbtError::ControlService {
-                    source: ControlPlaneError::WarehouseNameNotFound {
-                        name: String::new()
-                    },
-                }
-                .into_response()
-                .status(),
-            );
-            assert_eq!(
-                http::StatusCode::NOT_FOUND,
-                DbtError::ControlService {
-                    source: ControlPlaneError::WarehouseNotFound { id: Uuid::new_v4() },
-                }
-                .into_response()
-                .status(),
-            );
-            assert_eq!(
-                http::StatusCode::NOT_FOUND,
-                DbtError::ControlService {
-                    source: ControlPlaneError::WarehouseNotFound { id: Uuid::new_v4() },
-                }
-                .into_response()
-                .status(),
-            );
-            assert_eq!(
-                http::StatusCode::UNPROCESSABLE_ENTITY,
-                DbtError::ControlService {
-                    source: ControlPlaneError::DataFusion {
-                        // here just any error for test, since we are handling any DataFusion err
-                        source: DataFusionError::ArrowError(
-                            ArrowError::InvalidArgumentError(String::new()),
-                            Some(String::new()),
-                        )
-                    }
-                }
-                .into_response()
-                .status(),
-            );
-        }
-    */
 }

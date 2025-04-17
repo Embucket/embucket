@@ -25,8 +25,8 @@ use crate::http::ui::navigation_trees::models::{
 use axum::extract::Query;
 use axum::{extract::State, Json};
 use utoipa::OpenApi;
-use icebucket_metastore::error::MetastoreError;
-use icebucket_utils::scan_iterator::ScanIterator;
+use embucket_metastore::error::MetastoreError;
+use embucket_utils::scan_iterator::ScanIterator;
 
 #[derive(OpenApi)]
 #[openapi(

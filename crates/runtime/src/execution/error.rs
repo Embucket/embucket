@@ -18,6 +18,8 @@
 use std::backtrace::Backtrace;
 
 use datafusion_common::DataFusionError;
+use iceberg_rust::error::Error as IcebergError;
+use iceberg_s3tables_catalog::error::Error as S3tablesError;
 use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
@@ -61,7 +63,7 @@ pub enum ExecutionError {
 
     #[snafu(display("Metastore error: {source}"))]
     Metastore {
-        source: icebucket_metastore::error::MetastoreError,
+        source: embucket_metastore::error::MetastoreError,
     },
 
     #[snafu(display("Database {db} not found"))]
@@ -88,6 +90,15 @@ pub enum ExecutionError {
     #[snafu(display("Cannot refresh catalog list"))]
     RefreshCatalogList { message: String },
 
+    #[snafu(display("Catalog {catalog} not found"))]
+    CatalogNotFound { catalog: String },
+
+    #[snafu(display("S3Tables error: {source}"))]
+    S3Tables { source: S3tablesError },
+
+    #[snafu(display("Iceberg error: {source}"))]
+    Iceberg { source: IcebergError },
+
     #[snafu(display("URL Parsing error: {source}"))]
     UrlParse { source: url::ParseError },
 
@@ -99,6 +110,12 @@ pub enum ExecutionError {
 
     #[snafu(display("Failed to upload file: {message}"))]
     UploadFailed { message: String },
+
+    #[snafu(display("CatalogList failed"))]
+    CatalogListDowncast,
+
+    #[snafu(display("Failed to register catalog {catalog}"))]
+    RegisterCatalog { catalog: String },
 }
 
 pub type ExecutionResult<T> = std::result::Result<T, ExecutionError>;

@@ -37,12 +37,12 @@ pub struct TableStatistics {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct TableColumnsInfoResponse {
-    pub items: Vec<TableColumnInfo>,
+pub struct TableColumnsResponse {
+    pub items: Vec<TableColumn>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct TableColumnInfo {
+pub struct TableColumn {
     pub name: String,
     pub r#type: String,
     pub description: String,

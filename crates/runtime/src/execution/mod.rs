@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod catalog;
+pub mod catalogs;
 pub mod datafusion;
 pub mod dedicated_executor;
 pub mod error;

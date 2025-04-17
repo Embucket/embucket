@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::execution::query::IceBucketQueryContext;
+use crate::execution::query::QueryContext;
 use crate::http::error::ErrorResponse;
 use crate::http::session::DFSessionId;
 use crate::http::state::AppState;
@@ -24,10 +24,9 @@ use crate::http::ui::tables::error::{
     TablesAPIError, TablesResult,
 };
 use crate::http::ui::tables::models::{
-    Table, TableColumnInfo, TableColumnsInfoResponse, TablePreviewDataColumn,
-    TablePreviewDataParameters, TablePreviewDataResponse, TablePreviewDataRow, TableStatistics,
-    TableStatisticsResponse, TableUploadPayload, TableUploadResponse, TablesParameters,
-    TablesResponse, UploadParameters,
+    Table, TableColumn, TableColumnsResponse, TablePreviewDataColumn, TablePreviewDataParameters,
+    TablePreviewDataResponse, TablePreviewDataRow, TableStatistics, TableStatisticsResponse,
+    TableUploadPayload, TableUploadResponse, TablesParameters, TablesResponse, UploadParameters,
 };
 use arrow_array::{Array, StringArray};
 use axum::extract::Query;
@@ -36,18 +35,18 @@ use axum::{
     Json,
 };
 use datafusion::arrow::csv::reader::Format;
-use icebucket_metastore::error::MetastoreError;
-use icebucket_metastore::{IceBucketSchemaIdent, IceBucketTableIdent};
+use embucket_metastore::error::MetastoreError;
+use embucket_metastore::{SchemaIdent as MetastoreSchemaIdent, TableIdent as MetastoreTableIdent};
 use snafu::ResultExt;
 use std::time::Instant;
 use utoipa::OpenApi;
-use icebucket_utils::scan_iterator::ScanIterator;
+use embucket_utils::scan_iterator::ScanIterator;
 
 #[derive(OpenApi)]
 #[openapi(
     paths(
         get_table_statistics,
-        get_table_columns_info,
+        get_table_columns,
         get_table_preview_data,
         upload_file,
     ),
@@ -55,8 +54,8 @@ use icebucket_utils::scan_iterator::ScanIterator;
         schemas(
             TableStatisticsResponse,
             TableStatistics,
-            TableColumnsInfoResponse,
-            TableColumnInfo,
+            TableColumnsResponse,
+            TableColumn,
             TablePreviewDataResponse,
             TablePreviewDataColumn,
             TablePreviewDataRow,
@@ -94,7 +93,7 @@ pub async fn get_table_statistics(
     State(state): State<AppState>,
     Path((database_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> TablesResult<Json<TableStatisticsResponse>> {
-    let ident = IceBucketTableIdent::new(&database_name, &schema_name, &table_name);
+    let ident = MetastoreTableIdent::new(&database_name, &schema_name, &table_name);
     match state.metastore.get_table(&ident).await {
         Ok(Some(rw_object)) => {
             let mut total_bytes = 0;
@@ -141,22 +140,22 @@ pub async fn get_table_statistics(
         ("schemaName" = String, description = "Schema Name"),
         ("tableName" = String, description = "Table Name")
     ),
-    operation_id = "getTableColumnsInfo",
+    operation_id = "getTableColumns",
     tags = ["tables"],
     responses(
-        (status = 200, description = "Successful Response", body = TableColumnsInfoResponse),
+        (status = 200, description = "Successful Response", body = TableColumnsResponse),
         (status = 404, description = "Table not found", body = ErrorResponse),
         (status = 422, description = "Unprocessable entity", body = ErrorResponse),
     )
 )]
 #[tracing::instrument(level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 #[allow(clippy::unwrap_used)]
-pub async fn get_table_columns_info(
+pub async fn get_table_columns(
     DFSessionId(session_id): DFSessionId,
     State(state): State<AppState>,
     Path((database_name, schema_name, table_name)): Path<(String, String, String)>,
-) -> TablesResult<Json<TableColumnsInfoResponse>> {
-    let context = IceBucketQueryContext {
+) -> TablesResult<Json<TableColumnsResponse>> {
+    let context = QueryContext {
         database: Some(database_name.clone()),
         schema: Some(schema_name.clone()),
     };
@@ -166,9 +165,9 @@ pub async fn get_table_columns_info(
         .query(&session_id, sql_string.as_str(), context)
         .await
         .map_err(|e| TablesAPIError::GetExecution { source: e })?;
-    let items: Vec<TableColumnInfo> = column_infos
+    let items: Vec<TableColumn> = column_infos
         .iter()
-        .map(|column_info| TableColumnInfo {
+        .map(|column_info| TableColumn {
             name: column_info.name.clone(),
             r#type: column_info.r#type.clone(),
             description: String::new(),
@@ -184,11 +183,11 @@ pub async fn get_table_columns_info(
             },
         })
         .collect();
-    Ok(Json(TableColumnsInfoResponse { items }))
+    Ok(Json(TableColumnsResponse { items }))
 }
 #[utoipa::path(
     get,
-    path = "/ui/databases/{databaseName}/schemas/{schemaName}/tables/{tableName}/preview",
+    path = "/ui/databases/{databaseName}/schemas/{schemaName}/tables/{tableName}/rows",
     params(
         ("databaseName" = String, description = "Database Name"),
         ("schemaName" = String, description = "Schema Name"),
@@ -212,11 +211,11 @@ pub async fn get_table_preview_data(
     State(state): State<AppState>,
     Path((database_name, schema_name, table_name)): Path<(String, String, String)>,
 ) -> TablesResult<Json<TablePreviewDataResponse>> {
-    let context = IceBucketQueryContext {
+    let context = QueryContext {
         database: Some(database_name.clone()),
         schema: Some(schema_name.clone()),
     };
-    let ident = IceBucketTableIdent::new(&database_name, &schema_name, &table_name);
+    let ident = MetastoreTableIdent::new(&database_name, &schema_name, &table_name);
     let column_names = match state.metastore.get_table(&ident).await {
         Ok(Some(rw_object)) => {
             if let Ok(schema) = rw_object.metadata.current_schema(None) {
@@ -338,7 +337,7 @@ pub async fn upload_file(
                 .execution_svc
                 .upload_data_to_table(
                     &session_id,
-                    &IceBucketTableIdent {
+                    &MetastoreTableIdent {
                         table: table_name.clone(),
                         schema: schema_name.clone(),
                         database: database_name.clone(),
@@ -392,7 +391,7 @@ pub async fn get_tables(
     State(state): State<AppState>,
     Path((database_name, schema_name)): Path<(String, String)>,
 ) -> TablesResult<Json<TablesResponse>> {
-    let ident = IceBucketSchemaIdent::new(database_name, schema_name);
+    let ident = MetastoreSchemaIdent::new(database_name, schema_name);
     state
         .metastore
         .iter_tables(&ident)

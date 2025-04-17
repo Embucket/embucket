@@ -26,15 +26,15 @@ use datafusion::catalog::{MemoryCatalogProvider, MemorySchemaProvider};
 use datafusion::catalog_common::CatalogProvider;
 use datafusion::datasource::memory::MemTable;
 use datafusion_common::TableReference;
-use snafu::{IntoError, ResultExt};
+use snafu::ResultExt;
 
 use super::{
     models::ColumnInfo,
-    query::IceBucketQueryContext,
-    session::IceBucketUserSession,
+    query::QueryContext,
+    session::UserSession,
     utils::{convert_record_batches, Config},
 };
-use icebucket_metastore::{IceBucketTableIdent, Metastore};
+use embucket_metastore::{Metastore, TableIdent as MetastoreTableIdent};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -42,7 +42,7 @@ use super::error::{self as ex_error, ExecutionError, ExecutionResult};
 
 pub struct ExecutionService {
     metastore: Arc<dyn Metastore>,
-    df_sessions: Arc<RwLock<HashMap<String, Arc<IceBucketUserSession>>>>,
+    df_sessions: Arc<RwLock<HashMap<String, Arc<UserSession>>>>,
     config: Config,
 }
 
@@ -59,7 +59,7 @@ impl ExecutionService {
     pub async fn create_session(&self, session_id: String) -> ExecutionResult<()> {
         let session_exists = { self.df_sessions.read().await.contains_key(&session_id) };
         if !session_exists {
-            let user_session = IceBucketUserSession::new(self.metastore.clone()).await?;
+            let user_session = UserSession::new(self.metastore.clone()).await?;
             tracing::trace!("Acuiring write lock for df_sessions");
             let mut session_list_mut = self.df_sessions.write().await;
             tracing::trace!("Acquired write lock for df_sessions");
@@ -82,7 +82,7 @@ impl ExecutionService {
         &self,
         session_id: &str,
         query: &str,
-        query_context: IceBucketQueryContext,
+        query_context: QueryContext,
     ) -> ExecutionResult<(Vec<RecordBatch>, Vec<ColumnInfo>)> {
         let sessions = self.df_sessions.read().await;
         let user_session =
@@ -128,7 +128,7 @@ impl ExecutionService {
     pub async fn upload_data_to_table(
         &self,
         session_id: &str,
-        table_ident: &IceBucketTableIdent,
+        table_ident: &MetastoreTableIdent,
         data: Bytes,
         file_name: &str,
         format: Format,
@@ -142,7 +142,6 @@ impl ExecutionService {
 
         // use unique name to support simultaneous uploads
         let unique_id = Uuid::new_v4().to_string().replace('-', "_");
-        let mut rows_loaded: usize = 0;
         let sessions = self.df_sessions.read().await;
         let user_session =
             sessions
@@ -153,6 +152,11 @@ impl ExecutionService {
 
         let source_table =
             TableReference::full("tmp_db", "tmp_schema", format!("tmp_table_{unique_id}"));
+        let target_table = TableReference::full(
+            table_ident.database.clone(),
+            table_ident.schema.clone(),
+            table_ident.table.clone(),
+        );
         let inmem_catalog = MemoryCatalogProvider::new();
         inmem_catalog
             .register_schema(
@@ -164,47 +168,48 @@ impl ExecutionService {
             source_table.catalog().unwrap_or_default(),
             Arc::new(inmem_catalog),
         );
-
-        // Here we create an arrow csv reader that infers the schema from first 10 rows
-        // and then builds a record batch
-        // TODO: This partially duplicates what Datafusion does with `CsvFormat::infer_schema`
-        let (schema, _) = format
-            .infer_schema(data.clone().reader(), Some(100))
-            .map_err(|e| ExecutionError::DataFusion { source: e.into() })?;
-        let schema = Arc::new(schema);
-        let mut csv = ReaderBuilder::new(schema.clone())
-            .with_format(format)
-            .build_buffered(data.reader())
-            .context(ex_error::ArrowSnafu)?;
-        let batches = match csv.next() {
-            Some(Ok(batch)) => {
-                rows_loaded += batch.num_rows();
-                batch
-            }
-            Some(Err(e)) => return Err(ex_error::ArrowSnafu.into_error(e)),
-            None => {
-                return Err(ExecutionError::UploadFailed {
-                    message: "No data found".to_string(),
-                })
-            }
-        };
-
-        let table = MemTable::try_new(schema, vec![vec![batches]])
-            .map_err(|e| ExecutionError::DataFusion { source: e })?;
-        user_session
-            .ctx
-            .register_table(source_table.clone(), Arc::new(table))
-            .context(ex_error::DataFusionSnafu)?;
-
         // If target table already exists, we need to insert into it
         // otherwise, we need to create it
         let exists = user_session
             .ctx
-            .table_exist(TableReference::full(
-                table_ident.database.clone(),
-                table_ident.schema.clone(),
-                table_ident.table.clone(),
-            ))
+            .table_exist(target_table.clone())
+            .context(ex_error::DataFusionSnafu)?;
+
+        let schema = if exists {
+            let table = user_session
+                .ctx
+                .table(target_table)
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            table.schema().as_arrow().to_owned()
+        } else {
+            let (schema, _) = format
+                .infer_schema(data.clone().reader(), None)
+                .map_err(|e| ExecutionError::DataFusion { source: e.into() })?;
+            schema
+        };
+        let schema = Arc::new(schema);
+
+        // Here we create an arrow CSV reader that infers the schema from the entire dataset
+        // (as `None` is passed for the number of rows) and then builds a record batch
+        // TODO: This partially duplicates what Datafusion does with `CsvFormat::infer_schema`
+        let csv = ReaderBuilder::new(schema.clone())
+            .with_format(format)
+            .build_buffered(data.reader())
+            .context(ex_error::ArrowSnafu)?;
+
+        let batches: Result<Vec<_>, _> = csv.collect();
+        let batches = batches.context(ex_error::ArrowSnafu)?;
+
+        let rows_loaded = batches
+            .iter()
+            .map(|batch: &RecordBatch| batch.num_rows())
+            .sum();
+
+        let table = MemTable::try_new(schema, vec![batches]).context(ex_error::DataFusionSnafu)?;
+        user_session
+            .ctx
+            .register_table(source_table.clone(), Arc::new(table))
             .context(ex_error::DataFusionSnafu)?;
 
         let table = source_table.clone();
@@ -214,8 +219,8 @@ impl ExecutionService {
             format!("CREATE TABLE {table_ident} AS SELECT * FROM {table}")
         };
 
-        let query = user_session.query(&query, IceBucketQueryContext::default());
-        query.execute().await?;
+        let query = user_session.query(&query, QueryContext::default());
+        Box::pin(query.execute()).await?;
 
         user_session
             .ctx

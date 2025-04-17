@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use icebucket_utils::scan_iterator::ScanIterator;
 use crate::http::state::AppState;
 use crate::http::ui::databases::models::DatabasesParameters;
 use crate::http::{
@@ -31,8 +30,8 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use icebucket_metastore::error::MetastoreError;
-use icebucket_metastore::IceBucketDatabase;
+use embucket_metastore::error::MetastoreError;
+use embucket_metastore::Database as MetastoreDatabase;
 use utoipa::OpenApi;
 use validator::Validate;
 
@@ -172,7 +171,7 @@ pub async fn update_database(
     Path(database_name): Path<String>,
     Json(database): Json<DatabaseUpdatePayload>,
 ) -> DatabasesResult<Json<DatabaseUpdateResponse>> {
-    let database: IceBucketDatabase = database.data.into();
+    let database: MetastoreDatabase = database.data.into();
     database.validate().map_err(|e| DatabasesAPIError::Update {
         source: MetastoreError::Validation { source: e },
     })?;
@@ -195,7 +194,6 @@ pub async fn update_database(
     params(
         ("cursor" = Option<String>, Query, description = "Databases cursor"),
         ("limit" = Option<usize>, Query, description = "Databases limit"),
-        ("search" = Option<String>, Query, description = "Databases search (start with)"),
     ),
     tags = ["databases"],
     path = "/ui/databases",

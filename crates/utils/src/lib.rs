@@ -173,7 +173,7 @@ impl Db {
     //     let range = Bytes::from(start)..Bytes::from(end);
     //     let limit = list_config.limit.unwrap_or(usize::MAX);
     //     let mut iter = self.0.scan(range).await.context(ScanFailedSnafu)?;
-    // 
+    //
     //     let mut objects: Vec<T> = vec![];
     //     while let Ok(Some(value)) = iter.next().await {
     //         let value = de::from_slice(&value.value).context(DeserializeValueSnafu)?;
