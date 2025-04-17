@@ -32,9 +32,9 @@ use axum::{
 };
 use icebucket_metastore::error::MetastoreError;
 use icebucket_metastore::models::IceBucketVolume;
-use icebucket_utils::list_config::ListConfig;
 use utoipa::OpenApi;
 use validator::Validate;
+use icebucket_utils::scan_iterator::ScanIterator;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -213,13 +213,10 @@ pub async fn list_volumes(
 ) -> VolumesResult<Json<VolumesResponse>> {
     state
         .metastore
-        .list_volumes(ListConfig::new(
-            parameters.cursor.clone(),
-            parameters.limit,
-            parameters.search,
-        ))
+        .iter_volumes()
+        .collect()
         .await
-        .map_err(|e| VolumesAPIError::List { source: e })
+        .map_err(|e| VolumesAPIError::List { source: MetastoreError::UtilSlateDB { source: e } })
         .map(|o| {
             let next_cursor = o
                 .iter()

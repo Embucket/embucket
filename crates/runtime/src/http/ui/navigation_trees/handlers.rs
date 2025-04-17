@@ -24,8 +24,9 @@ use crate::http::ui::navigation_trees::models::{
 };
 use axum::extract::Query;
 use axum::{extract::State, Json};
-use icebucket_utils::list_config::ListConfig;
 use utoipa::OpenApi;
+use icebucket_metastore::error::MetastoreError;
+use icebucket_utils::scan_iterator::ScanIterator;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -68,13 +69,10 @@ pub async fn get_navigation_trees(
 ) -> NavigationTreesResult<Json<NavigationTreesResponse>> {
     let rw_databases = state
         .metastore
-        .list_databases(ListConfig::new(
-            parameters.cursor.clone(),
-            parameters.limit,
-            None,
-        ))
+        .iter_databases()
+        .collect()
         .await
-        .map_err(|e| NavigationTreesAPIError::Get { source: e })?;
+        .map_err(|e| NavigationTreesAPIError::Get { source: MetastoreError::UtilSlateDB { source: e } })?;
 
     let next_cursor = rw_databases
         .iter()
@@ -85,17 +83,19 @@ pub async fn get_navigation_trees(
     for rw_database in rw_databases {
         let rw_schemas = state
             .metastore
-            .list_schemas(&rw_database.ident.clone(), ListConfig::default())
+            .iter_schemas(&rw_database.ident.clone())
+            .collect()
             .await
-            .map_err(|e| NavigationTreesAPIError::Get { source: e })?;
+            .map_err(|e| NavigationTreesAPIError::Get { source: MetastoreError::UtilSlateDB { source: e } })?;
 
         let mut schemas: Vec<NavigationTreeSchema> = vec![];
         for rw_schema in rw_schemas {
             let rw_tables = state
                 .metastore
-                .list_tables(&rw_schema.ident, ListConfig::default())
+                .iter_tables(&rw_schema.ident)
+                .collect()
                 .await
-                .map_err(|e| NavigationTreesAPIError::Get { source: e })?;
+                .map_err(|e| NavigationTreesAPIError::Get { source: MetastoreError::UtilSlateDB { source: e } })?;
 
             let mut tables: Vec<NavigationTreeTable> = vec![];
             for rw_table in rw_tables {

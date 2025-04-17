@@ -21,7 +21,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::execution::error::{self as ex_error, ExecutionResult};
+use crate::execution::error::{self as ex_error, ExecutionError, ExecutionResult};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::{
@@ -56,11 +56,11 @@ use icebucket_metastore::{
     error::MetastoreError, IceBucketSchema, IceBucketSchemaIdent, IceBucketTableIdent,
     IceBucketTableUpdate, Metastore,
 };
-use icebucket_utils::list_config::ListConfig;
 use object_store::local::LocalFileSystem;
 use object_store::ObjectStore;
 use snafu::ResultExt;
 use url::Url;
+use icebucket_utils::scan_iterator::ScanIterator;
 
 type TableProviderCache = DashMap<String, Arc<dyn TableProvider>>;
 type SchemaProviderCache = DashMap<String, TableProviderCache>;
@@ -92,9 +92,10 @@ impl IceBucketDFMetastore {
 
         let databases = self
             .metastore
-            .list_databases(ListConfig::default())
+            .iter_databases()
+            .collect()
             .await
-            .context(ex_error::MetastoreSnafu)?;
+            .map_err(|e| ExecutionError::Metastore { source: MetastoreError::UtilSlateDB { source: e }})?;
         for database in databases {
             let db_entry = self
                 .mirror
@@ -103,9 +104,10 @@ impl IceBucketDFMetastore {
             let db_seen_entry = seen.entry(database.ident.clone()).or_default();
             let schemas = self
                 .metastore
-                .list_schemas(&database.ident, ListConfig::default())
+                .iter_schemas(&database.ident)
+                .collect()
                 .await
-                .context(ex_error::MetastoreSnafu)?;
+                .map_err(|e| ExecutionError::Metastore { source: MetastoreError::UtilSlateDB { source: e }})?;
             for schema in schemas {
                 let schema_entry = db_entry
                     .entry(schema.ident.schema.clone())
@@ -115,9 +117,10 @@ impl IceBucketDFMetastore {
                     .or_default();
                 let tables = self
                     .metastore
-                    .list_tables(&schema.ident, ListConfig::default())
+                    .iter_tables(&schema.ident)
+                    .collect()
                     .await
-                    .context(ex_error::MetastoreSnafu)?;
+                    .map_err(|e| ExecutionError::Metastore { source: MetastoreError::UtilSlateDB { source: e }})?;
                 for table in tables {
                     let table_url = self
                         .metastore
@@ -597,9 +600,10 @@ impl IcebergCatalog for IceBucketIcebergBridge {
         };
         Ok(self
             .metastore
-            .list_tables(&schema_ident, ListConfig::default())
+            .iter_tables(&schema_ident)
+            .collect()
             .await
-            .map_err(|e| IcebergError::External(Box::new(e)))?
+            .map_err(|e| IcebergError::External(Box::new(MetastoreError::UtilSlateDB { source: e})))?
             .iter()
             .map(|table| {
                 IcebergIdentifier::new(
@@ -618,15 +622,17 @@ impl IcebergCatalog for IceBucketIcebergBridge {
         let mut namespaces = Vec::new();
         let databases = self
             .metastore
-            .list_databases(ListConfig::default())
+            .iter_databases()
+            .collect()
             .await
-            .map_err(|e| IcebergError::External(Box::new(e)))?;
+            .map_err(|e| IcebergError::External(Box::new(MetastoreError::UtilSlateDB { source: e})))?;
         for database in databases {
             let schemas = self
                 .metastore
-                .list_schemas(&database.ident, ListConfig::default())
+                .iter_schemas(&database.ident)
+                .collect()
                 .await
-                .map_err(|e| IcebergError::External(Box::new(e)))?;
+                .map_err(|e| IcebergError::External(Box::new(MetastoreError::UtilSlateDB { source: e})))?;
             for schema in schemas {
                 namespaces.push(IcebergNamespace::try_new(&[
                     schema.ident.database.clone(),

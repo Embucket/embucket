@@ -55,9 +55,9 @@ pub trait ScanIterator: Sized {
 // }
 
 #[derive(Clone)]
-pub struct VecScanIterator<'a, T: Send + for<'de> serde::de::Deserialize<'de>> {
+pub struct VecScanIterator<T: Send + for<'de> serde::de::Deserialize<'de>> {
     db: Arc<SlateDb>,
-    key: &'a str,
+    key: String,
     //From where to start the scan range for SlateDB
     // ex: if we ended on "tested2", the cursor would be "tested2"
     // and inside the `fn list_objects` in utils crate the start of the range would be "tested2\x00"
@@ -77,8 +77,8 @@ pub struct VecScanIterator<'a, T: Send + for<'de> serde::de::Deserialize<'de>> {
     marker: PhantomData<T>,
 }
 
-impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> VecScanIterator<'a, T> {
-    pub fn new(db: Arc<SlateDb>, key: &'a str) -> Self {
+impl<T: Send + for<'de> serde::de::Deserialize<'de>> VecScanIterator<T> {
+    pub fn new(db: Arc<SlateDb>, key: String) -> Self {
         Self {
             db,
             key,
@@ -109,7 +109,7 @@ impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> VecScanIterator<'a, T> 
 }
 
 #[async_trait]
-impl<'a, T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator for VecScanIterator<'a, T> {
+impl<T: Send + for<'de> serde::de::Deserialize<'de>> ScanIterator for VecScanIterator<T> {
     type Collectable = Vec<T>;
 
     async fn collect(self) -> Result<Self::Collectable> {

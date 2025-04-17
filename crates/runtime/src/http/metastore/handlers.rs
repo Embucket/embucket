@@ -29,9 +29,8 @@ use icebucket_metastore::{
 };
 
 use crate::http::state::AppState;
-use icebucket_utils::list_config::ListConfig;
 use validator::Validate;
-
+use icebucket_utils::scan_iterator::ScanIterator;
 /*#[derive(OpenApi)]
 #[openapi(
     paths(
@@ -69,9 +68,10 @@ pub async fn list_volumes(
 ) -> MetastoreAPIResult<Json<RwObjectVec<IceBucketVolume>>> {
     let volumes = state
         .metastore
-        .list_volumes(ListConfig::default())
+        .iter_volumes()
+        .collect()
         .await
-        .map_err(MetastoreAPIError)?
+        .map_err(|e| MetastoreAPIError(MetastoreError::UtilSlateDB { source: e }))?
         .iter()
         .map(|v| hide_sensitive(v.clone()))
         .collect();
@@ -191,9 +191,10 @@ pub async fn list_databases(
 ) -> MetastoreAPIResult<Json<Vec<RwObject<IceBucketDatabase>>>> {
     state
         .metastore
-        .list_databases(ListConfig::default())
+        .iter_databases()
+        .collect()
         .await
-        .map_err(MetastoreAPIError)
+        .map_err(|e| MetastoreAPIError(MetastoreError::UtilSlateDB { source: e }))
         .map(Json)
 }
 
@@ -308,9 +309,10 @@ pub async fn list_schemas(
 ) -> MetastoreAPIResult<Json<Vec<RwObject<IceBucketSchema>>>> {
     state
         .metastore
-        .list_schemas(&database_name, ListConfig::default())
+        .iter_schemas(&database_name)
+        .collect()
         .await
-        .map_err(MetastoreAPIError)
+        .map_err(|e| MetastoreAPIError(MetastoreError::UtilSlateDB { source: e }))
         .map(Json)
 }
 
@@ -437,9 +439,10 @@ pub async fn list_tables(
     let schema_ident = IceBucketSchemaIdent::new(database_name, schema_name);
     state
         .metastore
-        .list_tables(&schema_ident, ListConfig::default())
+        .iter_tables(&schema_ident)
+        .collect()
         .await
-        .map_err(MetastoreAPIError)
+        .map_err(|e| MetastoreAPIError(MetastoreError::UtilSlateDB { source: e }))
         .map(Json)
 }
 
