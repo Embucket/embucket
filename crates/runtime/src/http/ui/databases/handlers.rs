@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use icebucket_utils::scan_iterator::ScanIterator;
 use crate::http::state::AppState;
 use crate::http::ui::databases::models::DatabasesParameters;
 use crate::http::{
@@ -30,7 +31,6 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use futures::{StreamExt, TryStreamExt};
 use icebucket_metastore::error::MetastoreError;
 use icebucket_metastore::IceBucketDatabase;
 use utoipa::OpenApi;
@@ -229,28 +229,24 @@ pub async fn list_databases(
     //             next_cursor,
     //         })
     //     })
-    let iter = state
+    let items = state
         .metastore
-        .scan_databases()
+        .iter_databases()
         .cursor(parameters.cursor.clone())
         .token(parameters.search)
         .limit(parameters.limit)
-        .iter()
-        .await
-        .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })?
         .collect()
         .await
         .map_err(|e| DatabasesAPIError::List { source: MetastoreError::UtilSlateDB { source: e} })?;
 
-    let next_cursor = iter
-        .clone()
+    let next_cursor = items
+        .iter()
         .last()
-        .map_or(Ok(String::new()), |rw_object| rw_object?.ident.clone())?;
-    let items: Vec<Database> = iter.map(|rw_object| rw_object?.data.into()).collect();
-    Json(DatabasesResponse {
+        .map_or(Ok(String::new()), |rw_object| Ok(rw_object.data.ident.clone()))?;
+    let items: Vec<Database> = items.into_iter().map(|rw_object| rw_object.data.into()).collect();
+    Ok(Json(DatabasesResponse {
         items,
         current_cursor: parameters.cursor,
         next_cursor,
-    })
-
+    }))
 }

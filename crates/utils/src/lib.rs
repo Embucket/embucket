@@ -34,7 +34,7 @@ use std::ops::{Deref, RangeBounds};
 use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::scan_iterator::{ScanIterator, VecScanIterator, VecScanIteratorBuilder};
+use crate::scan_iterator::{ScanIterator, VecScanIterator};
 
 #[derive(Snafu, Debug)]
 //#[snafu(visibility(pub(crate)))]
@@ -188,11 +188,11 @@ impl Db {
     }
 
 
-    pub fn scan_objects_builder<'a, T: Send + for<'de> serde::de::Deserialize<'de>>(
+    pub fn iter_objects<'a, T: Send + for<'de> serde::de::Deserialize<'de>>(
         &self,
         key: &'a str,
-    ) -> VecScanIteratorBuilder<'a, T> {
-        VecScanIterator::builder(self.0.clone(), key)
+    ) -> VecScanIterator<'a, T> {
+        VecScanIterator::new(self.0.clone(), key)
     }
 
     /// Stores template object in the database.
