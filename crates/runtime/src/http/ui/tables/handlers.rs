@@ -99,6 +99,7 @@ pub async fn get_table_statistics(
             let mut total_bytes = 0;
             let mut total_rows = 0;
             if let Ok(Some(latest_snapshot)) = rw_object.metadata.current_snapshot(None) {
+                dbg!(latest_snapshot);
                 total_bytes = latest_snapshot
                     .summary()
                     .other

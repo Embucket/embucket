@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use embucket_utils::iterable::{IterableCursor, IterableEntity};
 use embucket_utils::{Db, Error};
 use serde_json::de;
-use slatedb::error::SlateDBError;
+use slatedb::SlateDBError;
 use snafu::{ResultExt, Snafu};
 use std::str;
 use std::sync::Arc;

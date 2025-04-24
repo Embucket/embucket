@@ -18,10 +18,12 @@
 use super::config::StaticWebConfig;
 use super::handler::WEB_ASSETS_MOUNT_PATH;
 use super::handler::{root_handler, tar_handler};
-use crate::http::{layers::make_cors_middleware, shutdown_signal};
+use crate::http::layers::make_cors_middleware;
 use axum::{routing::get, Router};
 use core::net::SocketAddr;
+use tokio::signal;
 use tower_http::trace::TraceLayer;
+use embucket_utils::Db;
 
 #[allow(clippy::unwrap_used, clippy::as_conversions)]
 pub async fn run_web_assets_server(
@@ -56,4 +58,44 @@ pub async fn run_web_assets_server(
     });
 
     Ok(addr)
+}
+
+/// This func will wait for a signal to shutdown the service.
+/// It will wait for either a Ctrl+C signal or a SIGTERM signal.
+///
+/// # Panics
+/// If the function fails to install the signal handler, it will panic.
+#[allow(
+    clippy::expect_used,
+    clippy::redundant_pub_crate,
+    clippy::cognitive_complexity
+)]
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {
+            tracing::warn!("Ctrl+C received, starting graceful shutdown");
+        },
+        () = terminate => {
+            tracing::warn!("SIGTERM received, starting graceful shutdown");
+        },
+    }
+
+    tracing::warn!("signal received, starting graceful shutdown");
 }

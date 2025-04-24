@@ -31,7 +31,7 @@ use time::Duration;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
 use tower_sessions::{Expiry, SessionManagerLayer};
-
+use embucket_utils::Db;
 use layers::make_cors_middleware;
 use session::{RequestSessionMemory, RequestSessionStore};
 
@@ -96,14 +96,14 @@ pub fn make_app(
 }
 
 #[allow(clippy::as_conversions)]
-pub async fn run_app(app: Router, config: &WebConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_app(app: Router, config: &WebConfig, db: Db) -> Result<(), Box<dyn std::error::Error>> {
     let host = config.host.clone();
     let port = config.port;
     let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;
     let addr = listener.local_addr()?;
     tracing::info!("Listening on http://{}", addr);
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal(db))
         .await
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
@@ -118,7 +118,7 @@ pub async fn run_app(app: Router, config: &WebConfig) -> Result<(), Box<dyn std:
     clippy::redundant_pub_crate,
     clippy::cognitive_complexity
 )]
-async fn shutdown_signal() {
+async fn shutdown_signal(db: Db) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -139,9 +139,11 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {
             tracing::warn!("Ctrl+C received, starting graceful shutdown");
+            db.close().await.unwrap();
         },
         () = terminate => {
             tracing::warn!("SIGTERM received, starting graceful shutdown");
+            db.close().await.unwrap();
         },
     }
 

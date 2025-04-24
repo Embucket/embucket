@@ -25,9 +25,9 @@ use iterable::IterableEntity;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::de;
 use serde_json::ser;
-use slatedb::db::Db as SlateDb;
-use slatedb::db_iter::DbIterator;
-use slatedb::error::SlateDBError;
+use slatedb::Db as SlateDb;
+use slatedb::DbIterator;
+use slatedb::SlateDBError;
 use snafu::prelude::*;
 use std::ops::RangeBounds;
 use std::string::ToString;
@@ -76,7 +76,7 @@ impl Db {
     pub async fn memory() -> Self {
         let object_store = object_store::memory::InMemory::new();
         let db = SlateDb::open(
-            object_store::path::Path::from("/"),
+            "/",
             std::sync::Arc::new(object_store),
         )
         .await
@@ -114,7 +114,7 @@ impl Db {
     pub async fn put<T: serde::Serialize + Sync>(&self, key: &str, value: &T) -> Result<()> {
         let serialized = ser::to_vec(value).context(SerializeValueSnafu)?;
         self.0
-            .put(key.as_bytes(), serialized.as_ref())
+            .put(key.as_bytes(), serialized)
             .await
             .context(KeyPutSnafu {
                 key: key.to_string(),
@@ -204,7 +204,7 @@ impl Db {
     ) -> Result<()> {
         let serialized = ser::to_vec(entity).context(SerializeValueSnafu)?;
         self.0
-            .put(entity.key().as_ref(), serialized.as_ref())
+            .put(entity.key().as_ref(), serialized)
             .await
             .context(DatabaseSnafu)
     }
@@ -303,6 +303,7 @@ pub trait Repository {
 #[allow(clippy::unwrap_used)]
 #[allow(clippy::expect_used)]
 mod test {
+    use std::ops::Range;
     use super::*;
     use bytes::Bytes;
     use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -445,9 +446,9 @@ mod test {
             "Added items count={} in {:?}",
             COUNT,
             SystemTime::now().duration_since(started)
-        );
-
-        let mut iter = db.0.scan(..).await.unwrap();
+        ); 
+        let range = Bytes::from("")..Bytes::from("\x7F");
+        let mut iter = db.0.scan(range).await.unwrap();
         let mut i = 0;
         while let Ok(Some(item)) = iter.next().await {
             assert_eq!(item.key, items[i].key());
