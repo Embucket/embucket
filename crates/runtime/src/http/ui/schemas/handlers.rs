@@ -220,7 +220,7 @@ pub async fn list_schemas(
         database: Some(database_name.clone()),
         schema: None,
     };
-    let sql_string = format!("SELECT DISTINCT table_schema FROM datafusion.information_schema.tables WHERE table_catalog = '{}'", database_name.clone());
+    let sql_string = format!("SELECT DISTINCT table_schema FROM information_schema.tables WHERE table_catalog = '{}'", database_name.clone());
     let (batches, _) = state
         .execution_svc
         .query(
