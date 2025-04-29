@@ -20,7 +20,12 @@ use embucket_utils::scan_iterator::ScanIterator;
 use std::collections::HashMap;
 use std::convert::From;
 use std::convert::Into;
+use arrow_array::StringArray;
+use chrono::Utc;
 use utoipa::OpenApi;
+use crate::execution::query::QueryContext;
+use crate::http::session::DFSessionId;
+use crate::http::ui::tables::models::{TablePreviewDataColumn, TablePreviewDataRow};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -206,30 +211,71 @@ pub async fn update_schema(
 )]
 #[tracing::instrument(level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn list_schemas(
+    DFSessionId(session_id): DFSessionId,
     Query(parameters): Query<SchemasParameters>,
     State(state): State<AppState>,
     Path(database_name): Path<String>,
 ) -> SchemasResult<Json<SchemasResponse>> {
-    state
-        .metastore
-        .iter_schemas(&database_name)
-        .cursor(parameters.cursor.clone())
-        .limit(parameters.limit)
-        .token(parameters.search)
-        .collect()
+    let context = QueryContext {
+        database: Some(database_name.clone()),
+        schema: None,
+    };
+    let sql_string = format!("SELECT DISTINCT table_schema FROM datafusion.information_schema.tables WHERE table_catalog = '{}'", database_name.clone());
+    let (batches, _) = state
+        .execution_svc
+        .query(
+            &session_id, 
+            sql_string.as_str(), 
+            context
+        )
         .await
-        .map_err(|e| SchemasAPIError::List {
-            source: MetastoreError::UtilSlateDB { source: e },
-        })
-        .map(|rw_objects| {
-            let next_cursor = rw_objects
-                .iter()
-                .last()
-                .map_or(String::new(), |rw_object| rw_object.ident.schema.clone());
-            Json(SchemasResponse {
-                items: rw_objects.into_iter().map(Schema::from).collect(),
-                current_cursor: parameters.cursor,
-                next_cursor,
-            })
-        })
+        .map_err(|e| SchemasAPIError::Query {
+            source: e,
+        })?;
+    dbg!("here we are");
+    let mut items: Vec<Schema> = Vec::new();
+    for batch in &batches {
+        for (i, column) in batch.columns().iter().enumerate() {
+            for row in column
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .iter() {
+                dbg!(&row);
+                items.push(Schema {
+                    name: row.unwrap().to_string(),
+                    database: database_name.clone(),
+                    created_at: Utc::now().naive_utc(),
+                    updated_at: Utc::now().naive_utc(),
+                })
+            }
+        }
+    }
+    Ok(Json(SchemasResponse {
+        items,
+        current_cursor: None,
+        next_cursor: "".to_string(),
+    }))
+    // state
+    //     .metastore
+    //     .iter_schemas(&database_name)
+    //     .cursor(parameters.cursor.clone())
+    //     .limit(parameters.limit)
+    //     .token(parameters.search)
+    //     .collect()
+    //     .await
+    //     .map_err(|e| SchemasAPIError::List {
+    //         source: MetastoreError::UtilSlateDB { source: e },
+    //     })
+    //     .map(|rw_objects| {
+    //         let next_cursor = rw_objects
+    //             .iter()
+    //             .last()
+    //             .map_or(String::new(), |rw_object| rw_object.ident.schema.clone());
+    //         Json(SchemasResponse {
+    //             items: rw_objects.into_iter().map(Schema::from).collect(),
+    //             current_cursor: parameters.cursor,
+    //             next_cursor,
+    //         })
+    //     })
 }
