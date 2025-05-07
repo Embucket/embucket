@@ -1,6 +1,7 @@
 //use super::datafusion::functions::geospatial::register_udfs as register_geo_udfs;
 use super::datafusion::functions::aggregate::register_udafs;
 use super::datafusion::functions::register_udfs;
+use super::datafusion::custom_planner::CustomQueryPlanner;
 use super::datafusion::type_planner::CustomTypePlanner;
 use super::dedicated_executor::DedicatedExecutor;
 use super::error::{self as ex_error, ExecutionError, ExecutionResult};
@@ -67,7 +68,7 @@ impl UserSession {
             .with_default_features()
             .with_runtime_env(Arc::new(runtime_config))
             .with_catalog_list(catalog_list_impl.clone())
-            .with_query_planner(Arc::new(IcebergQueryPlanner::new()))
+            .with_query_planner(Arc::new(datafusion_iceberg::planner::IcebergQueryPlanner::new()))
             .with_type_planner(Arc::new(CustomTypePlanner {}))
             .with_analyzer_rule(Arc::new(IcebergTypesAnalyzer {}))
             .build();

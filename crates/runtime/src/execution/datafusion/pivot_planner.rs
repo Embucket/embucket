@@ -18,6 +18,12 @@ pub struct PivotExtensionPlanner {
     inner: DefaultPhysicalPlanner,
 }
 
+impl std::fmt::Debug for PivotExtensionPlanner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PivotExtensionPlanner")
+    }
+}
+
 impl PivotExtensionPlanner {
     pub fn new() -> Self {
         Self {
