@@ -23,7 +23,6 @@ use sqlparser::ast::{
 };
 use std::sync::Arc;
 use datafusion_expr::expr::{AggregateFunction, Alias};
-use super::pivot::PivotPlan;
 
 
 pub fn transform_pivot_to_aggregate(
