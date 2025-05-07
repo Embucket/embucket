@@ -6,3 +6,5 @@ pub mod error;
 pub mod functions;
 pub mod type_planner;
 pub mod visitors;
+pub mod pivot;
+pub mod pivot_planner;

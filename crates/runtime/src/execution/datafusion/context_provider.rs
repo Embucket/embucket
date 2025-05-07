@@ -2,7 +2,9 @@ use arrow::datatypes::{Field, Schema};
 use datafusion::common::Result;
 use datafusion::common::{plan_err, ToDFSchema};
 use datafusion::logical_expr::sqlparser::ast::{Ident, ObjectName};
-use datafusion::logical_expr::{CreateMemoryTable, DdlStatement, EmptyRelation, LogicalPlan};
+use datafusion::logical_expr::{
+    CreateMemoryTable, DdlStatement, EmptyRelation, LogicalPlan, Extension as DFExtension,
+};
 use datafusion::sql::parser::{DFParser, Statement as DFStatement};
 use datafusion::sql::planner::{
     object_name_to_table_reference, ContextProvider, IdentNormalizer, ParserOptions,
@@ -10,13 +12,17 @@ use datafusion::sql::planner::{
 };
 use datafusion::sql::sqlparser::ast::{
     ColumnDef as SQLColumnDef, ColumnOption, CreateTable as CreateTableStatement,
-    DataType as SQLDataType, Statement,
+    DataType as SQLDataType, Statement, TableFactor,
 };
 use datafusion::sql::statement::{calc_inline_constraints_from_columns, object_name_to_string};
-use datafusion_common::{DFSchema, DFSchemaRef, SchemaReference, TableReference};
-use datafusion_expr::DropCatalogSchema;
-use sqlparser::ast::ObjectType;
+use datafusion_common::{Column, DFSchema, DFSchemaRef, SchemaReference, TableReference};
+use datafusion_expr::{DropCatalogSchema, Expr, Literal};
+use sqlparser::ast::{
+    ObjectType, PivotValueSource,
+};
 use std::sync::Arc;
+
+use super::pivot::PivotPlan;
 
 pub struct ExtendedSqlToRel<'a, S>
 where
@@ -46,6 +52,32 @@ where
 
     /// Custom implementation of `sql_statement_to_plan`
     pub fn sql_statement_to_plan(&self, statement: Statement) -> Result<LogicalPlan> {
+        // Check if we have a query containing a PIVOT operation
+        // We need to intercept this before it goes to the inner SqlToRel
+        match &statement {
+            Statement::Query(query) => {
+                // Check if the query's body contains a table factor with PIVOT
+                match query.body.as_ref() {
+                    sqlparser::ast::SetExpr::Select(select) => {
+                        // Look for PIVOT in FROM clause
+                        for table_with_joins in &select.from {
+                            match &table_with_joins.relation {
+                                TableFactor::Pivot { .. } => {
+                                    // Extract a SQL string representing the original query
+                                    // so we can parse and process it ourselves
+                                    let query_str = format!("{}", statement);
+                                    return self.handle_pivot_query(&query_str);
+                                }
+                                _ => continue,
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+
         // Check for a custom statement type
         match self.handle_custom_statement(statement.clone()) {
             Ok(plan) => return Ok(plan),
@@ -56,6 +88,77 @@ where
 
         // For all other statements, delegate to the wrapped SqlToRel
         self.inner.sql_statement_to_plan(statement)
+    }
+
+    /// Handle a query containing a PIVOT operation
+    fn handle_pivot_query(&self, query_str: &str) -> Result<LogicalPlan> {
+        tracing::info!("Processing PIVOT query: {}", query_str);
+        
+        // Parse the SQL query
+        let mut statements = DFParser::parse_sql(query_str)?;
+        if statements.is_empty() {
+            return plan_err!("Failed to parse PIVOT query");
+        }
+        
+        let statement = statements.pop_front().unwrap();
+        
+        match statement {
+            DFStatement::Statement(s) => {
+                if let Statement::Query(query) = *s {
+                    if let sqlparser::ast::SetExpr::Select(select) = *query.body {
+                        // Process each table in the FROM clause
+                        for table_with_joins in select.from {
+                            if let TableFactor::Pivot { 
+                                table: _, 
+                                aggregate_functions: _, 
+                                value_column,
+                                value_source: _,
+                                ..
+                            } = table_with_joins.relation {
+                                // Step 1: Create a simple input plan 
+                                let dummy_input_schema = DFSchema::empty();
+                                let input_plan = LogicalPlan::EmptyRelation(EmptyRelation {
+                                    produce_one_row: false,
+                                    schema: Arc::new(dummy_input_schema),
+                                });
+                                
+                                // Step 2: Extract pivot column
+                                if value_column.is_empty() {
+                                    return plan_err!("PIVOT value column is required");
+                                }
+                                
+                                let column_name = value_column.last().unwrap().value.clone();
+                                let pivot_column = datafusion_common::Column::new(None::<&str>, column_name);
+                                
+                                // Step 3: Extract pivot values - just create a dummy value for now
+                                let pivot_values = vec![datafusion_common::ScalarValue::Utf8(Some("dummy_value".to_string()))];
+                                
+                                // Step 4: Create a placeholder aggregate expression
+                                let agg_expr = datafusion_expr::expr::Expr::Literal(
+                                    datafusion_common::ScalarValue::Utf8(Some("*".to_string()))
+                                );
+                                
+                                // Step 5: Create our custom PivotPlan
+                                let pivot_plan = super::pivot::PivotPlan::try_new(
+                                    Arc::new(input_plan),
+                                    agg_expr,
+                                    pivot_column,
+                                    pivot_values,
+                                )?;
+                                
+                                // Step 6: Create an Extension node with our custom plan
+                                return Ok(LogicalPlan::Extension(DFExtension {
+                                    node: Arc::new(pivot_plan),
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        
+        plan_err!("Failed to extract PIVOT operation from query")
     }
 
     /// Handle custom statements not supported by the original `SqlToRel`
