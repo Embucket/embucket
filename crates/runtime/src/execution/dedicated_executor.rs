@@ -37,6 +37,8 @@ use tokio::{
     task::JoinSet,
 };
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::info;
+use tracing_attributes::instrument;
 
 /// Create a [`DedicatedExecutorBuilder`] from a tokio [`Builder`]
 impl From<Builder> for DedicatedExecutorBuilder {
@@ -126,6 +128,14 @@ pub struct DedicatedExecutor {
     /// State for managing Tokio Runtime Handle for CPU tasks
     state: Arc<RwLock<State>>,
 }
+
+// impl Drop for DedicatedExecutor {
+//     #[instrument(skip(self))]
+//     fn drop(&mut self) {
+//         info!("DedicatedExecutor dropped");
+//         self.shutdown();
+//     }
+// }
 
 impl DedicatedExecutor {
     /// Create a new builder to crate a [`DedicatedExecutor`]
@@ -869,12 +879,11 @@ mod tests {
     use futures::StreamExt;
     use object_store::memory::InMemory;
     use std::fmt::Formatter;
-    use std::{
-        panic::panic_any,
-        sync::{Arc, Barrier},
-        time::Duration,
-    };
+    use std::{panic::panic_any, process, sync::{Arc, Barrier}, time::Duration};
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::{net::TcpListener, sync::Barrier as AsyncBarrier};
+    use tokio::time::sleep;
 
     /// Wait for the barrier and then return `result`
     #[allow(clippy::unused_async)]
@@ -1632,5 +1641,91 @@ mod tests {
     async fn with_mock_io<X>(x: X) -> X {
         mock_io().await;
         x
+    }
+
+    #[tokio::test]
+    async fn test_executor_fd_cleanup() {
+        // Get initial FD state
+        let initial_fds = get_process_fds();
+
+        // Create and use executor
+        let executor = DedicatedExecutor::builder().build();
+
+        // Run a task
+        let task_completed = Arc::new(AtomicBool::new(false));
+        let task_completed_clone = task_completed.clone();
+
+        executor.spawn(Box::pin(async move {
+            sleep(Duration::from_millis(50)).await;
+            task_completed_clone.store(true, Ordering::SeqCst);
+        }));
+
+        sleep(Duration::from_millis(100)).await;
+
+        // Get FDs during execution
+        let running_fds = get_process_fds();
+
+        // Shutdown executor
+        executor.shutdown();
+        sleep(Duration::from_millis(100)).await;
+
+        // Get final FD state
+        let final_fds = get_process_fds();
+
+        // Verify cleanup
+        let runtime_fds: Vec<_> = running_fds
+            .iter()
+            .filter(|(_, fd_type)|
+                *fd_type == "eventpoll" ||
+                    *fd_type == "eventfd" ||
+                    *fd_type == "socket")
+            .collect();
+
+        let remaining_fds: Vec<_> = final_fds
+            .iter()
+            .filter(|(_, fd_type)|
+                *fd_type == "eventpoll" ||
+                    *fd_type == "eventfd" ||
+                    *fd_type == "socket")
+            .collect();
+
+        println!("Runtime FDs: {:?}", runtime_fds);
+        println!("Remaining FDs after shutdown: {:?}", remaining_fds);
+
+        assert!(remaining_fds.len() < runtime_fds.len(),
+                "Expected fewer FDs after shutdown. Before: {}, After: {}",
+                runtime_fds.len(),
+                remaining_fds.len());
+    }
+
+    fn get_process_fds() -> HashMap<String, String> {
+        let pid = process::id();
+        let fd_path = format!("/proc/{}/fd", pid);
+        let ls_output = std::process::Command::new("ls")
+            .arg("-l")
+            .arg(fd_path)
+            .output()
+            .expect("Failed to execute ls");
+
+        let fd_list = String::from_utf8_lossy(&ls_output.stdout);
+
+        let mut fd_map = HashMap::new();
+        for line in fd_list.lines() {
+            if line.contains("anon_inode:[eventpoll]") ||
+                line.contains("anon_inode:[eventfd]") ||
+                line.contains("socket:[") {
+                if let Some(fd_num) = line.split_whitespace().nth(8) {
+                    let fd_type = if line.contains("eventpoll") {
+                        "eventpoll"
+                    } else if line.contains("eventfd") {
+                        "eventfd"
+                    } else {
+                        "socket"
+                    };
+                    fd_map.insert(fd_num.to_string(), fd_type.to_string());
+                }
+            }
+        }
+        fd_map
     }
 }
