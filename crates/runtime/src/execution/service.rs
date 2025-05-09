@@ -19,6 +19,7 @@ use super::{
 };
 use embucket_metastore::{Metastore, TableIdent as MetastoreTableIdent};
 use tokio::sync::RwLock;
+use tracing::info;
 use uuid::Uuid;
 
 use super::error::{self as ex_error, ExecutionError, ExecutionResult};
@@ -66,7 +67,9 @@ impl ExecutionService for CoreExecutionService {
     async fn create_session(&self, session_id: String) -> ExecutionResult<Arc<UserSession>> {
         {
             let sessions = self.df_sessions.read().await;
+            info!("Trying to find session");
             if let Some(session) = sessions.get(&session_id) {
+                info!("Session FOUND AAAAAAAAAAAAAAa");
                 return Ok(session.clone());
             }
         }
