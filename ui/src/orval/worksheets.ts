@@ -29,6 +29,7 @@ import { useAxiosMutator } from '../lib/axiosMutator';
 import type { ErrorType } from '../lib/axiosMutator';
 import type {
   ErrorResponse,
+  GetWorksheetsParams,
   I64,
   WorksheetCreatePayload,
   WorksheetCreateResponse,
@@ -40,34 +41,38 @@ import type {
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 export const getWorksheets = (
+  params?: GetWorksheetsParams,
   options?: SecondParameter<typeof useAxiosMutator>,
   signal?: AbortSignal,
 ) => {
   return useAxiosMutator<WorksheetsResponse>(
-    { url: `/ui/worksheets`, method: 'GET', signal },
+    { url: `/ui/worksheets`, method: 'GET', params, signal },
     options,
   );
 };
 
-export const getGetWorksheetsQueryKey = () => {
-  return [`/ui/worksheets`] as const;
+export const getGetWorksheetsQueryKey = (params?: GetWorksheetsParams) => {
+  return [`/ui/worksheets`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetWorksheetsInfiniteQueryOptions = <
   TData = InfiniteData<Awaited<ReturnType<typeof getWorksheets>>>,
   TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: Partial<
-    UseInfiniteQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>
-  >;
-  request?: SecondParameter<typeof useAxiosMutator>;
-}) => {
+>(
+  params?: GetWorksheetsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetWorksheetsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetWorksheetsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorksheets>>> = ({ signal }) =>
-    getWorksheets(requestOptions, signal);
+    getWorksheets(params, requestOptions, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
     Awaited<ReturnType<typeof getWorksheets>>,
@@ -85,6 +90,7 @@ export function useGetWorksheetsInfinite<
   TData = InfiniteData<Awaited<ReturnType<typeof getWorksheets>>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params: undefined | GetWorksheetsParams,
   options: {
     query: Partial<
       UseInfiniteQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>
@@ -105,6 +111,7 @@ export function useGetWorksheetsInfinite<
   TData = InfiniteData<Awaited<ReturnType<typeof getWorksheets>>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: GetWorksheetsParams,
   options?: {
     query?: Partial<
       UseInfiniteQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>
@@ -125,6 +132,7 @@ export function useGetWorksheetsInfinite<
   TData = InfiniteData<Awaited<ReturnType<typeof getWorksheets>>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: GetWorksheetsParams,
   options?: {
     query?: Partial<
       UseInfiniteQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>
@@ -138,6 +146,7 @@ export function useGetWorksheetsInfinite<
   TData = InfiniteData<Awaited<ReturnType<typeof getWorksheets>>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: GetWorksheetsParams,
   options?: {
     query?: Partial<
       UseInfiniteQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>
@@ -146,7 +155,7 @@ export function useGetWorksheetsInfinite<
   },
   queryClient?: QueryClient,
 ): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetWorksheetsInfiniteQueryOptions(options);
+  const queryOptions = getGetWorksheetsInfiniteQueryOptions(params, options);
 
   const query = useInfiniteQuery(queryOptions, queryClient) as UseInfiniteQueryResult<
     TData,
@@ -161,16 +170,19 @@ export function useGetWorksheetsInfinite<
 export const getGetWorksheetsQueryOptions = <
   TData = Awaited<ReturnType<typeof getWorksheets>>,
   TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>>;
-  request?: SecondParameter<typeof useAxiosMutator>;
-}) => {
+>(
+  params?: GetWorksheetsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetWorksheetsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetWorksheetsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorksheets>>> = ({ signal }) =>
-    getWorksheets(requestOptions, signal);
+    getWorksheets(params, requestOptions, signal);
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getWorksheets>>,
@@ -186,6 +198,7 @@ export function useGetWorksheets<
   TData = Awaited<ReturnType<typeof getWorksheets>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params: undefined | GetWorksheetsParams,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>> &
       Pick<
@@ -204,6 +217,7 @@ export function useGetWorksheets<
   TData = Awaited<ReturnType<typeof getWorksheets>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: GetWorksheetsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>> &
       Pick<
@@ -222,6 +236,7 @@ export function useGetWorksheets<
   TData = Awaited<ReturnType<typeof getWorksheets>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: GetWorksheetsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>>;
     request?: SecondParameter<typeof useAxiosMutator>;
@@ -233,13 +248,14 @@ export function useGetWorksheets<
   TData = Awaited<ReturnType<typeof getWorksheets>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: GetWorksheetsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWorksheets>>, TError, TData>>;
     request?: SecondParameter<typeof useAxiosMutator>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getGetWorksheetsQueryOptions(options);
+  const queryOptions = getGetWorksheetsQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

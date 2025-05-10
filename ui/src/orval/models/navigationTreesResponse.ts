@@ -6,10 +6,7 @@
  * OpenAPI spec version: 1.0.2
  */
 import type { NavigationTreeDatabase } from './navigationTreeDatabase';
-import type { NavigationTreesResponseCurrentCursor } from './navigationTreesResponseCurrentCursor';
 
 export interface NavigationTreesResponse {
-  currentCursor?: NavigationTreesResponseCurrentCursor;
   items: NavigationTreeDatabase[];
-  nextCursor: string;
 }

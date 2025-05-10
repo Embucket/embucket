@@ -30,8 +30,10 @@ import type { ErrorType } from '../lib/axiosMutator';
 import type {
   ErrorResponse,
   GetTablePreviewDataParams,
+  GetTablesParams,
   TableColumnsResponse,
   TablePreviewDataResponse,
+  TablesResponse,
   TableStatisticsResponse,
   TableUploadPayload,
   TableUploadResponse,
@@ -39,6 +41,260 @@ import type {
 } from './models';
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+export const getTables = (
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: SecondParameter<typeof useAxiosMutator>,
+  signal?: AbortSignal,
+) => {
+  return useAxiosMutator<TablesResponse>(
+    {
+      url: `/ui/databases/${databaseName}/schemas/${schemaName}/tables`,
+      method: 'GET',
+      params,
+      signal,
+    },
+    options,
+  );
+};
+
+export const getGetTablesQueryKey = (
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+) => {
+  return [
+    `/ui/databases/${databaseName}/schemas/${schemaName}/tables`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetTablesInfiniteQueryOptions = <
+  TData = InfiniteData<Awaited<ReturnType<typeof getTables>>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseInfiniteQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTablesQueryKey(databaseName, schemaName, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTables>>> = ({ signal }) =>
+    getTables(databaseName, schemaName, params, requestOptions, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(databaseName && schemaName),
+    ...queryOptions,
+  } as UseInfiniteQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetTablesInfiniteQueryResult = NonNullable<Awaited<ReturnType<typeof getTables>>>;
+export type GetTablesInfiniteQueryError = ErrorType<ErrorResponse>;
+
+export function useGetTablesInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTables>>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params: undefined | GetTablesParams,
+  options: {
+    query: Partial<UseInfiniteQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTables>>,
+          TError,
+          Awaited<ReturnType<typeof getTables>>
+        >,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTablesInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTables>>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseInfiniteQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTables>>,
+          TError,
+          Awaited<ReturnType<typeof getTables>>
+        >,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTablesInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTables>>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseInfiniteQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetTablesInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTables>>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseInfiniteQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTablesInfiniteQueryOptions(databaseName, schemaName, params, options);
+
+  const query = useInfiniteQuery(queryOptions, queryClient) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+export const getGetTablesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTables>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTablesQueryKey(databaseName, schemaName, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTables>>> = ({ signal }) =>
+    getTables(databaseName, schemaName, params, requestOptions, signal);
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(databaseName && schemaName),
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetTablesQueryResult = NonNullable<Awaited<ReturnType<typeof getTables>>>;
+export type GetTablesQueryError = ErrorType<ErrorResponse>;
+
+export function useGetTables<
+  TData = Awaited<ReturnType<typeof getTables>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params: undefined | GetTablesParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTables>>,
+          TError,
+          Awaited<ReturnType<typeof getTables>>
+        >,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTables<
+  TData = Awaited<ReturnType<typeof getTables>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTables>>,
+          TError,
+          Awaited<ReturnType<typeof getTables>>
+        >,
+        'initialData'
+      >;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTables<
+  TData = Awaited<ReturnType<typeof getTables>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetTables<
+  TData = Awaited<ReturnType<typeof getTables>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  databaseName: string,
+  schemaName: string,
+  params?: GetTablesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTables>>, TError, TData>>;
+    request?: SecondParameter<typeof useAxiosMutator>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTablesQueryOptions(databaseName, schemaName, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
 
 export const getTableColumns = (
   databaseName: string,

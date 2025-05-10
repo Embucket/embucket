@@ -2,62 +2,79 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { flushSync } from 'react-dom';
 
-export interface AuthContext {
+import { useRefreshAuthToken } from '@/orval/auth';
+import type { AuthResponse } from '@/orval/models';
+
+import { AxiosInterceptors } from './AxiosInterceptors';
+
+export interface AuthContextType {
   isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (username: string) => Promise<void>;
-  logout: () => void;
-  user: string | null;
+  setAuthenticated: (data: AuthResponse) => void;
+  resetAuthenticated: () => void;
+  getAccessToken: () => string | null;
 }
 
-const AuthContext = createContext<AuthContext | undefined>(undefined);
-
-const key = 'auth.user';
-
-const getUserFromLocalStorage = () => {
-  return localStorage.getItem(key) ?? null;
-};
-
-const setStoredUser = (user: string | null) => {
-  if (user) {
-    localStorage.setItem(key, user);
-  } else {
-    localStorage.removeItem(key);
-  }
-};
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<string | null>(getUserFromLocalStorage());
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const isAuthenticated = !!user;
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const logout = useCallback(() => {
-    setStoredUser(null);
-    setUser(null);
-  }, []);
+  const {
+    mutate: refresh,
+    isPending,
+    isIdle,
+  } = useRefreshAuthToken({
+    mutation: {
+      onSuccess: (data) => {
+        setAuthenticated(data);
+      },
+    },
+  });
 
-  const login = useCallback(async (username: string) => {
-    setIsLoading(true);
-    // Delay 1 sec
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    // https://github.com/TanStack/router/discussions/1668#discussioncomment-9726727
+  const getAccessToken = useCallback(() => {
+    return accessToken;
+  }, [accessToken]);
+
+  const setAuthenticated = useCallback((data: AuthResponse) => {
+    // Important to use flushSync, so TanStack Router beforeLoad context is updated
     flushSync(() => {
-      setStoredUser(username);
-      setUser(username);
-      setIsLoading(false);
+      setAccessToken(data.accessToken);
     });
   }, []);
 
-  useEffect(() => {
-    setUser(getUserFromLocalStorage());
+  const resetAuthenticated = useCallback(() => {
+    setAccessToken(null);
   }, []);
 
+  useEffect(refresh, [refresh]);
+
+  const isAuthenticated = !!accessToken;
+
   const value = useMemo(
-    () => ({ isAuthenticated, isLoading, user, login, logout }),
-    [isAuthenticated, user, login, logout, isLoading],
+    () => ({
+      isAuthenticated,
+      setAuthenticated,
+      resetAuthenticated,
+      getAccessToken,
+    }),
+    [isAuthenticated, setAuthenticated, resetAuthenticated, getAccessToken],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  // Important to return null here, so TanStack Router context is correctly initialized
+  if (isIdle || isPending) {
+    return null;
+  }
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <AxiosInterceptors
+        onSetAuthenticated={setAuthenticated}
+        onResetAuthenticated={resetAuthenticated}
+        getAccessToken={getAccessToken}
+      />
+    </AuthContext.Provider>
+  );
 };
 
 // eslint-disable-next-line react-refresh/only-export-components

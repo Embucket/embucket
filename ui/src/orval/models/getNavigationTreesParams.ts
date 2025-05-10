@@ -8,9 +8,9 @@
 
 export type GetNavigationTreesParams = {
   /**
-   * Navigation trees cursor
+   * Navigation trees offset
    */
-  cursor?: string;
+  offset?: number;
   /**
    * Navigation trees limit
    */

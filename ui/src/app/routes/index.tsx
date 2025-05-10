@@ -1,15 +1,14 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-import { AuthForm } from '@/modules/auth/AuthForm';
+import { SignInPage } from '@/modules/auth/sign-in-page';
 
 export const Route = createFileRoute('/')({
-  component: Auth,
+  component: SignInPage,
+  beforeLoad: ({ context }) => {
+    if (context.auth.isAuthenticated) {
+      throw redirect({
+        to: '/home',
+      });
+    }
+  },
 });
-
-function Auth() {
-  return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <AuthForm />
-    </div>
-  );
-}

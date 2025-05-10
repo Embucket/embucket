@@ -13,6 +13,10 @@ export type GetQueriesParams = {
    */
   worksheetId?: I64;
   /**
+   * Sql text filter
+   */
+  sqlText?: string;
+  /**
    * Cursor
    */
   cursor?: I64;
