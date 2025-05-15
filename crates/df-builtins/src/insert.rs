@@ -1,9 +1,11 @@
-use datafusion::arrow::array::StringBuilder;
+use datafusion::arrow::array::{BinaryBuilder, StringBuilder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::error::Result as DFResult;
-use datafusion_common::cast::{as_int64_array, as_string_array};
-use datafusion_common::exec_err;
-use datafusion_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion_common::cast::{as_binary_array, as_int64_array, as_string_array};
+use datafusion_common::{exec_err, plan_err};
+use datafusion_expr::{
+    ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, TypeSignature, Volatility,
+};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -52,12 +54,29 @@ impl Default for Insert {
 impl Insert {
     pub fn new() -> Self {
         Self {
-            signature: Signature::exact(
+            // signature: Signature::exact(
+            //     vec![
+            //         DataType::Utf8,
+            //         DataType::Int64,
+            //         DataType::Int64,
+            //         DataType::Utf8,
+            //     ],
+            //     Volatility::Immutable,
+            // ),
+            signature: Signature::one_of(
                 vec![
-                    DataType::Utf8,
-                    DataType::Int64,
-                    DataType::Int64,
-                    DataType::Utf8,
+                    TypeSignature::Exact(vec![
+                        DataType::Utf8,
+                        DataType::Int64,
+                        DataType::Int64,
+                        DataType::Utf8,
+                    ]),
+                    TypeSignature::Exact(vec![
+                        DataType::Binary,
+                        DataType::Int64,
+                        DataType::Int64,
+                        DataType::Binary,
+                    ]),
                 ],
                 Volatility::Immutable,
             ),
@@ -78,11 +97,14 @@ impl ScalarUDFImpl for Insert {
         &self.signature
     }
 
-    fn return_type(&self, _arg_types: &[DataType]) -> DFResult<DataType> {
-        Ok(DataType::Utf8)
+    fn return_type(&self, arg_types: &[DataType]) -> DFResult<DataType> {
+        match (arg_types[0].clone(), arg_types[3].clone()) {
+            (DataType::Utf8, DataType::Utf8) => Ok(DataType::Utf8),
+            (DataType::Binary, DataType::Binary) => Ok(DataType::Binary),
+            _ => plan_err!("Base expression and insert expression should be the same data type")
+        }
     }
 
-    #[allow(clippy::unwrap_used)]
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let ScalarFunctionArgs { args, .. } = args;
 
@@ -106,56 +128,145 @@ impl ScalarUDFImpl for Insert {
             ColumnarValue::Scalar(v) => &v.to_array()?,
         };
 
-        let base_strs = as_string_array(&base_arr)?;
-        let pos_i64s = as_int64_array(&pos_arr)?;
-        let len_i64s = as_int64_array(&len_arr)?;
-        let insert_strs = as_string_array(&insert_arr)?;
+        let res_arr: Arc<dyn datafusion::arrow::array::Array> = match base_arr.data_type() {
+            DataType::Utf8 => {
+                let base_strs = as_string_array(&base_arr)?;
+                let pos_i64s = as_int64_array(&pos_arr)?;
+                let len_i64s = as_int64_array(&len_arr)?;
+                let insert_strs = as_string_array(&insert_arr)?;
 
-        let mut res = StringBuilder::new();
+                let mut res = StringBuilder::new();
 
-        let zipped = super::macros::izip!(
-            base_strs.iter(),
-            pos_i64s.iter(),
-            len_i64s.iter(),
-            insert_strs.iter()
-        );
-
-        for (base, pos, len, insert) in zipped {
-            if base.is_none() || pos.is_none() || len.is_none() || insert.is_none() {
-                res.append_null();
-                continue;
-            }
-
-            let base_len: i64 = base.unwrap().len().try_into().unwrap();
-
-            let pos_v = pos.unwrap();
-            if pos_v < 1 || pos_v > base_len + 1 {
-                return exec_err!(
-                    "Valid values for position are between 1 and one more than length of string"
+                let zipped = super::macros::izip!(
+                    base_strs.iter(),
+                    pos_i64s.iter(),
+                    len_i64s.iter(),
+                    insert_strs.iter()
                 );
-            }
 
-            let len_v = len.unwrap();
-            if len_v < 0 || len_v > (base_len - pos_v + 1) {
-                return exec_err!(
-                    "Valid values for length range from 0 to the number of characters from position to end of string"
+                for (base, pos, len, insert) in zipped {
+                    if base.is_none() || pos.is_none() || len.is_none() || insert.is_none() {
+                        res.append_null();
+                        continue;
+                    }
+
+                    let inserted_string = insert_string(base, pos, len, insert);
+                    match inserted_string {
+                        Ok(v) => res.append_value(v),
+                        Err(e) => return Err(e),
+                    };
+                }
+                Arc::new(res.finish())
+            }
+            DataType::Binary => {
+                let base_bin = as_binary_array(&base_arr)?;
+                let pos_i64s = as_int64_array(&pos_arr)?;
+                let len_i64s = as_int64_array(&len_arr)?;
+                let insert_bin = as_binary_array(&insert_arr)?;
+
+                let mut res = BinaryBuilder::new();
+
+                let zipped = super::macros::izip!(
+                    base_bin.iter(),
+                    pos_i64s.iter(),
+                    len_i64s.iter(),
+                    insert_bin.iter()
                 );
+
+                for (base, pos, len, insert) in zipped {
+                    if base.is_none() || pos.is_none() || len.is_none() || insert.is_none() {
+                        res.append_null();
+                        continue;
+                    }
+
+                    let inserted_binary = insert_binary(base, pos, len, insert);
+                    match inserted_binary {
+                        Ok(v) => res.append_value(v),
+                        Err(e) => return Err(e),
+                    };
+                }
+
+                Arc::new(res.finish())
             }
+            _ => {
+                return exec_err!("Invalid datatype");
+            }
+        };
 
-            let mut chs = base.unwrap().chars();
-            let left_part = chs
-                .by_ref()
-                .take((pos.unwrap() - 1).try_into().unwrap())
-                .collect::<String>();
-            let right_part = chs
-                .skip(len.unwrap().try_into().unwrap())
-                .collect::<String>();
-            let v = format!("{}{}{}", left_part, insert.unwrap(), right_part);
-            res.append_value(v);
-        }
-
-        Ok(ColumnarValue::Array(Arc::new(res.finish())))
+        Ok(ColumnarValue::Array(res_arr))
     }
+}
+
+#[allow(clippy::unwrap_used)]
+fn insert_string(
+    base: Option<&str>,
+    pos: Option<i64>,
+    len: Option<i64>,
+    insert: Option<&str>,
+) -> Result<String, datafusion_common::DataFusionError> {
+    let base = base.unwrap();
+    let base_len: i64 = base.len().try_into().unwrap();
+    let pos = pos.unwrap();
+    let len = len.unwrap();
+    let insert = insert.unwrap();
+
+    if pos < 1 || pos > base_len + 1 {
+        return exec_err!(
+            "Valid values for position are between 1 and one more than length of string"
+        );
+    }
+
+    if len < 0 || len > (base_len - pos + 1) {
+        return exec_err!(
+            "Valid values for length range from 0 to the number of characters from position to end of string"
+        );
+    }
+
+    let mut chs = base.chars();
+    let left_part = chs
+        .by_ref()
+        .take((pos - 1).try_into().unwrap())
+        .collect::<String>();
+    let right_part = chs.skip(len.try_into().unwrap()).collect::<String>();
+
+    Ok(format!("{left_part}{insert}{right_part}"))
+}
+
+#[allow(clippy::unwrap_used)]
+fn insert_binary(
+    base: Option<&[u8]>,
+    pos: Option<i64>,
+    len: Option<i64>,
+    insert: Option<&[u8]>,
+) -> Result<Vec<u8>, datafusion_common::DataFusionError> {
+    let base = base.unwrap();
+    let pos = pos.unwrap();
+    let len = len.unwrap();
+    let insert = insert.unwrap();
+
+    let base_len: i64 = base.len().try_into().unwrap();
+
+    if pos < 1 || pos > base_len + 1 {
+        return exec_err!(
+            "Valid values for position are between 1 and one more than length of binary"
+        );
+    }
+
+    if len < 0 || len > (base_len - pos + 1) {
+        return exec_err!(
+            "Valid values for length range from 0 to the number of bytes from position to end of binary"
+        );
+    }
+
+    let pos: usize = (pos - 1).try_into().unwrap();
+    let len: usize = len.try_into().unwrap();
+
+    let mut result = vec![];
+    result.extend_from_slice(&base[..pos]);
+    result.extend_from_slice(insert);
+    result.extend_from_slice(&base[pos + len..]);
+
+    Ok(result)
 }
 
 super::macros::make_udf_function!(Insert);
@@ -242,6 +353,21 @@ mod tests {
             &result
         );
 
+        // Binary data test
+        let q = "SELECT INSERT(X'1234567890ABCDEF', 4, 2, X'FFFF') as STR;";
+        let result = ctx.sql(q).await?.collect().await?;
+
+        assert_batches_eq!(
+            &[
+                "+------------------+",
+                "| str              |",
+                "+------------------+",
+                "| 123456ffffabcdef |",
+                "+------------------+",
+            ],
+            &result
+        );
+
         Ok(())
     }
 
@@ -324,6 +450,29 @@ mod tests {
                     assert!(
                         matches!(e, DataFusionError::Execution(_)),
                         "Expected Execution error, got: {e}",
+                    );
+                }
+                Ok(_) => panic!("Expected error but query succeeded"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mixed_arg_types_fails() {
+        let ctx = SessionContext::new();
+        ctx.register_udf(ScalarUDF::from(Insert::new()));
+
+        let q = "SELECT INSERT(X'1234567890ABCDEF', 4, 2, 'abc') as STR;";
+        let result = ctx.sql(q).await;
+
+        if let Ok(df) = result {
+            let result = df.collect().await;
+
+            match result {
+                Err(e) => {
+                    assert!(
+                        matches!(e, DataFusionError::ArrowError(..)),
+                        "Expected Arrow error, got: {e}",
                     );
                 }
                 Ok(_) => panic!("Expected error but query succeeded"),
