@@ -9,8 +9,6 @@ use datafusion::arrow::array::{
 use datafusion::arrow::datatypes::DataType;
 use datafusion::{common::Result, execution::FunctionRegistry, logical_expr::ScalarUDF};
 use datafusion_common::DataFusionError;
-#[doc(hidden)]
-pub use std::iter as __std_iter;
 use std::sync::Arc;
 
 pub(crate) mod aggregate;
@@ -26,10 +24,8 @@ mod boolor;
 mod boolxor;
 mod equal_null;
 mod iff;
-mod insert;
 mod is_array;
 mod is_object;
-mod json;
 mod nullifzero;
 mod parse_json;
 mod rtrimmed_length;
@@ -38,6 +34,7 @@ mod time_from_parts;
 mod timestamp_from_parts;
 mod to_boolean;
 mod to_time;
+mod variant;
 
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
@@ -74,48 +71,6 @@ pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
 }
 
 mod macros {
-    // Adopted from itertools: https://docs.rs/itertools/latest/src/itertools/lib.rs.html#321-360
-    macro_rules! izip {
-        // @closure creates a tuple-flattening closure for .map() call. usage:
-        // @closure partial_pattern => partial_tuple , rest , of , iterators
-        // eg. izip!( @closure ((a, b), c) => (a, b, c) , dd , ee )
-        ( @closure $p:pat => $tup:expr ) => {
-            |$p| $tup
-        };
-
-        // The "b" identifier is a different identifier on each recursion level thanks to hygiene.
-        ( @closure $p:pat => ( $($tup:tt)* ) , $_iter:expr $( , $tail:expr )* ) => {
-            $crate::macros::izip!(@closure ($p, b) => ( $($tup)*, b ) $( , $tail )*)
-        };
-
-        // unary
-        ($first:expr $(,)*) => {
-            $crate::__std_iter::IntoIterator::into_iter($first)
-        };
-
-        // binary
-        ($first:expr, $second:expr $(,)*) => {
-            $crate::__std_iter::Iterator::zip(
-                $crate::__std_iter::IntoIterator::into_iter($first),
-                $second,
-            )
-        };
-
-        // n-ary where n > 2
-        ( $first:expr $( , $rest:expr )* $(,)* ) => {
-            {
-                let iter = $crate::__std_iter::IntoIterator::into_iter($first);
-                $(
-                    let iter = $crate::__std_iter::Iterator::zip(iter, $rest);
-                )*
-                $crate::__std_iter::Iterator::map(
-                    iter,
-                    $crate::macros::izip!(@closure a => (a) $( , $rest )*)
-                )
-            }
-        };
-    }
-
     macro_rules! make_udf_function {
     ($udf_type:ty) => {
         paste::paste! {
@@ -135,7 +90,6 @@ mod macros {
     }
 }
 
-    pub(crate) use izip;
     pub(crate) use make_udf_function;
 }
 
