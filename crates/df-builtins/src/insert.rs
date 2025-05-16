@@ -54,15 +54,6 @@ impl Default for Insert {
 impl Insert {
     pub fn new() -> Self {
         Self {
-            // signature: Signature::exact(
-            //     vec![
-            //         DataType::Utf8,
-            //         DataType::Int64,
-            //         DataType::Int64,
-            //         DataType::Utf8,
-            //     ],
-            //     Volatility::Immutable,
-            // ),
             signature: Signature::one_of(
                 vec![
                     TypeSignature::Exact(vec![
