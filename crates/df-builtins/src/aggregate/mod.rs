@@ -23,6 +23,7 @@ pub mod any_value;
 pub mod booland_agg;
 pub mod boolor_agg;
 pub mod boolxor_agg;
+pub mod object_agg;
 pub mod percentile_cont;
 
 pub fn register_udafs(registry: &mut dyn FunctionRegistry) -> datafusion_common::Result<()> {
@@ -32,6 +33,7 @@ pub fn register_udafs(registry: &mut dyn FunctionRegistry) -> datafusion_common:
         boolor_agg::get_udaf(),
         boolxor_agg::get_udaf(),
         percentile_cont::get_udaf(),
+        object_agg::get_udaf(),
     ];
 
     for func in aggregate_functions {
