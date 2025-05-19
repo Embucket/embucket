@@ -763,3 +763,14 @@ test_query!(
     "SHOW OBJECTS IN public STARTS WITH 'dep'",
     sort_all = true
 );
+
+// TRUNCATE TABLE
+test_query!(truncate_table, "TRUNCATE TABLE employee_table");
+test_query!(
+    truncate_table_full,
+    "TRUNCATE TABLE embucket.public.employee_table"
+);
+test_query!(
+    truncate_table_full_quotes,
+    "TRUNCATE TABLE 'EMBUCKET'.'PUBLIC'.'EMPLOYEE_TABLE'"
+);
