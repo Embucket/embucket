@@ -39,7 +39,7 @@ use sqlparser::ast::helpers::attached_token::AttachedToken;
 use sqlparser::ast::{
     BinaryOperator, GroupByExpr, MergeAction, MergeClauseKind, MergeInsertKind, ObjectNamePart,
     ObjectType, Query as AstQuery, Select, SelectItem, ShowObjects, ShowStatementIn,
-    UpdateTableFromKind, Use, Value,
+    TruncateTableTarget, UpdateTableFromKind, Use, Value,
 };
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -281,6 +281,11 @@ impl UserQuery {
                 | Statement::ShowFunctions { .. }
                 | Statement::ShowObjects { .. } => {
                     return Box::pin(self.show_query(*s)).await;
+                }
+                Statement::Truncate { table_names, .. } => {
+                    let result = Box::pin(self.truncate_table(table_names)).await;
+                    self.refresh_catalog().await?;
+                    return result;
                 }
                 Statement::Query(mut subquery) => {
                     self.update_qualify_in_query(subquery.as_mut());
@@ -1120,6 +1125,28 @@ impl UserQuery {
             }
         };
         Box::pin(self.execute_with_custom_plan(&query)).await
+    }
+
+    pub async fn truncate_table(
+        &self,
+        table_names: Vec<TruncateTableTarget>,
+    ) -> ExecutionResult<Vec<RecordBatch>> {
+        let Some(first_table) = table_names.into_iter().next() else {
+            return Err(ExecutionError::DataFusion {
+                source: DataFusionError::NotImplemented(
+                    "No table names provided for TRUNCATE TABLE".to_string(),
+                ),
+            });
+        };
+
+        let object_name = self.resolve_table_object_name(first_table.name.0)?;
+        let mut query = self.session.query(
+            format!(
+                "CREATE OR REPLACE TABLE {object_name} as (SELECT * FROM {object_name} WHERE FALSE)",
+            ),
+            QueryContext::default(),
+        );
+        query.execute().await
     }
 
     #[must_use]
