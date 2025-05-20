@@ -5,6 +5,5 @@ pub mod error;
 pub mod physical_optimizer;
 pub mod planner;
 pub mod type_planner;
-pub mod visitors;
 
 pub use df_builtins as functions;
