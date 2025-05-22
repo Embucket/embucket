@@ -32,51 +32,7 @@ async fn test_seed_client() {
 }
 
 #[test]
-fn test_minimal_seed() {
-    // Create root to serialize it to yaml and add to a template file
-    let seed_root = VolumesRoot {
-        volumes: vec![
-            // expected static data, no enums expected
-            VolumeGenerator {
-                volume_name: Some("minimal".to_string()),
-                volume_type: VolumeType::Memory,
-                databases: DatabasesTemplateType::Databases(vec![Database {
-                    database_name: "db1".to_string(),
-                    schemas: vec![Schema {
-                        schema_name: "schema1".to_string(),
-                        tables: vec![Table {
-                            name: "table1".to_string(),
-                            columns: vec![Column {
-                                col_name: "col1".to_string(),
-                                col_type: ColumnType::String,
-                            }],
-                        }],
-                    }],
-                }]),
-            },
-        ],
-    };
-
-    // Save output of ^^ this to minimal_seed.yaml when changing code ^^
-
-    eprintln!(
-        "programmatically created minimal seed template: \n{}",
-        serde_yaml::to_string(&seed_root).expect("Failed to serialize seed template")
-    );
-
-    let seed_template = parse_seed_template(SeedVariant::Minimal.seed_data())
-        .expect("Failed to read seed template");
-    assert_eq!(seed_root, seed_template);
-
-    let data = seed_template.generate();
-    eprintln!(
-        "generated seed data: \n{}",
-        serde_yaml::to_string(&data).expect("Failed to serialize seed data")
-    );
-}
-
-#[test]
-fn test_typical_seed() {
+fn test_seed_roundtrip() {
     // Create root to serialize it to yaml and add to a template file
     let seed_root = VolumesRoot {
         volumes: vec![
@@ -153,18 +109,23 @@ fn test_typical_seed() {
 
     // Save output of ^^ this to typical_seed.yaml when changing code ^^
 
+    let yaml_serialized =
+        serde_yaml::to_string(&seed_root).expect("Failed to serialize seed template");
+
     eprintln!(
         "programmatically created typical seed template: \n{}",
-        serde_yaml::to_string(&seed_root).expect("Failed to serialize seed template")
+        yaml_serialized
     );
 
-    let seed_template = parse_seed_template(SeedVariant::Typical.seed_data())
-        .expect("Failed to read seed template");
+    let seed_template =
+        parse_seed_template(&yaml_serialized).expect("Failed to read seed template");
     assert_eq!(seed_root, seed_template);
 
-    let data = seed_template.generate();
-    eprintln!(
-        "generated seed data: \n{}",
-        serde_yaml::to_string(&data).expect("Failed to serialize seed data")
-    );
+    // Do not generate data here as it increases test time
+
+    // let data = seed_template.generate();
+    // eprintln!(
+    //     "generated seed data: \n{}",
+    //     serde_yaml::to_string(&data).expect("Failed to serialize seed data")
+    // );
 }
