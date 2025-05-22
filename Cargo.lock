@@ -7251,7 +7251,6 @@ dependencies = [
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
- "sqlparser 0.55.0 (git+https://github.com/Embucket/datafusion-sqlparser-rs.git?rev=ed416548dcfe4a73a3240bbf625fb9010a4925c8)",
  "tokio",
 ]
 
