@@ -2,9 +2,11 @@ use datafusion::arrow::array::{ListBuilder, StringBuilder};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::arrow::datatypes::Field;
 use datafusion::error::Result as DFResult;
+use datafusion_common::ScalarValue;
 use datafusion_common::cast::as_string_array;
-use datafusion_common::{ScalarValue, exec_err};
-use datafusion_expr::{ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, Volatility};
+use datafusion_expr::{
+    ColumnarValue, ScalarFunctionArgs, ScalarUDFImpl, Signature, TypeSignature, Volatility,
+};
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -33,7 +35,10 @@ impl Default for StrtokToArrayFunc {
 impl StrtokToArrayFunc {
     pub fn new() -> Self {
         Self {
-            signature: Signature::variadic(vec![DataType::Utf8], Volatility::Immutable),
+            signature: Signature::one_of(
+                vec![TypeSignature::String(1), TypeSignature::String(2)],
+                Volatility::Immutable,
+            ),
         }
     }
 }
@@ -63,13 +68,6 @@ impl ScalarUDFImpl for StrtokToArrayFunc {
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let ScalarFunctionArgs { args, .. } = args;
 
-        if args.is_empty() || args.len() > 2 {
-            return exec_err!(
-                "STRTOK_TO_ARRAY expects 1 or 2 arguments, got {}",
-                args.len()
-            );
-        }
-
         let lhs = match &args[0] {
             ColumnarValue::Array(arr) => arr,
             ColumnarValue::Scalar(v) => &v.to_array()?,
@@ -95,8 +93,16 @@ impl ScalarUDFImpl for StrtokToArrayFunc {
                 list_builder.append(false);
                 continue;
             }
+
             let string = string.unwrap();
-            let delimiter_set: HashSet<char> = delimiter.unwrap().chars().collect();
+            let delimiter = delimiter.unwrap();
+
+            if is_json_null(string) || is_json_null(delimiter) {
+                list_builder.append(false);
+                continue;
+            }
+
+            let delimiter_set: HashSet<char> = delimiter.chars().collect();
             let mut last_split_index: usize = 0;
             for (i, ch) in string.chars().enumerate() {
                 if delimiter_set.contains(&ch) {
@@ -120,10 +126,16 @@ impl ScalarUDFImpl for StrtokToArrayFunc {
     }
 }
 
+fn is_json_null(s: &str) -> bool {
+    matches!(s.trim().to_lowercase().as_str(), "null" | "[ null ]")
+}
+
 super::macros::make_udf_function!(StrtokToArrayFunc);
 
 #[cfg(test)]
 mod tests {
+    use crate::parse_json::ParseJsonFunc;
+
     use super::*;
     use datafusion::prelude::SessionContext;
     use datafusion_common::{DataFusionError, assert_batches_eq};
@@ -133,6 +145,7 @@ mod tests {
     async fn test_it_works() -> DFResult<()> {
         let ctx = SessionContext::new();
         ctx.register_udf(ScalarUDF::from(StrtokToArrayFunc::new()));
+        ctx.register_udf(ScalarUDF::from(ParseJsonFunc::new()));
 
         let q = "SELECT STRTOK_TO_ARRAY('a.b.c', '.') AS string_to_array;";
         let result = ctx.sql(q).await?.collect().await?;
@@ -186,6 +199,62 @@ mod tests {
                 "+-------------+",
                 "|             |",
                 "+-------------+",
+            ],
+            &result
+        );
+
+        let q = "SELECT STRTOK_TO_ARRAY(NULL, '.') AS null_result;";
+        let result = ctx.sql(q).await?.collect().await?;
+
+        assert_batches_eq!(
+            &[
+                "+-------------+",
+                "| null_result |",
+                "+-------------+",
+                "|             |",
+                "+-------------+",
+            ],
+            &result
+        );
+
+        let q = "SELECT STRTOK_TO_ARRAY(PARSE_JSON('null'), '.') AS json_null;";
+        let result = ctx.sql(q).await?.collect().await?;
+
+        assert_batches_eq!(
+            &[
+                "+-----------+",
+                "| json_null |",
+                "+-----------+",
+                "|           |",
+                "+-----------+",
+            ],
+            &result
+        );
+
+        let q = "SELECT STRTOK_TO_ARRAY(PARSE_JSON('[ null ]'), '.') AS json_null;";
+        let result = ctx.sql(q).await?.collect().await?;
+
+        assert_batches_eq!(
+            &[
+                "+-----------+",
+                "| json_null |",
+                "+-----------+",
+                "|           |",
+                "+-----------+",
+            ],
+            &result
+        );
+
+        let q = "SELECT STRTOK_TO_ARRAY('abc', PARSE_JSON('[ null ]')) AS json_null;";
+        let result = ctx.sql(q).await?.collect().await?;
+
+        assert_batches_eq!(
+            &[
+                "+-----------+",
+                "| json_null |",
+                "+-----------+",
+                "|           |",
+                "+-----------+",
             ],
             &result
         );
