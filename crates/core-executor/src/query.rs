@@ -55,6 +55,7 @@ use super::datafusion::planner::ExtendedSqlToRel;
 use super::error::{self as ex_error, ExecutionError, ExecutionResult, RefreshCatalogListSnafu};
 use super::session::{SessionProperty, UserSession};
 use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
+use df_builtins::variant::visitors::visit_all;
 use df_catalog::catalog::CachingCatalog;
 use df_catalog::catalogs::slatedb::schema::{
     SLATEDB_CATALOG, SLATEDB_SCHEMA, SlateDBViewSchemaProvider,
@@ -166,6 +167,7 @@ impl UserQuery {
             json_element::visit(value);
             functions_rewriter::visit(value);
             copy_into_identifiers::visit(value);
+            visit_all(value);
         }
     }
 

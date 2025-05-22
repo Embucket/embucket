@@ -5,7 +5,6 @@ edition = "2024"
 license-file.workspace = true
 
 [dependencies]
-visitors = { path = "../visitors" }
 chrono = { workspace = true }
 datafusion = { workspace = true }
 datafusion-common = { workspace = true }
@@ -21,6 +20,7 @@ ahash = { version = "0.8", default-features = false, features = [
     "runtime-rng",
 ] }
 base64 = "0.22.1"
+indexmap = "2.9.0"
 
 [dev-dependencies]
 tokio = { workspace = true }

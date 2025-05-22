@@ -17,8 +17,6 @@ mod date_add;
 mod date_diff;
 mod date_from_parts;
 //pub mod geospatial;
-mod array_flatten;
-mod array_to_string;
 mod booland;
 mod boolor;
 mod boolxor;
@@ -26,6 +24,7 @@ mod equal_null;
 mod iff;
 mod is_array;
 mod is_object;
+mod json;
 mod nullifzero;
 mod parse_json;
 mod rtrimmed_length;
@@ -34,7 +33,7 @@ mod time_from_parts;
 mod timestamp_from_parts;
 mod to_boolean;
 mod to_time;
-mod variant;
+pub mod variant;
 
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
