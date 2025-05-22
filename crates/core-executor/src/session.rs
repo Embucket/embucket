@@ -32,7 +32,6 @@ use df_builtins::register_udafs;
 use df_catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
 // TODO: We need to fix this after geodatafusion is updated to datafusion 47
 //use geodatafusion::udf::native::register_native as register_geo_native;
-use crate::datafusion::physical_optimizer::physical_optimizer_rules;
 use df_builtins::table::register_udtfs;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use iceberg_s3tables_catalog::S3TablesCatalog;
