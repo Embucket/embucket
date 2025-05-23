@@ -1,9 +1,9 @@
+use datafusion_expr::sqlparser::ast::Value::SingleQuotedString;
 use datafusion_expr::sqlparser::ast::VisitMut;
 use datafusion_expr::sqlparser::ast::{
     Expr, FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident, ObjectName,
     Statement, VisitorMut,
 };
-use sqlparser::ast::Value::SingleQuotedString;
 
 #[derive(Debug, Default)]
 pub struct FunctionsRewriter {}
@@ -60,5 +60,5 @@ impl VisitorMut for FunctionsRewriter {
 }
 
 pub fn visit(stmt: &mut Statement) {
-    stmt.visit(&mut FunctionsRewriter {});
+    let _ = stmt.visit(&mut FunctionsRewriter {});
 }

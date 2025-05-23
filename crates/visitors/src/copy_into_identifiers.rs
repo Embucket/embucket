@@ -1,6 +1,6 @@
 use datafusion_expr::sqlparser::ast::VisitMut;
+use datafusion_expr::sqlparser::ast::{ObjectName, ObjectNamePart};
 use datafusion_expr::sqlparser::ast::{Statement, VisitorMut};
-use sqlparser::ast::{ObjectName, ObjectNamePart};
 use std::ops::ControlFlow;
 
 /// Visitor that processes `COPY INTO` statements in Snowflake SQL AST.
@@ -44,5 +44,5 @@ impl VisitorMut for CopyIntoStatementIdentifiers {
 }
 
 pub fn visit(stmt: &mut Statement) {
-    stmt.visit(&mut CopyIntoStatementIdentifiers {});
+    let _ = stmt.visit(&mut CopyIntoStatementIdentifiers {});
 }

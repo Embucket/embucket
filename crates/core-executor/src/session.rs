@@ -30,6 +30,9 @@ use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCat
 use datafusion_iceberg::planner::IcebergQueryPlanner;
 use df_builtins::register_udafs;
 use df_catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
+// TODO: We need to fix this after geodatafusion is updated to datafusion 47
+//use geodatafusion::udf::native::register_native as register_geo_native;
+use df_builtins::table::register_udtfs;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use iceberg_s3tables_catalog::S3TablesCatalog;
 use snafu::ResultExt;
@@ -80,6 +83,7 @@ impl UserSession {
         let mut ctx = SessionContext::new_with_state(state);
         register_udfs(&mut ctx).context(ex_error::RegisterUDFSnafu)?;
         register_udafs(&mut ctx).context(ex_error::RegisterUDAFSnafu)?;
+        register_udtfs(&mut ctx);
         register_json_udfs(&mut ctx).context(ex_error::RegisterUDFSnafu)?;
         //register_geo_native(&ctx);
         //register_geo_udfs(&ctx);

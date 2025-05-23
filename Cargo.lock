@@ -1769,6 +1769,7 @@ dependencies = [
  "tracing-attributes",
  "url",
  "uuid",
+ "visitors",
 ]
 
 [[package]]
@@ -2710,6 +2711,8 @@ dependencies = [
  "datafusion-expr",
  "datafusion-macros",
  "datafusion-physical-plan",
+ "indexmap 2.9.0",
+ "jsonpath_lib",
  "paste",
  "serde",
  "serde_json",
@@ -3935,6 +3938,17 @@ checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "jsonpath_lib"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaa63191d68230cccb81c5aa23abd53ed64d83337cacbb25a7b8c7979523774f"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5978,6 +5992,7 @@ version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
 dependencies = [
+ "indexmap 2.9.0",
  "itoa 1.0.15",
  "memchr",
  "ryu",
@@ -7227,6 +7242,16 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "visitors"
+version = "0.1.0"
+dependencies = [
+ "datafusion",
+ "datafusion-common",
+ "datafusion-expr",
+ "tokio",
+]
 
 [[package]]
 name = "vsimd"
