@@ -84,7 +84,7 @@ pub async fn create_database(
     })?;
     state
         .metastore
-        .create_database(&database.ident.clone(), database)
+        .create_database(database)
         .await
         .map_err(|e| DatabasesAPIError::Create { source: e })
         .map(|o| Json(DatabaseCreateResponse { data: o.into() }))
@@ -191,7 +191,7 @@ pub async fn update_database(
     //TODO: Implement database renames
     state
         .metastore
-        .update_database(&database_name, database)
+        .update_database(database)
         .await
         .map_err(|e| DatabasesAPIError::Update { source: e })
         .map(|o| Json(DatabaseUpdateResponse { data: o.into() }))

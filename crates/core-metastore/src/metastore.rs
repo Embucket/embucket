@@ -20,17 +20,9 @@ use uuid::Uuid;
 #[async_trait]
 pub trait Metastore: std::fmt::Debug + Send + Sync {
     fn iter_volumes(&self) -> VecScanIterator<RwObject<Volume>>;
-    async fn create_volume(
-        &self,
-        name: &VolumeIdent,
-        volume: Volume,
-    ) -> MetastoreResult<RwObject<Volume>>;
+    async fn create_volume(&self, volume: Volume) -> MetastoreResult<RwObject<Volume>>;
     async fn get_volume(&self, name: &VolumeIdent) -> MetastoreResult<Option<RwObject<Volume>>>;
-    async fn update_volume(
-        &self,
-        name: &VolumeIdent,
-        volume: Volume,
-    ) -> MetastoreResult<RwObject<Volume>>;
+    async fn update_volume(&self, volume: Volume) -> MetastoreResult<RwObject<Volume>>;
     async fn delete_volume(&self, name: &VolumeIdent, cascade: bool) -> MetastoreResult<()>;
     async fn volume_object_store(
         &self,
@@ -38,20 +30,12 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
     ) -> MetastoreResult<Option<Arc<dyn ObjectStore>>>;
 
     fn iter_databases(&self) -> VecScanIterator<RwObject<Database>>;
-    async fn create_database(
-        &self,
-        name: &DatabaseIdent,
-        database: Database,
-    ) -> MetastoreResult<RwObject<Database>>;
+    async fn create_database(&self, database: Database) -> MetastoreResult<RwObject<Database>>;
     async fn get_database(
         &self,
         name: &DatabaseIdent,
     ) -> MetastoreResult<Option<RwObject<Database>>>;
-    async fn update_database(
-        &self,
-        name: &DatabaseIdent,
-        database: Database,
-    ) -> MetastoreResult<RwObject<Database>>;
+    async fn update_database(&self, database: Database) -> MetastoreResult<RwObject<Database>>;
     async fn delete_database(&self, name: &DatabaseIdent, cascade: bool) -> MetastoreResult<()>;
 
     fn iter_schemas(&self, database: &DatabaseIdent) -> VecScanIterator<RwObject<Schema>>;
@@ -229,11 +213,8 @@ impl Metastore for SlateDBMetastore {
         self.iter_objects(KEY_VOLUME.to_string())
     }
 
-    async fn create_volume(
-        &self,
-        name: &VolumeIdent,
-        volume: Volume,
-    ) -> MetastoreResult<RwObject<Volume>> {
+    async fn create_volume(&self, volume: Volume) -> MetastoreResult<RwObject<Volume>> {
+        let name: String = volume.ident.clone();
         let key = format!("{KEY_VOLUME}/{name}");
         let object_store = volume.get_object_store()?;
         let rwobject = self
@@ -263,16 +244,13 @@ impl Metastore for SlateDBMetastore {
             .context(metastore_error::UtilSlateDBSnafu)
     }
 
-    async fn update_volume(
-        &self,
-        name: &VolumeIdent,
-        volume: Volume,
-    ) -> MetastoreResult<RwObject<Volume>> {
+    async fn update_volume(&self, volume: Volume) -> MetastoreResult<RwObject<Volume>> {
+        let name: String = volume.ident.clone();
         let key = format!("{KEY_VOLUME}/{name}");
         let updated_volume = self.update_object(&key, volume.clone()).await?;
         let object_store = updated_volume.get_object_store()?;
         self.object_store_cache
-            .alter(name, |_, _store| object_store.clone());
+            .alter(&name, |_, _store| object_store.clone());
         Ok(updated_volume)
     }
 
@@ -328,11 +306,8 @@ impl Metastore for SlateDBMetastore {
         self.iter_objects(KEY_DATABASE.to_string())
     }
 
-    async fn create_database(
-        &self,
-        name: &DatabaseIdent,
-        database: Database,
-    ) -> MetastoreResult<RwObject<Database>> {
+    async fn create_database(&self, database: Database) -> MetastoreResult<RwObject<Database>> {
+        let name = database.ident.clone();
         self.get_volume(&database.volume).await?.ok_or(
             metastore_error::MetastoreError::VolumeNotFound {
                 volume: database.volume.clone(),
@@ -353,11 +328,8 @@ impl Metastore for SlateDBMetastore {
             .context(metastore_error::UtilSlateDBSnafu)
     }
 
-    async fn update_database(
-        &self,
-        name: &DatabaseIdent,
-        database: Database,
-    ) -> MetastoreResult<RwObject<Database>> {
+    async fn update_database(&self, database: Database) -> MetastoreResult<RwObject<Database>> {
+        let name = database.ident.clone();
         let key = format!("{KEY_DATABASE}/{name}");
         self.update_object(&key, database).await
     }
@@ -471,7 +443,7 @@ impl Metastore for SlateDBMetastore {
                     ident: volume_ident.clone(),
                     volume: VolumeType::Memory,
                 };
-                let volume = self.create_volume(&volume_ident, volume).await?;
+                let volume = self.create_volume(volume).await?;
                 if table.volume_ident.is_none() {
                     table.volume_ident = Some(volume_ident);
                 }
@@ -829,7 +801,7 @@ mod tests {
         let ms = get_metastore().await;
 
         let volume = Volume::new("test".to_owned(), VolumeType::Memory);
-        ms.create_volume(&"test".to_string(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
         let all_volumes = ms
@@ -856,12 +828,12 @@ mod tests {
         let ms = get_metastore().await;
 
         let volume = Volume::new("test".to_owned(), VolumeType::Memory);
-        ms.create_volume(&"test".to_owned(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
 
         let volume2 = Volume::new("test".to_owned(), VolumeType::Memory);
-        let result = ms.create_volume(&"test".to_owned(), volume2).await;
+        let result = ms.create_volume(volume2).await;
         insta::with_settings!({
             filters => insta_filters(),
         }, {
@@ -874,7 +846,7 @@ mod tests {
         let ms = get_metastore().await;
 
         let volume = Volume::new("test".to_owned(), VolumeType::Memory);
-        ms.create_volume(&"test".to_string(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
         let all_volumes = ms
@@ -908,7 +880,7 @@ mod tests {
 
         let volume = Volume::new("test".to_owned(), VolumeType::Memory);
         let rwo1 = ms
-            .create_volume(&"test".to_owned(), volume)
+            .create_volume(volume)
             .await
             .expect("create volume failed");
         let volume = Volume::new(
@@ -918,7 +890,7 @@ mod tests {
             }),
         );
         let rwo2 = ms
-            .update_volume(&"test".to_owned(), volume)
+            .update_volume(volume)
             .await
             .expect("update volume failed");
         insta::with_settings!({
@@ -936,9 +908,7 @@ mod tests {
             volume: "testv1".to_owned(),
             properties: None,
         };
-        let no_volume_result = ms
-            .create_database(&"testdb".to_owned(), database.clone())
-            .await;
+        let no_volume_result = ms.create_database(database.clone()).await;
 
         let volume = Volume::new("test".to_owned(), VolumeType::Memory);
         let volume2 = Volume::new(
@@ -947,13 +917,13 @@ mod tests {
                 path: "/tmp".to_owned(),
             }),
         );
-        ms.create_volume(&"testv1".to_owned(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
-        ms.create_volume(&"testv2".to_owned(), volume2)
+        ms.create_volume(volume2)
             .await
             .expect("create volume failed");
-        ms.create_database(&"testdb".to_owned(), database.clone())
+        ms.create_database(database.clone())
             .await
             .expect("create database failed");
         let all_databases = ms
@@ -963,7 +933,7 @@ mod tests {
             .expect("list databases failed");
 
         database.volume = "testv2".to_owned();
-        ms.update_database(&"testdb".to_owned(), database)
+        ms.update_database(database)
             .await
             .expect("update database failed");
         let fetched_db = ms
@@ -1003,17 +973,14 @@ mod tests {
             .await;
 
         let volume = Volume::new("test".to_owned(), VolumeType::Memory);
-        ms.create_volume(&"testv1".to_owned(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
-        ms.create_database(
-            &"testdb".to_owned(),
-            Database {
-                ident: "testdb".to_owned(),
-                volume: "testv1".to_owned(),
-                properties: None,
-            },
-        )
+        ms.create_database(Database {
+            ident: "testdb".to_owned(),
+            volume: "testv1".to_owned(),
+            properties: None,
+        })
         .await
         .expect("create database failed");
         let schema_create = ms
@@ -1095,17 +1062,14 @@ mod tests {
         let no_schema_result = ms.create_table(&table.ident.clone(), table.clone()).await;
 
         let volume = Volume::new("testv1".to_owned(), VolumeType::Memory);
-        ms.create_volume(&"testv1".to_owned(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
-        ms.create_database(
-            &"testdb".to_owned(),
-            Database {
-                ident: "testdb".to_owned(),
-                volume: "testv1".to_owned(),
-                properties: None,
-            },
-        )
+        ms.create_database(Database {
+            ident: "testdb".to_owned(),
+            volume: "testv1".to_owned(),
+            properties: None,
+        })
         .await
         .expect("create database failed");
         ms.create_schema(
@@ -1217,17 +1181,14 @@ mod tests {
         };
 
         let volume = Volume::new("testv1".to_owned(), VolumeType::Memory);
-        ms.create_volume(&"testv1".to_owned(), volume)
+        ms.create_volume(volume)
             .await
             .expect("create volume failed");
-        ms.create_database(
-            &"testdb".to_owned(),
-            Database {
-                ident: "testdb".to_owned(),
-                volume: "testv1".to_owned(),
-                properties: None,
-            },
-        )
+        ms.create_database(Database {
+            ident: "testdb".to_owned(),
+            volume: "testv1".to_owned(),
+            properties: None,
+        })
         .await
         .expect("create database failed");
         ms.create_schema(

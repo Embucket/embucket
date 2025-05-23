@@ -92,7 +92,7 @@ pub async fn create_volume(
         })?;
     state
         .metastore
-        .create_volume(&embucket_volume.ident.clone(), embucket_volume)
+        .create_volume(embucket_volume)
         .await
         .map_err(|e| VolumesAPIError::Create { source: e })
         .map(|o| Json(VolumeCreateResponse { data: o.into() }))
@@ -202,7 +202,7 @@ pub async fn update_volume(
     })?;
     state
         .metastore
-        .update_volume(&volume_name, volume)
+        .update_volume(volume)
         .await
         .map_err(|e| VolumesAPIError::Update { source: e })
         .map(|o| Json(VolumeUpdateResponse { data: o.into() }))

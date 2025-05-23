@@ -64,7 +64,7 @@ pub async fn create_volume(
         .context(metastore_error::ValidationSnafu)?;
     state
         .metastore
-        .create_volume(&volume.ident.clone(), volume)
+        .create_volume(volume)
         .await
         .map_err(MetastoreAPIError)
         .map(|v| Json(hide_sensitive(v)))
@@ -81,7 +81,7 @@ pub async fn update_volume(
         .context(metastore_error::ValidationSnafu)?;
     state
         .metastore
-        .update_volume(&volume_name, volume)
+        .update_volume(volume)
         .await
         .map_err(MetastoreAPIError)
         .map(|v| Json(hide_sensitive(v)))
@@ -151,7 +151,7 @@ pub async fn create_database(
         .context(metastore_error::ValidationSnafu)?;
     state
         .metastore
-        .create_database(&database.ident.clone(), database)
+        .create_database(database)
         .await
         .map_err(MetastoreAPIError)
         .map(Json)
