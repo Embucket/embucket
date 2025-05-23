@@ -64,7 +64,9 @@ impl BasicHttpClient {
 
     fn set_session_id_from_response_headers(&mut self, headers: &HeaderMap) {
         let from_set_cookies = get_set_cookie_name_value_map(headers);
-        self.session_id = from_set_cookies.get("id").cloned();
+        if let Some(session_id) = from_set_cookies.get("id") {
+            self.session_id = Some(session_id.clone());
+        }
     }
 
     async fn generic_request_no_refresh<
@@ -109,7 +111,7 @@ impl BasicHttpClient {
         if !cookies.is_empty() {
             headers.insert(
                 header::COOKIE,
-                HeaderValue::from_str(cookies.join(";").as_str())
+                HeaderValue::from_str(cookies.join("; ").as_str())
                     .context(InvalidHeaderValueSnafu)?,
             );
         }
