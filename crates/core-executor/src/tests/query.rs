@@ -14,6 +14,7 @@ use sqlparser::ast::Value;
 use sqlparser::ast::{
     FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
 };
+use datafusion::sql::parser::DFParser;
 use std::sync::Arc;
 
 #[allow(clippy::unwrap_used)]
@@ -141,19 +142,19 @@ macro_rules! test_query {
         paste::paste! {
             #[tokio::test]
             async fn [< query_ $test_fn_name >]() {
-                let ctx = crate::tests::query::create_df_session().await;
+                let ctx = $crate::tests::query::create_df_session().await;
 
                 // Execute all setup queries (if provided) to set up the session context
                 $(
                     $(
                         {
-                            let mut q = ctx.query($setup_queries, crate::query::QueryContext::default());
+                            let mut q = ctx.query($setup_queries, $crate::query::QueryContext::default());
                             q.execute().await.unwrap();
                         }
                     )*
                 )?
 
-                let mut query = ctx.query($query, crate::query::QueryContext::default());
+                let mut query = ctx.query($query, $crate::query::QueryContext::default());
                 let res = query.execute().await;
                 let sort_all = false $(|| $sort_all)?;
 
