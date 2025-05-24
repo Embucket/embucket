@@ -1,5 +1,5 @@
 use crate::external_models::{FileVolume, VolumeType};
-use crate::seed_generator::{parse_seed_template, WithCount};
+use crate::seed_generator::{WithCount, parse_seed_template};
 use crate::seed_models::{
     ColumnGenerator, DatabaseGenerator, SchemaGenerator, TableGenerator, VolumeGenerator,
     VolumesRoot,
@@ -9,8 +9,8 @@ use crate::seed_models::{
 };
 use crate::static_seed_assets::SeedVariant;
 
-use crate::seed_models::{Column, ColumnType, Database, Schema, Table};
 use crate::client::seed_client::seed_database;
+use crate::seed_models::{Column, ColumnType, Database, Schema, Table};
 use api_ui::test_server::run_test_server_with_demo_auth;
 
 #[tokio::test]

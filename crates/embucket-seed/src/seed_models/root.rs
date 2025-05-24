@@ -1,8 +1,7 @@
-
 use serde::{Deserialize, Serialize};
 
 use crate::seed_generator::Generator;
-use crate::seed_models::{VolumeGenerator, Volume};
+use crate::seed_models::{Volume, VolumeGenerator};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VolumesRoot {
@@ -20,4 +19,3 @@ impl VolumesRoot {
             .collect()
     }
 }
-

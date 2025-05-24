@@ -1,4 +1,5 @@
-#[cfg(test)] pub type FileVolume = api_ui::volumes::models::FileVolume;
+#[cfg(test)]
+pub type FileVolume = api_ui::volumes::models::FileVolume;
 pub type VolumePayload = api_ui::volumes::models::VolumePayload;
 pub type VolumeType = api_ui::volumes::models::VolumeType;
 pub type AuthResponse = api_ui::auth::models::AuthResponse;

@@ -20,7 +20,10 @@ pub trait BasicEmbucketClient {
 
     async fn refresh(&mut self) -> HttpRequestResult<AuthResponse>;
 
-    async fn query<T: DeserializeOwned + Send + Debug>(&mut self, query: &str) -> HttpRequestResult<T>
+    async fn query<T: DeserializeOwned + Send + Debug>(
+        &mut self,
+        query: &str,
+    ) -> HttpRequestResult<T>
     where
         Self: Sized;
 
@@ -212,7 +215,10 @@ impl BasicEmbucketClient for BasicHttpClient {
     }
 
     // sets access_token at refresh if expired
-    async fn query<T: DeserializeOwned + Send + Debug>(&mut self, query: &str) -> HttpRequestResult<T>
+    async fn query<T: DeserializeOwned + Send + Debug>(
+        &mut self,
+        query: &str,
+    ) -> HttpRequestResult<T>
     where
         Self: Sized,
     {

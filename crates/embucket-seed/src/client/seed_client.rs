@@ -1,11 +1,11 @@
 use snafu::ResultExt;
 use std::net::SocketAddr;
 
-use crate::client::rest_client::{RestClient, RestApiClient};
+use crate::client::rest_client::{RestApiClient, RestClient};
 use crate::external_models;
-use crate::seed_models::Volume;
 use crate::seed_generator::error::{LoadSeedSnafu, RequestSnafu, SeedResult};
 use crate::seed_generator::parse_seed_template;
+use crate::seed_models::Volume;
 use crate::static_seed_assets::SeedVariant;
 
 pub struct SeedClient {
@@ -64,10 +64,19 @@ impl SeedClient {
                     seeded_entities += 1;
 
                     for seed_table in &seed_schema.tables {
-                        let table_columns: Vec<(String, String)> = seed_table.columns.iter().map(|col| (col.col_name.clone(), format!("{}", col.col_type))).collect();
+                        let table_columns: Vec<(String, String)> = seed_table
+                            .columns
+                            .iter()
+                            .map(|col| (col.col_name.clone(), format!("{}", col.col_type)))
+                            .collect();
 
                         self.client
-                            .create_table(&seed_database.database_name, &seed_schema.schema_name, &seed_table.table_name, table_columns.as_slice())
+                            .create_table(
+                                &seed_database.database_name,
+                                &seed_schema.schema_name,
+                                &seed_table.table_name,
+                                table_columns.as_slice(),
+                            )
                             .await
                             .context(RequestSnafu)?;
                         tracing::debug!("Created table: {}", seed_table.table_name);

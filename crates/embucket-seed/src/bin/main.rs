@@ -1,5 +1,5 @@
-use std::{net::SocketAddr, str::FromStr};
 use clap::Parser;
+use std::{net::SocketAddr, str::FromStr};
 use tracing_subscriber;
 
 use embucket_seed::client::seed_client::seed_database;
@@ -25,7 +25,6 @@ async fn main() {
     )
     .await;
 }
-
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]
