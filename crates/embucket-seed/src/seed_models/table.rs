@@ -1,9 +1,7 @@
-use super::{
-    Generator, WithCount,
-    column::{Column, ColumnsTemplateType},
-};
-use crate::seed::fake_provider::FakeProvider;
 use serde::{Deserialize, Serialize};
+
+use crate::seed_generator::{Generator, WithCount, fake_provider::FakeProvider};
+use crate::seed_models::column::{Column, ColumnsTemplateType};
 
 ///// Table
 

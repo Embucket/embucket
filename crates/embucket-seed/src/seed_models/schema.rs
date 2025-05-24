@@ -1,8 +1,5 @@
-use super::{
-    Generator, WithCount,
-    table::{Table, TablesTemplateType},
-};
-use crate::seed::fake_provider::FakeProvider;
+use crate::seed_generator::{Generator, WithCount, fake_provider::FakeProvider};
+use crate::seed_models::table::{Table, TablesTemplateType};
 use serde::{Deserialize, Serialize};
 
 ///// Schema

@@ -1,10 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::error::HttpRequestError;
-use http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use reqwest;
 use std::fmt::Display;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct HttpErrorData {
     pub method: Method,
@@ -99,19 +100,4 @@ pub async fn http_req_with_headers<T: serde::de::DeserializeOwned>(
             body: response.text().await.expect("Failed to get response text"),
         })
     }
-}
-
-/// As of minimalistic interface this doesn't support checking request/response headers
-pub async fn http_req<T: serde::de::DeserializeOwned>(
-    client: &reqwest::Client,
-    method: Method,
-    url: &str,
-    payload: String,
-) -> Result<T, HttpErrorData> {
-    let headers = HeaderMap::from_iter(vec![(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    )]);
-    let (_, res) = http_req_with_headers(client, method, headers, url, payload).await?;
-    Ok(res)
 }

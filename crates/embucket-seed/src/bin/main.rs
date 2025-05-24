@@ -1,7 +1,31 @@
-use clap::Parser;
 use std::{net::SocketAddr, str::FromStr};
+use clap::Parser;
+use tracing_subscriber;
 
-use crate::seed_assets::SeedVariant;
+use embucket_seed::client::seed_client::seed_database;
+use embucket_seed::seed_assets::SeedVariant;
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into())
+                .add_directive("hyper=off".parse().unwrap()),
+        )
+        .init();
+
+    let opts = CliOpts::parse();
+
+    seed_database(
+        opts.server_address(),
+        opts.seed_variant(),
+        opts.auth_user(),
+        opts.auth_password(),
+    )
+    .await;
+}
+
 
 #[derive(Parser)]
 #[command(version, about, long_about=None)]

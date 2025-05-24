@@ -4,6 +4,13 @@ version = "0.1.0"
 edition = "2024"
 license-file.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "embucket-seed"
+path = "src/bin/main.rs"
+
 [dependencies]
 core-metastore = { path = "../core-metastore" }
 api-ui = { path = "../api-ui", features = ["client"] }

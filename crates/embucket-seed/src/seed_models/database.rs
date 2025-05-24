@@ -1,9 +1,7 @@
-use super::{
-    Generator, WithCount,
-    schema::{Schema, SchemasTemplateType},
-};
-use crate::seed::fake_provider::FakeProvider;
 use serde::{Deserialize, Serialize};
+
+use crate::seed_generator::{Generator, WithCount, fake_provider::FakeProvider};
+use crate::seed_models::schema::{Schema, SchemasTemplateType};
 
 // This is different from metastore's equivalent
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

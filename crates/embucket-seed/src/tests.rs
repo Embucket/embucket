@@ -1,16 +1,16 @@
 use crate::external_models::{FileVolume, VolumeType};
-use crate::seed::parse_seed_template;
-use crate::seed::{
+use crate::seed_generator::{parse_seed_template, WithCount};
+use crate::seed_models::{
     ColumnGenerator, DatabaseGenerator, SchemaGenerator, TableGenerator, VolumeGenerator,
     VolumesRoot,
 };
-use crate::seed::{
+use crate::seed_models::{
     ColumnsTemplateType, DatabasesTemplateType, SchemasTemplateType, TablesTemplateType,
 };
 use crate::seed_assets::SeedVariant;
 
-use crate::seed::{Column, ColumnType, Database, Schema, Table, WithCount};
-use crate::seed_database::seed_database;
+use crate::seed_models::{Column, ColumnType, Database, Schema, Table};
+use crate::client::seed_client::seed_database;
 use api_ui::test_server::run_test_server_with_demo_auth;
 
 #[tokio::test]

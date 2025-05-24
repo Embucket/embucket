@@ -1,10 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use super::{
-    Generator,
     database::{Database, DatabasesTemplateType},
 };
+use crate::seed_generator::{Generator, fake_provider::FakeProvider};
 use crate::external_models::VolumeType;
-use crate::seed::fake_provider::FakeProvider;
-use serde::{Deserialize, Serialize};
 
 // This is different from metastore's equivalent
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

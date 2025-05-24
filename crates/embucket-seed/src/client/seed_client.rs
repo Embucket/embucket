@@ -1,54 +1,24 @@
 use snafu::ResultExt;
 use std::net::SocketAddr;
 
-use crate::client::api::{DatabaseClient, DatabaseClientApi};
+use crate::client::rest_client::{RestClient, RestApiClient};
 use crate::external_models;
-use crate::seed::Volume;
-use crate::seed::error::{LoadSeedSnafu, RequestSnafu, SeedResult};
-use crate::seed::parse_seed_template;
+use crate::seed_models::Volume;
+use crate::seed_generator::error::{LoadSeedSnafu, RequestSnafu, SeedResult};
+use crate::seed_generator::parse_seed_template;
 use crate::seed_assets::SeedVariant;
 
-pub async fn seed_database(
-    addr: SocketAddr,
-    seed_variant: SeedVariant,
-    user: String,
-    pass: String,
-) {
-    let mut seed_db = SeedDatabase::new(addr);
-
-    tracing::info!("Preparing seed data variant: {seed_variant:?}...");
-
-    if let Err(err) = seed_db.try_load_seed_template(seed_variant) {
-        tracing::warn!("Seed client failed to load seed template: {err}");
-        return;
-    }
-
-    if let Err(err) = seed_db.login(&user, &pass).await {
-        tracing::warn!("Seed client failed to login on server: {err}");
-        return;
-    }
-
-    tracing::info!("Seeding started!");
-
-    match seed_db.seed_all().await {
-        Ok(seeded_entities_count) => {
-            tracing::info!("Seeding finished, seeded {seeded_entities_count} entities!")
-        }
-        Err(err) => tracing::error!("Seeding error: {err}"),
-    };
-}
-
-pub struct SeedDatabase {
+pub struct SeedClient {
     pub seed_data: Vec<Volume>,
-    pub client: Box<dyn DatabaseClientApi + Send>,
+    pub client: Box<dyn RestApiClient + Send>,
 }
 
-impl SeedDatabase {
+impl SeedClient {
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
             seed_data: vec![],
-            client: Box::new(DatabaseClient::new(addr)),
+            client: Box::new(RestClient::new(addr)),
         }
     }
 
@@ -97,4 +67,34 @@ impl SeedDatabase {
         }
         Ok(seeded_entities)
     }
+}
+
+pub async fn seed_database(
+    addr: SocketAddr,
+    seed_variant: SeedVariant,
+    user: String,
+    pass: String,
+) {
+    let mut seed_client = SeedClient::new(addr);
+
+    tracing::info!("Preparing seed data variant: {seed_variant:?}...");
+
+    if let Err(err) = seed_client.try_load_seed_template(seed_variant) {
+        tracing::warn!("Seed client failed to load seed template: {err}");
+        return;
+    }
+
+    if let Err(err) = seed_client.login(&user, &pass).await {
+        tracing::warn!("Seed client failed to login on server: {err}");
+        return;
+    }
+
+    tracing::info!("Seeding started!");
+
+    match seed_client.seed_all().await {
+        Ok(seeded_entities_count) => {
+            tracing::info!("Seeding finished, seeded {seeded_entities_count} entities!")
+        }
+        Err(err) => tracing::error!("Seeding error: {err}"),
+    };
 }

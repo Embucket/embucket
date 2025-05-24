@@ -1,2 +1,3 @@
-pub mod api;
-pub mod requests;
+pub mod rest_client;
+pub mod seed_client;
+

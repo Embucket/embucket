@@ -1,6 +1,6 @@
-use crate::client::requests::client::BasicHttpClient;
-use crate::client::requests::client::EmbucketClient;
-use crate::client::requests::error::HttpRequestError;
+use crate::requests::client::BasicHttpClient;
+use crate::requests::client::BasicEmbucketClient;
+use crate::requests::error::HttpRequestError;
 use crate::external_models::{
     AuthResponse, DatabasePayload, DatabaseCreatePayload, DatabaseCreateResponse, SchemaCreatePayload,
     SchemaCreateResponse, VolumePayload, VolumeCreatePayload, VolumeCreateResponse,
@@ -10,12 +10,12 @@ use std::net::SocketAddr;
 
 pub type ApiClientResult<T> = Result<T, HttpRequestError>;
 
-pub struct DatabaseClient {
+pub struct RestClient {
     pub client: BasicHttpClient,
 }
 
 #[async_trait::async_trait]
-pub trait DatabaseClientApi {
+pub trait RestApiClient {
     async fn login(&mut self, user: &str, password: &str) -> ApiClientResult<AuthResponse>;
     async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<()>;
     async fn create_database(&mut self, volume: &str, database: &str) -> ApiClientResult<()>;
@@ -23,7 +23,7 @@ pub trait DatabaseClientApi {
     // async fn upload_to_table(&self, table_name: String, payload: TableUploadPayload) -> ApiClientResult<TableUploadResponse>;
 }
 
-impl DatabaseClient {
+impl RestClient {
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
@@ -33,7 +33,7 @@ impl DatabaseClient {
 }
 
 #[async_trait::async_trait]
-impl DatabaseClientApi for DatabaseClient {
+impl RestApiClient for RestClient {
     async fn login(&mut self, user: &str, password: &str) -> ApiClientResult<AuthResponse> {
         self.client.login(user, password).await
     }

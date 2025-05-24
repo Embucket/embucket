@@ -1,5 +1,4 @@
-use super::{Generator, WithCount};
-use crate::seed::fake_provider::FakeProvider;
+use crate::seed_generator::{Generator, WithCount, fake_provider::FakeProvider};
 use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
 

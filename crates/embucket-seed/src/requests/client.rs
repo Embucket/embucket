@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use std::net::SocketAddr;
 
 #[async_trait::async_trait]
-pub trait EmbucketClient {
+pub trait BasicEmbucketClient {
     fn addr(&self) -> SocketAddr;
 
     /// should login before run queries
@@ -142,7 +142,7 @@ impl BasicHttpClient {
 }
 
 #[async_trait::async_trait]
-impl EmbucketClient for BasicHttpClient {
+impl BasicEmbucketClient for BasicHttpClient {
     fn addr(&self) -> SocketAddr {
         self.addr
     }

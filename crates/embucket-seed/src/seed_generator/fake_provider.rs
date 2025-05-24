@@ -1,4 +1,4 @@
-use crate::seed::ColumnType;
+use crate::seed_models::ColumnType;
 use chrono::NaiveDate;
 use fake::faker::{lorem::en::Word, name::raw::Name};
 use fake::{Fake, Faker, locales::EN};

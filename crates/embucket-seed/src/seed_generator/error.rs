@@ -2,7 +2,7 @@ use serde_yaml::Error as SerdeYamlError;
 use snafu::prelude::*;
 use std::result::Result;
 
-use crate::client::requests::error::HttpRequestError;
+use crate::requests::error::HttpRequestError;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]

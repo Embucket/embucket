@@ -1,34 +1,6 @@
-pub mod column;
-pub mod database;
-pub mod schema;
-pub mod table;
-pub mod volume;
-
-pub use column::*;
-pub use database::*;
-pub use schema::*;
-pub use table::*;
-pub use volume::*;
 
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VolumesRoot {
-    // every volume added explicitely, no volume items auto-generated
-    pub volumes: Vec<VolumeGenerator>,
-}
-
-impl VolumesRoot {
-    #[must_use]
-    pub fn generate(&self) -> Vec<Volume> {
-        self.volumes
-            .iter()
-            .enumerate()
-            .map(|(i, v)| v.generate(i))
-            .collect()
-    }
-}
 
 pub trait Generator<T> {
     // create entity, item index is just for reference
