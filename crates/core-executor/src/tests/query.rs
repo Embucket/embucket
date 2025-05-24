@@ -1,18 +1,11 @@
 use crate::query::{QueryContext, UserQuery};
 use crate::session::UserSession;
 
-use crate::error::ExecutionResult;
 use core_metastore::Metastore;
 use core_metastore::SlateDBMetastore;
 use core_metastore::{
     Database as MetastoreDatabase, Schema as MetastoreSchema, SchemaIdent as MetastoreSchemaIdent,
     Volume as MetastoreVolume,
-};
-use datafusion::sql::parser::DFParser;
-use datafusion::sql::sqlparser::ast::{ObjectName, ObjectNamePart};
-use sqlparser::ast::Value;
-use sqlparser::ast::{
-    FunctionArg, FunctionArgExpr, FunctionArgumentList, FunctionArguments, Ident,
 };
 use datafusion::sql::parser::DFParser;
 use std::sync::Arc;
