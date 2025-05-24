@@ -16,7 +16,11 @@ use seed_database::seed_database;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into())
+                .add_directive("hyper=off".parse().unwrap()),
+        )
         .init();
 
     let opts = cli::CliOpts::parse();

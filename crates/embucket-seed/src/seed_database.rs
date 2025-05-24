@@ -34,7 +34,7 @@ pub async fn seed_database(
         Ok(seeded_entities_count) => {
             tracing::info!("Seeding finished, seeded {seeded_entities_count} entities!")
         }
-        Err(err) => tracing::warn!("Seeding error: {err}"),
+        Err(err) => tracing::error!("Seeding error: {err}"),
     };
 }
 
@@ -69,11 +69,12 @@ impl SeedDatabase {
     pub async fn seed_all(&mut self) -> SeedResult<usize> {
         let mut seeded_entities: usize = 0;
         for seed_volume in &self.seed_data {
-            let volume: external_models::Volume = seed_volume.clone().into();
+            let volume: external_models::VolumePayload = seed_volume.clone().into();
             self.client
                 .create_volume(volume)
                 .await
                 .context(RequestSnafu)?;
+            tracing::debug!("Created volume: {}", seed_volume.volume_name);
             seeded_entities += 1;
 
             for seed_database in &seed_volume.databases {
@@ -81,6 +82,7 @@ impl SeedDatabase {
                     .create_database(&seed_volume.volume_name, &seed_database.database_name)
                     .await
                     .context(RequestSnafu)?;
+                tracing::debug!("Created database: {}", seed_database.database_name);
                 seeded_entities += 1;
 
                 for seed_schema in &seed_database.schemas {
@@ -88,6 +90,7 @@ impl SeedDatabase {
                         .create_schema(&seed_database.database_name, &seed_schema.schema_name)
                         .await
                         .context(RequestSnafu)?;
+                    tracing::debug!("Created schema: {}", seed_schema.schema_name);
                     seeded_entities += 1;
                 }
             }

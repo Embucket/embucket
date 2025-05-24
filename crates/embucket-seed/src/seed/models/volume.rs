@@ -16,9 +16,9 @@ pub struct Volume {
 }
 
 #[allow(clippy::from_over_into)]
-impl Into<crate::external_models::Volume> for Volume {
-    fn into(self) -> crate::external_models::Volume {
-        crate::external_models::Volume {
+impl Into<crate::external_models::VolumePayload> for Volume {
+    fn into(self) -> crate::external_models::VolumePayload {
+        crate::external_models::VolumePayload {
             name: self.volume_name,
             volume: self.volume_type,
         }

@@ -2,8 +2,8 @@ use crate::client::requests::client::BasicHttpClient;
 use crate::client::requests::client::EmbucketClient;
 use crate::client::requests::error::HttpRequestError;
 use crate::external_models::{
-    AuthResponse, Database, DatabaseCreatePayload, DatabaseCreateResponse, SchemaCreatePayload,
-    SchemaCreateResponse, Volume, VolumeCreatePayload, VolumeCreateResponse,
+    AuthResponse, DatabasePayload, DatabaseCreatePayload, DatabaseCreateResponse, SchemaCreatePayload,
+    SchemaCreateResponse, VolumePayload, VolumeCreatePayload, VolumeCreateResponse,
 };
 use http::Method;
 use std::net::SocketAddr;
@@ -17,7 +17,7 @@ pub struct DatabaseClient {
 #[async_trait::async_trait]
 pub trait DatabaseClientApi {
     async fn login(&mut self, user: &str, password: &str) -> ApiClientResult<AuthResponse>;
-    async fn create_volume(&mut self, volume: Volume) -> ApiClientResult<()>;
+    async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<()>;
     async fn create_database(&mut self, volume: &str, database: &str) -> ApiClientResult<()>;
     async fn create_schema(&mut self, database: &str, schema: &str) -> ApiClientResult<()>;
     // async fn upload_to_table(&self, table_name: String, payload: TableUploadPayload) -> ApiClientResult<TableUploadResponse>;
@@ -38,7 +38,7 @@ impl DatabaseClientApi for DatabaseClient {
         self.client.login(user, password).await
     }
 
-    async fn create_volume(&mut self, volume: Volume) -> ApiClientResult<()> {
+    async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<()> {
         self.client
             .generic_request::<VolumeCreatePayload, VolumeCreateResponse>(
                 Method::POST,
@@ -55,11 +55,9 @@ impl DatabaseClientApi for DatabaseClient {
                 Method::POST,
                 &format!("http://{}/ui/databases", self.client.addr()),
                 &DatabaseCreatePayload {
-                    data: Database {
+                    data: DatabasePayload {
                         name: database.to_string(),
                         volume: volume.to_string(),
-                        created_at: "ERROR".to_string(),
-                        updated_at: "ERROR".to_string(),
                     },
                 },
             )

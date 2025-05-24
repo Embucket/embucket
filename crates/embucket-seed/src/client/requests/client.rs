@@ -8,6 +8,7 @@ use reqwest;
 use serde::de::DeserializeOwned;
 use serde_json::json;
 use snafu::ResultExt;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 
 #[async_trait::async_trait]
@@ -19,7 +20,7 @@ pub trait EmbucketClient {
 
     async fn refresh(&mut self) -> HttpRequestResult<AuthResponse>;
 
-    async fn query<T: DeserializeOwned + Send>(&mut self, query: &str) -> HttpRequestResult<T>
+    async fn query<T: DeserializeOwned + Send + Debug>(&mut self, query: &str) -> HttpRequestResult<T>
     where
         Self: Sized;
 
@@ -30,10 +31,11 @@ pub trait EmbucketClient {
         payload: &I,
     ) -> HttpRequestResult<T>
     where
-        I: serde::Serialize + Sync,
-        T: serde::de::DeserializeOwned + Send;
+        I: serde::Serialize + Sync + Debug,
+        T: serde::de::DeserializeOwned + Send + Debug;
 }
 
+#[derive(Debug)]
 pub struct BasicHttpClient {
     client: reqwest::Client,
     addr: SocketAddr,
@@ -116,6 +118,8 @@ impl BasicHttpClient {
             );
         }
 
+        tracing::trace!("request headers: {:#?}", headers);
+
         let res = http_req_with_headers::<T>(
             client,
             method,
@@ -128,6 +132,7 @@ impl BasicHttpClient {
 
         match res {
             Ok((headers, resp_data)) => {
+                tracing::trace!("response headers: {:#?}", headers);
                 self.set_session_id_from_response_headers(&headers);
                 Ok(resp_data)
             }
@@ -207,7 +212,7 @@ impl EmbucketClient for BasicHttpClient {
     }
 
     // sets access_token at refresh if expired
-    async fn query<T: DeserializeOwned + Send>(&mut self, query: &str) -> HttpRequestResult<T>
+    async fn query<T: DeserializeOwned + Send + Debug>(&mut self, query: &str) -> HttpRequestResult<T>
     where
         Self: Sized,
     {
@@ -222,6 +227,7 @@ impl EmbucketClient for BasicHttpClient {
             .await
     }
 
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     async fn generic_request<I, T>(
         &mut self,
         method: Method,
@@ -229,8 +235,8 @@ impl EmbucketClient for BasicHttpClient {
         payload: &I,
     ) -> HttpRequestResult<T>
     where
-        I: serde::Serialize + Sync,
-        T: serde::de::DeserializeOwned + Send,
+        I: serde::Serialize + Sync + Debug,
+        T: serde::de::DeserializeOwned + Send + Debug,
     {
         match self
             .generic_request_no_refresh(method.clone(), url, payload)
