@@ -7,7 +7,7 @@ use crate::seed_models::{
 use crate::seed_models::{
     ColumnsTemplateType, DatabasesTemplateType, SchemasTemplateType, TablesTemplateType,
 };
-use crate::seed_assets::SeedVariant;
+use crate::static_seed_assets::SeedVariant;
 
 use crate::seed_models::{Column, ColumnType, Database, Schema, Table};
 use crate::client::seed_client::seed_database;
@@ -59,7 +59,7 @@ fn test_seed_roundtrip() {
                                 >::new(
                                     5,
                                     TableGenerator {
-                                        name: None,
+                                        table_name: None,
                                         columns: ColumnsTemplateType::ColumnsTemplate(WithCount::<
                                             Column,
                                             ColumnGenerator,
@@ -87,7 +87,7 @@ fn test_seed_roundtrip() {
                         schemas: SchemasTemplateType::Schemas(vec![Schema {
                             schema_name: "bar".to_string(),
                             tables: vec![Table {
-                                name: "quux".to_string(),
+                                table_name: "quux".to_string(),
                                 columns: vec![Column {
                                     col_name: "corge".to_string(),
                                     col_type: ColumnType::Number,

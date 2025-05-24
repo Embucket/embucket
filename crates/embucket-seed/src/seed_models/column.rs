@@ -1,6 +1,8 @@
-use crate::seed_generator::{Generator, WithCount, fake_provider::FakeProvider};
 use rand::seq::IndexedRandom;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use crate::seed_generator::{Generator, WithCount, fake_provider::FakeProvider};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Column {
@@ -24,7 +26,26 @@ pub enum ColumnType {
     Array,
 }
 
-const COLUMN_TYPES: [ColumnType; 11] = [
+impl fmt::Display for ColumnType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let column_type: &str = match *self {
+            ColumnType::String => "string",
+            ColumnType::Number => "number",
+            ColumnType::Real => "real",
+            ColumnType::Varchar => "varchar",
+            ColumnType::Boolean => "boolean",
+            ColumnType::Int => "int",
+            ColumnType::Date => "date",
+            ColumnType::Timestamp => "timestamp",
+            ColumnType::Variant => "variant",
+            ColumnType::Object => "object",
+            ColumnType::Array => "array",
+        };
+        write!(f, "{}", column_type)
+    }
+}
+
+const COLUMN_TYPES: [ColumnType; 9] = [
     ColumnType::String,
     ColumnType::Number,
     ColumnType::Real,
@@ -34,8 +55,9 @@ const COLUMN_TYPES: [ColumnType; 11] = [
     ColumnType::Date,
     ColumnType::Timestamp,
     ColumnType::Variant,
-    ColumnType::Object,
-    ColumnType::Array,
+    // Not supported:
+    // ColumnType::Object,
+    // ColumnType::Array,
 ];
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

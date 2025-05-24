@@ -7,7 +7,7 @@ use crate::seed_models::column::{Column, ColumnsTemplateType};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Table {
-    pub name: String,
+    pub table_name: String,
     pub columns: Vec<Column>,
 }
 
@@ -19,15 +19,15 @@ pub enum TablesTemplateType {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TableGenerator {
-    pub name: Option<String>, // if None value will be generated
+    pub table_name: Option<String>, // if None value will be generated
     pub columns: ColumnsTemplateType,
 }
 
 impl Generator<Table> for TableGenerator {
     fn generate(&self, index: usize) -> Table {
         Table {
-            name: self
-                .name
+            table_name: self
+                .table_name
                 .clone()
                 .unwrap_or_else(|| FakeProvider::entity_name(index)),
             columns: match &self.columns {

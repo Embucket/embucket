@@ -3,7 +3,7 @@ use crate::requests::client::BasicEmbucketClient;
 use crate::requests::error::HttpRequestError;
 use crate::external_models::{
     AuthResponse, DatabasePayload, DatabaseCreatePayload, DatabaseCreateResponse, SchemaCreatePayload,
-    SchemaCreateResponse, VolumePayload, VolumeCreatePayload, VolumeCreateResponse,
+    SchemaCreateResponse, VolumePayload, VolumeCreatePayload, VolumeCreateResponse, QueryCreateResponse,
 };
 use http::Method;
 use std::net::SocketAddr;
@@ -17,9 +17,10 @@ pub struct RestClient {
 #[async_trait::async_trait]
 pub trait RestApiClient {
     async fn login(&mut self, user: &str, password: &str) -> ApiClientResult<AuthResponse>;
-    async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<()>;
-    async fn create_database(&mut self, volume: &str, database: &str) -> ApiClientResult<()>;
-    async fn create_schema(&mut self, database: &str, schema: &str) -> ApiClientResult<()>;
+    async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<VolumeCreateResponse>;
+    async fn create_database(&mut self, volume: &str, database: &str) -> ApiClientResult<DatabaseCreateResponse>;
+    async fn create_schema(&mut self, database: &str, schema: &str) -> ApiClientResult<SchemaCreateResponse>;
+    async fn create_table(&mut self, database: &str, schema: &str, table: &str, columns: &[(String, String)]) -> ApiClientResult<QueryCreateResponse>;
     // async fn upload_to_table(&self, table_name: String, payload: TableUploadPayload) -> ApiClientResult<TableUploadResponse>;
 }
 
@@ -38,19 +39,19 @@ impl RestApiClient for RestClient {
         self.client.login(user, password).await
     }
 
-    async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<()> {
-        self.client
+    async fn create_volume(&mut self, volume: VolumePayload) -> ApiClientResult<VolumeCreateResponse> {
+        Ok(self.client
             .generic_request::<VolumeCreatePayload, VolumeCreateResponse>(
                 Method::POST,
                 &format!("http://{}/ui/volumes", self.client.addr()),
                 &VolumeCreatePayload { data: volume },
             )
-            .await?;
-        Ok(())
+            .await?
+        )
     }
 
-    async fn create_database(&mut self, volume: &str, database: &str) -> ApiClientResult<()> {
-        self.client
+    async fn create_database(&mut self, volume: &str, database: &str) -> ApiClientResult<DatabaseCreateResponse> {
+        Ok(self.client
             .generic_request::<DatabaseCreatePayload, DatabaseCreateResponse>(
                 Method::POST,
                 &format!("http://{}/ui/databases", self.client.addr()),
@@ -61,12 +62,12 @@ impl RestApiClient for RestClient {
                     },
                 },
             )
-            .await?;
-        Ok(())
+            .await?
+        )
     }
 
-    async fn create_schema(&mut self, database: &str, schema: &str) -> ApiClientResult<()> {
-        self.client
+    async fn create_schema(&mut self, database: &str, schema: &str) -> ApiClientResult<SchemaCreateResponse> {
+        Ok(self.client
             .generic_request::<SchemaCreatePayload, SchemaCreateResponse>(
                 Method::POST,
                 &format!(
@@ -77,9 +78,17 @@ impl RestApiClient for RestClient {
                     name: schema.to_string(),
                 },
             )
-            .await?;
-        Ok(())
+            .await?
+        )
     }
+
+    async fn create_table(&mut self, database: &str, schema: &str, table: &str, columns: &[(String, String)]) -> ApiClientResult<QueryCreateResponse> {
+        let table_columns = columns.iter()
+            .map(|(name, col_type)| format!("{name} {col_type}"))
+            .collect::<Vec<_>>().join(", ");
+        Ok(self.client.query(&format!("CREATE TABLE {database}.{schema}.{table} ({table_columns});")).await?)
+    }
+
 
     // async fn upload_to_table(&self, database: &str, schema: &str, table: &str) -> ApiClientResult<TableUploadResponse> {
     //     self.client.generic_request::<TableUploadPayload, TableUploadResponse>(
