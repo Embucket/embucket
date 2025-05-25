@@ -2,7 +2,7 @@ use clap::Parser;
 use std::{net::SocketAddr, str::FromStr};
 use tracing_subscriber;
 
-use embucket_seed::client::seed_client::seed_database;
+use embucket_seed::seed_client::seed_client::seed_database;
 use embucket_seed::static_seed_assets::SeedVariant;
 
 #[tokio::main]

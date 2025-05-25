@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use std::net::SocketAddr;
 
 #[async_trait::async_trait]
-pub trait BasicEmbucketClient {
+pub trait ServiceClient {
     fn addr(&self) -> SocketAddr;
 
     /// should login before run queries
@@ -39,7 +39,7 @@ pub trait BasicEmbucketClient {
 }
 
 #[derive(Debug)]
-pub struct BasicHttpClient {
+pub struct BasicAuthClient {
     client: reqwest::Client,
     addr: SocketAddr,
     access_token: String,
@@ -47,7 +47,7 @@ pub struct BasicHttpClient {
     session_id: Option<String>,
 }
 
-impl BasicHttpClient {
+impl BasicAuthClient {
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
@@ -145,7 +145,7 @@ impl BasicHttpClient {
 }
 
 #[async_trait::async_trait]
-impl BasicEmbucketClient for BasicHttpClient {
+impl ServiceClient for BasicAuthClient {
     fn addr(&self) -> SocketAddr {
         self.addr
     }

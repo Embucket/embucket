@@ -3,64 +3,61 @@ use crate::external_models::{
     QueryCreateResponse, SchemaCreatePayload, SchemaCreateResponse, VolumeCreatePayload,
     VolumeCreateResponse, VolumePayload,
 };
-use crate::requests::client::BasicEmbucketClient;
-use crate::requests::client::BasicHttpClient;
-use crate::requests::error::HttpRequestError;
+use crate::requests::service_client::{ServiceClient, BasicAuthClient};
+use crate::requests::error::HttpRequestResult;
 use http::Method;
 use std::net::SocketAddr;
 
-pub type ApiClientResult<T> = Result<T, HttpRequestError>;
-
 pub struct RestClient {
-    pub client: BasicHttpClient,
+    pub client: BasicAuthClient,
 }
 
 #[async_trait::async_trait]
 pub trait RestApiClient {
-    async fn login(&mut self, user: &str, password: &str) -> ApiClientResult<AuthResponse>;
+    async fn login(&mut self, user: &str, password: &str) -> HttpRequestResult<AuthResponse>;
     async fn create_volume(
         &mut self,
         volume: VolumePayload,
-    ) -> ApiClientResult<VolumeCreateResponse>;
+    ) -> HttpRequestResult<VolumeCreateResponse>;
     async fn create_database(
         &mut self,
         volume: &str,
         database: &str,
-    ) -> ApiClientResult<DatabaseCreateResponse>;
+    ) -> HttpRequestResult<DatabaseCreateResponse>;
     async fn create_schema(
         &mut self,
         database: &str,
         schema: &str,
-    ) -> ApiClientResult<SchemaCreateResponse>;
+    ) -> HttpRequestResult<SchemaCreateResponse>;
     async fn create_table(
         &mut self,
         database: &str,
         schema: &str,
         table: &str,
         columns: &[(String, String)],
-    ) -> ApiClientResult<QueryCreateResponse>;
-    // async fn upload_to_table(&self, table_name: String, payload: TableUploadPayload) -> ApiClientResult<TableUploadResponse>;
+    ) -> HttpRequestResult<QueryCreateResponse>;
+    // async fn upload_to_table(&self, table_name: String, payload: TableUploadPayload) -> HttpRequestResult<TableUploadResponse>;
 }
 
 impl RestClient {
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
-            client: BasicHttpClient::new(addr),
+            client: BasicAuthClient::new(addr),
         }
     }
 }
 
 #[async_trait::async_trait]
 impl RestApiClient for RestClient {
-    async fn login(&mut self, user: &str, password: &str) -> ApiClientResult<AuthResponse> {
+    async fn login(&mut self, user: &str, password: &str) -> HttpRequestResult<AuthResponse> {
         self.client.login(user, password).await
     }
 
     async fn create_volume(
         &mut self,
         volume: VolumePayload,
-    ) -> ApiClientResult<VolumeCreateResponse> {
+    ) -> HttpRequestResult<VolumeCreateResponse> {
         Ok(self
             .client
             .generic_request::<VolumeCreatePayload, VolumeCreateResponse>(
@@ -75,7 +72,7 @@ impl RestApiClient for RestClient {
         &mut self,
         volume: &str,
         database: &str,
-    ) -> ApiClientResult<DatabaseCreateResponse> {
+    ) -> HttpRequestResult<DatabaseCreateResponse> {
         Ok(self
             .client
             .generic_request::<DatabaseCreatePayload, DatabaseCreateResponse>(
@@ -95,7 +92,7 @@ impl RestApiClient for RestClient {
         &mut self,
         database: &str,
         schema: &str,
-    ) -> ApiClientResult<SchemaCreateResponse> {
+    ) -> HttpRequestResult<SchemaCreateResponse> {
         Ok(self
             .client
             .generic_request::<SchemaCreatePayload, SchemaCreateResponse>(
@@ -117,7 +114,7 @@ impl RestApiClient for RestClient {
         schema: &str,
         table: &str,
         columns: &[(String, String)],
-    ) -> ApiClientResult<QueryCreateResponse> {
+    ) -> HttpRequestResult<QueryCreateResponse> {
         let table_columns = columns
             .iter()
             .map(|(name, col_type)| format!("{name} {col_type}"))
@@ -131,7 +128,7 @@ impl RestApiClient for RestClient {
             .await?)
     }
 
-    // async fn upload_to_table(&self, database: &str, schema: &str, table: &str) -> ApiClientResult<TableUploadResponse> {
+    // async fn upload_to_table(&self, database: &str, schema: &str, table: &str) -> HttpRequestResult<TableUploadResponse> {
     //     self.client.generic_request::<TableUploadPayload, TableUploadResponse>(
     //         Method::POST, format!("/ui/databases/{database}/schemas/{schema}/tables/{table}/rows"),
     //         &TableUploadPayload { upload_file:  },

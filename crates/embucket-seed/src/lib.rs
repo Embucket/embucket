@@ -1,4 +1,4 @@
-pub mod client;
+pub mod seed_client;
 pub mod external_models;
 pub mod requests;
 pub mod seed_generator;

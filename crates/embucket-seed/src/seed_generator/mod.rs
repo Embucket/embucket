@@ -1,4 +1,3 @@
-pub mod error;
 pub mod fake_provider;
 pub mod generator;
 

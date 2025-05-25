@@ -9,7 +9,7 @@ use crate::seed_models::{
 };
 use crate::static_seed_assets::SeedVariant;
 
-use crate::client::seed_client::seed_database;
+use crate::seed_client::seed_client::seed_database;
 use crate::seed_models::{Column, ColumnType, Database, Schema, Table};
 use api_ui::test_server::run_test_server_with_demo_auth;
 

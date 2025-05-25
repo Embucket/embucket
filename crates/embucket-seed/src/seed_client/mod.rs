@@ -1,2 +1,2 @@
-pub mod rest_client;
 pub mod seed_client;
+pub mod error;

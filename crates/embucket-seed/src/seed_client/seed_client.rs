@@ -1,9 +1,9 @@
 use snafu::ResultExt;
 use std::net::SocketAddr;
 
-use crate::client::rest_client::{RestApiClient, RestClient};
+use crate::requests::rest_api_client::{RestApiClient, RestClient};
 use crate::external_models;
-use crate::seed_generator::error::{LoadSeedSnafu, RequestSnafu, SeedResult};
+use super::error::{LoadSeedSnafu, RequestSnafu, SeedResult};
 use crate::seed_generator::parse_seed_template;
 use crate::seed_models::Volume;
 use crate::static_seed_assets::SeedVariant;
