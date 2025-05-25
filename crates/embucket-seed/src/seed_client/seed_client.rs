@@ -8,12 +8,23 @@ use crate::seed_generator::parse_seed_template;
 use crate::seed_models::Volume;
 use crate::static_seed_assets::SeedVariant;
 
+/// A client for seeding database with initial data.
+///
+/// The `SeedClient` provides functionality to load seed templates, authenticate with the server,
+/// and populate the database with seed data including volumes, databases, schemas, and tables.
 pub struct SeedClient {
+    /// Seed data to be loaded into the database
     pub seed_data: Vec<Volume>,
+    /// REST API client used for communication with the server
     pub client: Box<dyn RestApiClient + Send>,
 }
 
 impl SeedClient {
+    /// Creates a new instance of `SeedClient` with the specified server address.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - Socket address of the Embucket service
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
@@ -22,12 +33,31 @@ impl SeedClient {
         }
     }
 
+    /// Loads and parses a seed template from the specified variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `seed_variant` - The seed variant to load
+    ///
+    /// # Errors
+    ///
+    /// Returns `SeedError` if the seed template cannot be parsed
     pub fn try_load_seed_template(&mut self, seed_variant: SeedVariant) -> SeedResult<()> {
         let raw_seed_data = parse_seed_template(seed_variant.seed_data()).context(LoadSeedSnafu)?;
         self.seed_data = raw_seed_data.generate();
         Ok(())
     }
 
+    /// Authenticates with the server using the provided credentials.
+    ///
+    /// # Arguments
+    ///
+    /// * `username` - The username for authentication
+    /// * `password` - The password for authentication
+    ///
+    /// # Errors
+    ///
+    /// Returns `SeedError` if authentication fails
     pub async fn login(&mut self, username: &str, password: &str) -> SeedResult<()> {
         self.client
             .login(username, password)
@@ -36,6 +66,18 @@ impl SeedClient {
         Ok(())
     }
 
+    /// Seeds the database with all loaded data.
+    ///
+    /// This method processes the loaded seed data and creates all defined entities
+    /// (volumes, databases, schemas, and tables) in the target database.
+    ///
+    /// # Returns
+    ///
+    /// The number of successfully seeded entities on success
+    ///
+    /// # Errors
+    ///
+    /// Returns `SeedError` if any database operation fails
     pub async fn seed_all(&mut self) -> SeedResult<usize> {
         let mut seeded_entities: usize = 0;
         for seed_volume in &self.seed_data {
@@ -89,6 +131,17 @@ impl SeedClient {
     }
 }
 
+/// A convenience function to perform database seeding with a single call.
+///
+/// This function creates a `SeedClient`, loads the specified seed template,
+/// authenticates with the server, and executes the seeding process.
+///
+/// # Arguments
+///
+/// * `addr` - Socket address of the target server
+/// * `seed_variant` - The seed variant to use for populating the database
+/// * `user` - Username for server authentication
+/// * `pass` - Password for server authentication
 pub async fn seed_database(
     addr: SocketAddr,
     seed_variant: SeedVariant,
