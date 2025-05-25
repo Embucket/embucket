@@ -2,7 +2,7 @@ use crate::external_models::{FileVolume, VolumeType};
 use crate::seed_generator::{WithCount, parse_seed_template};
 use crate::seed_models::{
     ColumnGenerator, DatabaseGenerator, SchemaGenerator, TableGenerator, VolumeGenerator,
-    VolumesRoot,
+    SeedTemplateRoot,
 };
 use crate::seed_models::{
     ColumnsTemplateType, DatabasesTemplateType, SchemasTemplateType, TablesTemplateType,
@@ -34,7 +34,7 @@ async fn test_seed_client() {
 #[test]
 fn test_seed_roundtrip() {
     // Create root to serialize it to yaml and add to a template file
-    let seed_root = VolumesRoot {
+    let seed_root = SeedTemplateRoot {
         volumes: vec![
             VolumeGenerator {
                 volume_name: None,

@@ -1,10 +1,20 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+//! Low-level HTTP client functionality for the Embucket API.
+//!
+//! This module provides the core HTTP request handling used by the higher-level API clients.
+//! It includes error handling, request/response serialization, and HTTP client configuration.
+
 use super::error::HttpRequestError;
 use http::{HeaderMap, HeaderValue, Method, StatusCode};
 use reqwest;
 use std::fmt::Display;
 
+/// Represents detailed error information for HTTP request failures.
+///
+/// This struct captures all relevant information about a failed HTTP request,
+/// including the request method, URL, headers, status code, response body,
+/// and the underlying error.
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct HttpErrorData {
@@ -25,7 +35,7 @@ impl From<HttpErrorData> for HttpRequestError {
             ..
         } = value;
         Self::HttpRequest {
-            message: format!("{error:?}, body: {}", body /*.replace("\\\"", "\"")*/),
+            message: format!("{error:?}, body: {:#?}", body),
             status,
         }
     }
@@ -37,7 +47,27 @@ impl Display for HttpErrorData {
     }
 }
 
-/// As of minimalistic interface this doesn't support checking request/response headers
+/// Sends an HTTP request and parses the JSON response.
+///
+/// This is a low-level function that handles the actual HTTP request/response
+/// including error handling and response deserialization.
+/// 
+///
+/// # Type Parameters
+/// * `T` - The type to deserialize the response JSON into
+///
+/// # Arguments
+/// * `client` - The reqwest client to use for the request
+/// * `method` - The HTTP method to use (GET, POST, etc.)
+/// * `headers` - The HTTP headers to include in the request
+/// * `url` - The URL to send the request to
+/// * `payload` - The request body as a string (typically JSON)
+///
+/// # Returns
+/// A tuple containing the response headers and the deserialized response body
+///
+/// # Errors
+/// Returns `HttpErrorData` if the request fails or the response cannot be parsed
 pub async fn http_req_with_headers<T: serde::de::DeserializeOwned>(
     client: &reqwest::Client,
     method: Method,
@@ -58,7 +88,7 @@ pub async fn http_req_with_headers<T: serde::de::DeserializeOwned>(
         let status = response.status();
         let text = response.text().await.expect("Failed to get response text");
         if text.is_empty() {
-            // If no actual type retuned we emulate unit, by "null" value in json
+            // If no actual type returned we emulate unit by "null" value in json
             Ok((
                 headers,
                 serde_json::from_str::<T>("null").expect("Failed to parse response"),

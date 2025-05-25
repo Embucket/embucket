@@ -11,15 +11,37 @@ use snafu::ResultExt;
 use std::fmt::Debug;
 use std::net::SocketAddr;
 
+/// A trait defining the interface for service clients that interact with the Embucket API.
+///
+/// This trait provides methods for authentication and making requests to the Embucket service.
 #[async_trait::async_trait]
 pub trait ServiceClient {
     fn addr(&self) -> SocketAddr;
 
-    /// should login before run queries
+    /// Authenticates with the Embucket service using the provided credentials.
+    /// Must login before calling query or generic_request functions.
+    ///
+    /// # Arguments
+    /// * `user` - The username for authentication
+    /// * `password` - The password for authentication
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if authentication fails.
     async fn login(&mut self, user: &str, password: &str) -> HttpRequestResult<AuthResponse>;
 
+    /// Refreshes the authentication token using the current refresh token.
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if token refresh fails.
     async fn refresh(&mut self) -> HttpRequestResult<AuthResponse>;
 
+    /// Executes a SQL query against the Embucket service.
+    ///
+    /// # Type Parameters
+    /// * `T` - The type to deserialize the response into
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if the query execution fails.
     async fn query<T: DeserializeOwned + Send + Debug>(
         &mut self,
         query: &str,
@@ -27,6 +49,14 @@ pub trait ServiceClient {
     where
         Self: Sized;
 
+    /// Sends a generic HTTP request to the Rest API.
+    ///
+    /// # Type Parameters
+    /// * `I` - The type of the request payload (must be serializable)
+    /// * `T` - The type to deserialize the response into
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if the request fails or returns an error status.
     async fn generic_request<I, T>(
         &mut self,
         method: Method,
@@ -38,6 +68,10 @@ pub trait ServiceClient {
         T: serde::de::DeserializeOwned + Send + Debug;
 }
 
+/// A basic authentication client that implements the `ServiceClient` trait.
+///
+/// This client handles authentication token management and request/response
+/// serialization for interacting with the Embucket API.
 #[derive(Debug)]
 pub struct BasicAuthClient {
     client: reqwest::Client,
@@ -48,6 +82,7 @@ pub struct BasicAuthClient {
 }
 
 impl BasicAuthClient {
+    /// Creates a new `BasicAuthClient` with the specified server address.
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {
@@ -59,6 +94,7 @@ impl BasicAuthClient {
         }
     }
 
+    /// Updates the client's tokens from an authentication response.
     fn set_tokens_from_auth_response(&mut self, headers: &HeaderMap, auth_response: &AuthResponse) {
         let from_set_cookies = get_set_cookie_name_value_map(headers);
         if let Some(refresh_token) = from_set_cookies.get("refresh_token") {
@@ -67,6 +103,7 @@ impl BasicAuthClient {
         self.access_token.clone_from(&auth_response.access_token);
     }
 
+    /// Updates the session ID from response headers if present.
     fn set_session_id_from_response_headers(&mut self, headers: &HeaderMap) {
         let from_set_cookies = get_set_cookie_name_value_map(headers);
         if let Some(session_id) = from_set_cookies.get("id") {
@@ -74,10 +111,7 @@ impl BasicAuthClient {
         }
     }
 
-    async fn generic_request_no_refresh<
-        I: serde::Serialize + Sync,
-        T: serde::de::DeserializeOwned + Send,
-    >(
+    async fn generic_request_no_refresh<I, T>(
         &mut self,
         method: Method,
         url: &str,
@@ -85,6 +119,8 @@ impl BasicAuthClient {
     ) -> HttpRequestResult<T>
     where
         Self: Sized,
+        I: serde::Serialize + Sync,
+        T: serde::de::DeserializeOwned + Send,
     {
         let Self {
             access_token,

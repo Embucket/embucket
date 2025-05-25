@@ -1,3 +1,8 @@
+//! Module containing the REST API client implementation for the Embucket service.
+//!
+//! This module provides a high-level client for performing operations on the Embucket API,
+//! including managing volumes, databases, schemas, and tables.
+
 use crate::external_models::{
     AuthResponse, DatabaseCreatePayload, DatabaseCreateResponse, DatabasePayload,
     QueryCreateResponse, SchemaCreatePayload, SchemaCreateResponse, VolumeCreatePayload,
@@ -8,27 +13,80 @@ use crate::requests::error::HttpRequestResult;
 use http::Method;
 use std::net::SocketAddr;
 
+/// A client for interacting with the Embucket REST API.
+///
+/// This client provides methods for managing Embucket resources including volumes,
+/// databases, schemas, and tables. It wraps a lower-level `ServiceClient` to handle
+/// HTTP requests and authentication.
+#[derive(Debug)]
 pub struct RestClient {
+    /// The underlying service client used for HTTP requests
     pub client: BasicAuthClient,
 }
 
+/// A trait defining the interface for REST API clients that interact with Embucket resources.
+///
+/// This trait provides methods for performing CRUD operations on Embucket resources
+/// in a type-safe manner.
 #[async_trait::async_trait]
 pub trait RestApiClient {
+    /// Authenticates with the Embucket service.
+    ///
+    /// # Arguments
+    /// * `user` - The username for authentication
+    /// * `password` - The password for authentication
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if authentication fails.
     async fn login(&mut self, user: &str, password: &str) -> HttpRequestResult<AuthResponse>;
+
+    /// Creates a new volume in the Embucket service.
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if the operation fails.
     async fn create_volume(
         &mut self,
         volume: VolumePayload,
     ) -> HttpRequestResult<VolumeCreateResponse>;
+
+    /// Creates a new database within a volume.
+    ///
+    /// # Arguments
+    /// * `volume` - The name of the parent volume
+    /// * `database` - The name of the database to create
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if the operation fails.
     async fn create_database(
         &mut self,
         volume: &str,
         database: &str,
     ) -> HttpRequestResult<DatabaseCreateResponse>;
+
+    /// Creates a new schema within a database.
+    ///
+    /// # Arguments
+    /// * `database` - The name of the parent database
+    /// * `schema` - The name of the schema to create
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if the operation fails.
     async fn create_schema(
         &mut self,
         database: &str,
         schema: &str,
     ) -> HttpRequestResult<SchemaCreateResponse>;
+
+    /// Creates a new table within a schema.
+    ///
+    /// # Arguments
+    /// * `database` - The name of the parent database
+    /// * `schema` - The name of the parent schema
+    /// * `table` - The name of the table to create
+    /// * `columns` - A slice of (column_name, column_type) tuples defining the table columns
+    ///
+    /// # Errors
+    /// Returns `HttpRequestError` if the operation fails.
     async fn create_table(
         &mut self,
         database: &str,
@@ -40,6 +98,7 @@ pub trait RestApiClient {
 }
 
 impl RestClient {
+    /// Creates a new `RestClient` with the specified server address.
     #[must_use]
     pub fn new(addr: SocketAddr) -> Self {
         Self {

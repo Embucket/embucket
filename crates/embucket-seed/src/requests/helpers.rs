@@ -1,7 +1,22 @@
+//! Helper functions for handling HTTP requests and responses.
+//!
+//! This module provides utility functions for working with HTTP headers and cookies
+//! in the context of the Embucket API client.
+
 use cookie::Cookie;
 use http::{HeaderMap, HeaderValue};
 use std::collections::HashMap;
 
+/// Extracts all Set-Cookie headers from an HTTP response and returns them as a map.
+///
+/// The returned map uses cookie names as keys and tuples of (cookie_value, original_header_value)
+/// as values.
+///
+/// # Arguments
+/// * `headers` - The HTTP headers from the response
+///
+/// # Returns
+/// A map where keys are cookie names and values are tuples of (cookie_value, header_value)
 #[allow(clippy::explicit_iter_loop)]
 #[must_use]
 pub fn get_set_cookie_from_response_headers(
@@ -23,6 +38,16 @@ pub fn get_set_cookie_from_response_headers(
     set_cookies_map
 }
 
+/// Extracts all cookies from Set-Cookie headers and returns them as a name-value map.
+///
+/// This function parses the Set-Cookie headers and extracts cookie names and values,
+/// ignoring other cookie attributes like path, domain, etc.
+///
+/// # Arguments
+/// * `headers` - The HTTP headers from the response
+///
+/// # Returns
+/// A map where keys are cookie names and values are cookie values
 #[must_use]
 pub fn get_set_cookie_name_value_map(headers: &HeaderMap) -> HashMap<String, String> {
     let values = get_set_cookie_from_response_headers(headers);
