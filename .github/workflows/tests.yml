@@ -1,13 +1,6 @@
-# This is the main CI workflow that runs the test suite on all pushes to main and all pull requests.
-# It runs the following jobs:
-# - required: runs the test suite on ubuntu with stable and beta rust toolchains
-# - minimal: runs the test suite with the minimal versions of the dependencies that satisfy the
-#   requirements of this crate, and its dependencies
-# - os-check: runs the test suite on mac and windows
-# - coverage: runs the test suite and collects coverage information
-# See check.yml for information about how the concurrency cancellation and workflow triggering works
+name: test
 permissions:
-  contents: read
+  contents: write
 on:
   push:
     branches: [main]
@@ -17,6 +10,7 @@ on:
       - Cargo.toml
       - Cargo.lock
       - Dockerfile
+      - .github/workflows/**
   pull_request:
     paths:
       - crates/**
@@ -24,24 +18,20 @@ on:
       - Cargo.toml
       - Cargo.lock
       - Dockerfile
+      - .github/workflows/**
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
-name: test
 jobs:
-  required:
+  unit-tests:
     runs-on:
       group: large-runners
-    name: ubuntu / ${{ matrix.toolchain }}
-    strategy:
-      matrix:
-        # run on stable and beta to ensure that tests won't break on the next version of the rust
-        # toolchain
-        toolchain: [stable]
+    name: Unit Tests
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+
       - name: Cache
         uses: actions/cache@v4
         with:
@@ -52,9 +42,12 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
-      - name: Install ${{ matrix.toolchain }}
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ matrix.toolchain }}
-      - name: cargo test
+          toolchain: stable
+
+      # Build and run tests directly
+      - name: Run unit tests
         run: cargo test --workspace --all-features --all-targets
