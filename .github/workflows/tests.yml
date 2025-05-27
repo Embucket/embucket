@@ -141,3 +141,71 @@ jobs:
             # Push the changes
             git push origin HEAD:${{ github.head_ref }}
           fi
+  slt-pr-comment:
+    runs-on: ubuntu-latest
+    needs: [ sql-logic-tests-and-update-readme ]
+    if: github.event_name == 'pull_request'
+    name: Generate SLT Coverage Comment
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed to fetch all history for PR changes
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          pip install openai pandas requests
+          pip install -r test/slt_runner/requirements.txt  # Install SLT runner dependencies
+
+      - name: Get PR Changes
+        id: pr_changes
+        run: |
+          # Get the diff between the PR branch and the base branch
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+
+      - name: Analyze PR Changes and SLT Coverage
+        id: analyze
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Make script executable if needed
+          chmod +x .github/scripts/analyze_slt_coverage.py
+
+          # Run the analysis script
+          python .github/scripts/analyze_slt_coverage.py \
+            --pr-diff-file pr_diff.txt \
+            --slt-results-file test/test_statistics.csv \
+            --output-file slt_analysis.txt
+        continue-on-error: true  # Make this non-blocking for the PR
+
+      - name: Create PR Comment
+        if: steps.analyze.outcome == 'success'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+
+            try {
+              const analysis = fs.readFileSync('slt_analysis.txt', 'utf8');
+
+              // Only create comment if there's content in the analysis
+              if (analysis.trim()) {
+                github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: `## SQL Logic Test Coverage Analysis\n\n${analysis}\n\n_This analysis was generated automatically based on the PR changes and SLT results._`
+                });
+                console.log('PR comment created successfully');
+              } else {
+                console.log('No matching SLTs found. Skipping comment creation.');
+              }
+            } catch (error) {
+              console.log('Error reading analysis file: ' + error.message);
+            }
