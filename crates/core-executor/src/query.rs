@@ -37,7 +37,8 @@ use datafusion_common::{
 use datafusion_expr::logical_plan::dml::{DmlStatement, InsertOp, WriteOp};
 use datafusion_expr::{CreateMemoryTable, DdlStatement};
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
-use df_builtins::variant::visitors::visit_all;
+use df_builtins::variant;
+use df_builtins::visitors::{copy_into_identifiers, functions_rewriter, json_element};
 use df_catalog::catalog::CachingCatalog;
 use df_catalog::information_schema::session_params::SessionProperty;
 use iceberg_rust::catalog::Catalog;
@@ -61,7 +62,6 @@ use std::fmt::Write;
 use std::sync::Arc;
 use tracing_attributes::instrument;
 use url::Url;
-use visitors::{copy_into_identifiers, functions_rewriter, json_element};
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct QueryContext {
@@ -189,7 +189,7 @@ impl UserQuery {
             json_element::visit(value);
             functions_rewriter::visit(value);
             copy_into_identifiers::visit(value);
-            visit_all(value);
+            variant::visitors::visit_all(value);
         }
     }
 
