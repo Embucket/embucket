@@ -9,7 +9,6 @@ use super::error::{self as ex_error, ExecutionError, ExecutionResult, RefreshCat
 use super::session::UserSession;
 use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
-use visitors::{copy_into_identifiers, functions_rewriter, json_element};
 use crate::models::QueryResult;
 use core_metastore::{
     Metastore, SchemaIdent as MetastoreSchemaIdent,
@@ -38,6 +37,7 @@ use datafusion_common::{
 use datafusion_expr::logical_plan::dml::{DmlStatement, InsertOp, WriteOp};
 use datafusion_expr::{CreateMemoryTable, DdlStatement};
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
+use df_builtins::variant::visitors::visit_all;
 use df_catalog::catalog::CachingCatalog;
 use df_catalog::information_schema::session_params::SessionProperty;
 use iceberg_rust::catalog::Catalog;
@@ -61,7 +61,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 use tracing_attributes::instrument;
 use url::Url;
-use df_builtins::variant::visitors::visit_all;
+use visitors::{copy_into_identifiers, functions_rewriter, json_element};
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct QueryContext {
