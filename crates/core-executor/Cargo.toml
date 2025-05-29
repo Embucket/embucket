@@ -9,7 +9,6 @@ core-utils = { path = "../core-utils" }
 core-metastore = { path = "../core-metastore" }
 df-builtins = { path = "../df-builtins" }
 df-catalog = { path = "../df-catalog" }
-
 async-trait = { workspace = true }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }

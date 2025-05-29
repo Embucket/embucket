@@ -9,7 +9,6 @@ use super::error::{self as ex_error, ExecutionError, ExecutionResult, RefreshCat
 use super::session::UserSession;
 use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
-use crate::datafusion::visitors::{copy_into_identifiers, functions_rewriter, json_element};
 use crate::models::QueryResult;
 use core_metastore::{
     Metastore, SchemaIdent as MetastoreSchemaIdent,
@@ -38,6 +37,8 @@ use datafusion_common::{
 use datafusion_expr::logical_plan::dml::{DmlStatement, InsertOp, WriteOp};
 use datafusion_expr::{CreateMemoryTable, DdlStatement};
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
+use df_builtins::variant;
+use df_builtins::visitors::{copy_into_identifiers, functions_rewriter, json_element};
 use df_catalog::catalog::CachingCatalog;
 use df_catalog::information_schema::session_params::SessionProperty;
 use iceberg_rust::catalog::Catalog;
@@ -188,6 +189,7 @@ impl UserQuery {
             json_element::visit(value);
             functions_rewriter::visit(value);
             copy_into_identifiers::visit(value);
+            variant::visitors::visit_all(value);
         }
     }
 
