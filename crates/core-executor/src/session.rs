@@ -26,6 +26,7 @@ use datafusion_functions_json::register_all as register_json_udfs;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
 use datafusion_iceberg::planner::IcebergQueryPlanner;
 use df_builtins::register_udafs;
+use df_builtins::table::register_udtfs;
 use df_catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
 use df_catalog::information_schema::session_params::{SessionParams, SessionProperty};
 use iceberg_rust::object_store::ObjectStoreBuilder;
@@ -34,7 +35,6 @@ use snafu::ResultExt;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use df_builtins::table::register_udtfs;
 
 pub struct UserSession {
     pub metastore: Arc<dyn Metastore>,
