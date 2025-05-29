@@ -87,7 +87,7 @@ pub async fn create_database(
     })?;
     state
         .metastore
-        .create_database(&database.ident.clone(), database)
+        .create_database(database)
         .await
         .context(CreateSnafu)
         .map(|o| Json(DatabaseCreateResponse { data: o.into() }))
@@ -194,7 +194,7 @@ pub async fn update_database(
     //TODO: Implement database renames
     state
         .metastore
-        .update_database(&database_name, database)
+        .update_database(database)
         .await
         .context(UpdateSnafu)
         .map(|o| Json(DatabaseUpdateResponse { data: o.into() }))

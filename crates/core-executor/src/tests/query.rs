@@ -1,6 +1,7 @@
 use crate::query::{QueryContext, UserQuery};
 use crate::session::UserSession;
 
+use crate::error::{ExecutionError, ExecutionResult};
 use core_metastore::Metastore;
 use core_metastore::SlateDBMetastore;
 use core_metastore::{
@@ -8,6 +9,7 @@ use core_metastore::{
     Volume as MetastoreVolume,
 };
 use datafusion::sql::parser::DFParser;
+use df_catalog::test_utils::sort_record_batch_by_sortable_columns;
 use std::sync::Arc;
 
 #[allow(clippy::unwrap_used)]
@@ -73,24 +75,18 @@ static TABLE_SETUP: &str = include_str!(r"./table_setup.sql");
 pub async fn create_df_session() -> Arc<UserSession> {
     let metastore = SlateDBMetastore::new_in_memory().await;
     metastore
-        .create_volume(
-            &"test_volume".to_string(),
-            MetastoreVolume::new(
-                "test_volume".to_string(),
-                core_metastore::VolumeType::Memory,
-            ),
-        )
+        .create_volume(MetastoreVolume::new(
+            "test_volume".to_string(),
+            core_metastore::VolumeType::Memory,
+        ))
         .await
         .expect("Failed to create volume");
     metastore
-        .create_database(
-            &"embucket".to_string(),
-            MetastoreDatabase {
-                ident: "embucket".to_string(),
-                properties: None,
-                volume: "test_volume".to_string(),
-            },
-        )
+        .create_database(MetastoreDatabase {
+            ident: "embucket".to_string(),
+            properties: None,
+            volume: "test_volume".to_string(),
+        })
         .await
         .expect("Failed to create database");
     let schema_ident = MetastoreSchemaIdent {

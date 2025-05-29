@@ -216,27 +216,21 @@ mod tests {
         );
 
         metastore
-            .create_volume(
-                &"test_volume".to_string(),
-                MetastoreVolume::new(
-                    "test_volume".to_string(),
-                    core_metastore::VolumeType::Memory,
-                ),
-            )
+            .create_volume(MetastoreVolume::new(
+                "test_volume".to_string(),
+                core_metastore::VolumeType::Memory,
+            ))
             .await
             .expect("Failed to create volume");
 
         let database_name = "embucket".to_string();
 
         metastore
-            .create_database(
-                &database_name.clone(),
-                MetastoreDatabase {
-                    ident: "embucket".to_string(),
-                    properties: None,
-                    volume: "test_volume".to_string(),
-                },
-            )
+            .create_database(MetastoreDatabase {
+                ident: database_name.clone(),
+                properties: None,
+                volume: "test_volume".to_string(),
+            })
             .await
             .expect("Failed to create database");
 

@@ -41,24 +41,18 @@ async fn test_execute_always_returns_schema() {
 async fn test_service_upload_file() {
     let metastore = SlateDBMetastore::new_in_memory().await;
     metastore
-        .create_volume(
-            &"test_volume".to_string(),
-            MetastoreVolume::new(
-                "test_volume".to_string(),
-                core_metastore::VolumeType::Memory,
-            ),
-        )
+        .create_volume(MetastoreVolume::new(
+            "test_volume".to_string(),
+            core_metastore::VolumeType::Memory,
+        ))
         .await
         .expect("Failed to create volume");
     metastore
-        .create_database(
-            &"embucket".to_string(),
-            MetastoreDatabase {
-                ident: "embucket".to_string(),
-                properties: None,
-                volume: "test_volume".to_string(),
-            },
-        )
+        .create_database(MetastoreDatabase {
+            ident: "embucket".to_string(),
+            properties: None,
+            volume: "test_volume".to_string(),
+        })
         .await
         .expect("Failed to create database");
     let schema_ident = MetastoreSchemaIdent {
@@ -167,26 +161,20 @@ async fn test_service_create_table_file_volume() {
     let _ = std::fs::create_dir_all(&temp_dir);
     let temp_path = temp_dir.to_str().expect("Failed to convert path to string");
     metastore
-        .create_volume(
-            &"test_volume".to_string(),
-            MetastoreVolume::new(
-                "test_volume".to_string(),
-                core_metastore::VolumeType::File(core_metastore::FileVolume {
-                    path: temp_path.to_string(),
-                }),
-            ),
-        )
+        .create_volume(MetastoreVolume::new(
+            "test_volume".to_string(),
+            core_metastore::VolumeType::File(core_metastore::FileVolume {
+                path: temp_path.to_string(),
+            }),
+        ))
         .await
         .expect("Failed to create volume");
     metastore
-        .create_database(
-            &"embucket".to_string(),
-            MetastoreDatabase {
-                ident: "embucket".to_string(),
-                properties: None,
-                volume: "test_volume".to_string(),
-            },
-        )
+        .create_database(MetastoreDatabase {
+            ident: "embucket".to_string(),
+            properties: None,
+            volume: "test_volume".to_string(),
+        })
         .await
         .expect("Failed to create database");
     let schema_ident = MetastoreSchemaIdent {
