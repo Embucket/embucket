@@ -49,6 +49,7 @@ use iceberg_rust::spec::schema::Schema;
 use iceberg_rust::spec::types::StructType;
 use object_store::aws::AmazonS3Builder;
 use snafu::ResultExt;
+use sqlparser::ast::TableObject::TableName;
 use sqlparser::ast::helpers::attached_token::AttachedToken;
 use sqlparser::ast::{
     BinaryOperator, GroupByExpr, MergeAction, MergeClauseKind, MergeInsertKind, ObjectNamePart,
@@ -283,9 +284,11 @@ impl UserQuery {
                 Statement::AlterTable { .. }
                 | Statement::StartTransaction { .. }
                 | Statement::Commit { .. }
-                | Statement::Insert { .. }
                 | Statement::Update { .. } => {
                     return Box::pin(self.execute_with_custom_plan(&self.query)).await;
+                }
+                Statement::Insert(_) => {
+                    return Box::pin(self.create_insert_query(*s)).await;
                 }
                 Statement::ShowDatabases { .. }
                 | Statement::ShowSchemas { .. }
@@ -541,6 +544,33 @@ impl UserQuery {
         self.created_entity_response()
     }
 
+    #[allow(clippy::redundant_else, clippy::too_many_lines)]
+    #[instrument(level = "trace", skip(self), err, ret)]
+    pub async fn create_insert_query(
+        &mut self,
+        statement: Statement,
+    ) -> ExecutionResult<QueryResult> {
+        let Statement::Insert(mut insert_statement) = statement.clone() else {
+            return Err(ExecutionError::DataFusion {
+                source: DataFusionError::NotImplemented(
+                    "Only INSERT statements are supported".to_string(),
+                ),
+            });
+        };
+        let table_name = match &insert_statement.table {
+            TableName(name) => name,
+            _ => {
+                return Box::pin(self.execute_with_custom_plan(&self.query)).await;
+            }
+        };
+
+        let new_table_ident = self.resolve_table_object_name(table_name.0.clone())?;
+
+        insert_statement.table = new_table_ident.clone().into();
+
+        self.query = insert_statement.to_string();
+        Box::pin(self.execute_with_custom_plan(&self.query)).await
+    }
     #[allow(unused_variables)]
     pub async fn create_iceberg_table(
         &self,
