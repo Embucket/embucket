@@ -1,3 +1,4 @@
+use crate::macros::make_udf_function;
 use datafusion::arrow::array::as_string_array;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::error::Result as DFResult;
@@ -41,6 +42,7 @@ impl Default for ArrayToStringFunc {
 }
 
 impl ArrayToStringFunc {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             signature: Signature::string(2, Volatility::Immutable),
@@ -137,7 +139,7 @@ fn to_string(v: &Value, sep: &str) -> DFResult<String> {
     Ok(res.join(sep))
 }
 
-super::macros::make_udf_function!(ArrayToStringFunc);
+make_udf_function!(ArrayToStringFunc);
 
 #[cfg(test)]
 mod tests {

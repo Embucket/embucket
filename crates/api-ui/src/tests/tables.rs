@@ -8,10 +8,9 @@ use crate::tables::models::{
 };
 use crate::tests::common::{Entity, Op, req, ui_test_op};
 use crate::tests::server::run_test_server;
-use crate::volumes::models::{VolumeCreatePayload, VolumeCreateResponse};
-use crate::worksheets::{WorksheetCreatePayload, WorksheetResponse};
-use core_metastore::VolumeType as MetastoreVolumeType;
-use core_metastore::{Database as MetastoreDatabase, Volume as MetastoreVolume};
+use crate::volumes::models::{VolumeCreatePayload, VolumeCreateResponse, VolumeType};
+use crate::worksheets::{Worksheet, WorksheetCreatePayload, WorksheetResponse};
+use core_metastore::Database as MetastoreDatabase;
 use http::Method;
 use serde_json::json;
 
@@ -27,29 +26,27 @@ async fn test_ui_tables() {
         Op::Create,
         None,
         &Entity::Volume(VolumeCreatePayload {
-            data: MetastoreVolume {
-                ident: String::new(),
-                volume: MetastoreVolumeType::Memory,
-            }
-            .into(),
+            name: String::new(),
+            volume: VolumeType::Memory,
         }),
     )
     .await;
-    let volume: VolumeCreateResponse = res.json().await.unwrap();
+    let VolumeCreateResponse(volume) = res.json().await.unwrap();
 
     let database_name = "test1".to_string();
     // Create database, Ok
     let expected1 = MetastoreDatabase {
         ident: database_name.clone(),
         properties: None,
-        volume: volume.data.name.clone(),
+        volume: volume.name.clone(),
     };
     let _res = ui_test_op(
         addr,
         Op::Create,
         None,
         &Entity::Database(DatabaseCreatePayload {
-            data: expected1.clone().into(),
+            name: expected1.clone().ident.clone(),
+            volume: expected1.clone().volume.clone(),
         }),
     )
     .await;
@@ -86,10 +83,12 @@ async fn test_ui_tables() {
     .await
     .unwrap();
     assert_eq!(http::StatusCode::OK, res.status());
-    let worksheet = res.json::<WorksheetResponse>().await.unwrap().data;
+    let WorksheetResponse(Worksheet {
+        id: worksheet_id, ..
+    }) = res.json().await.unwrap();
 
     let query_payload = QueryCreatePayload {
-        worksheet_id: Some(worksheet.id),
+        worksheet_id: Some(worksheet_id),
         query: format!(
             "create TABLE {}.{}.{}
         external_volume = ''
@@ -120,7 +119,7 @@ async fn test_ui_tables() {
     assert_eq!(http::StatusCode::OK, res.status());
 
     let query_payload = QueryCreatePayload {
-        worksheet_id: Some(worksheet.id),
+        worksheet_id: Some(worksheet_id),
         query: format!(
             "INSERT INTO {}.{}.{} (APP_ID, PLATFORM, EVENT, TXN_ID, EVENT_TIME)
         VALUES ('12345', 'iOS', 'login', '123456', '2021-01-01T00:00:00'),
@@ -216,13 +215,13 @@ async fn test_ui_tables() {
     .await
     .unwrap();
     assert_eq!(http::StatusCode::OK, res.status());
-    let table: TableStatisticsResponse = res.json().await.unwrap();
-    assert_eq!(0, table.data.total_bytes);
-    assert_eq!(0, table.data.total_rows);
+    let TableStatisticsResponse(table) = res.json().await.unwrap();
+    assert_eq!(0, table.total_bytes);
+    assert_eq!(0, table.total_rows);
 
     //Create three more tables
     let query_payload = QueryCreatePayload {
-        worksheet_id: Some(worksheet.id),
+        worksheet_id: Some(worksheet_id),
         query: format!(
             "create TABLE {}.{}.{}
         external_volume = ''
@@ -253,7 +252,7 @@ async fn test_ui_tables() {
     assert_eq!(http::StatusCode::OK, res.status());
 
     let query_payload = QueryCreatePayload {
-        worksheet_id: Some(worksheet.id),
+        worksheet_id: Some(worksheet_id),
         query: format!(
             "create TABLE {}.{}.{}
         external_volume = ''
@@ -284,7 +283,7 @@ async fn test_ui_tables() {
     assert_eq!(http::StatusCode::OK, res.status());
 
     let query_payload = QueryCreatePayload {
-        worksheet_id: Some(worksheet.id),
+        worksheet_id: Some(worksheet_id),
         query: format!(
             "create TABLE {}.{}.{}
         external_volume = ''
@@ -372,7 +371,7 @@ async fn test_ui_tables() {
 
     //Create a table with another name
     let query_payload = QueryCreatePayload {
-        worksheet_id: Some(worksheet.id),
+        worksheet_id: Some(worksheet_id),
         query: format!(
             "create TABLE {}.{}.{}
         external_volume = ''

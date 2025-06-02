@@ -1,8 +1,8 @@
 use crate::error::ErrorResponse;
 use crate::state::AppState;
 use crate::tables::error::{
-    CreateUploadSnafu, MalformedMultipartFileDataSnafu, MalformedMultipartSnafu, TableError,
-    TablesAPIError, TablesResult,
+    CreateUploadSnafu, ExecutionSnafu, MalformedMultipartFileDataSnafu, MalformedMultipartSnafu,
+    TableError, TablesAPIError, TablesResult,
 };
 use crate::tables::models::{
     Table, TableColumn, TableColumnsResponse, TablePreviewDataColumn, TablePreviewDataParameters,
@@ -109,15 +109,13 @@ pub async fn get_table_statistics(
                     .and_then(|value| value.parse::<i64>().ok())
                     .unwrap_or(0);
             }
-            Ok(Json(TableStatisticsResponse {
-                data: TableStatistics {
-                    name: rw_object.ident.table.clone(),
-                    total_rows,
-                    total_bytes,
-                    created_at: rw_object.created_at,
-                    updated_at: rw_object.updated_at,
-                },
-            }))
+            Ok(Json(TableStatisticsResponse(TableStatistics {
+                name: rw_object.ident.table.clone(),
+                total_rows,
+                total_bytes,
+                created_at: rw_object.created_at,
+                updated_at: rw_object.updated_at,
+            })))
         }
         Ok(None) => Err(TablesAPIError::GetMetastore {
             source: MetastoreError::TableNotFound {
@@ -164,7 +162,7 @@ pub async fn get_table_columns(
         .execution_svc
         .query(&session_id, sql_string.as_str(), context)
         .await
-        .map_err(|e| TablesAPIError::Execution { source: e })?
+        .context(ExecutionSnafu)?
         .column_info();
     let items: Vec<TableColumn> = columns_info
         .iter()
@@ -232,7 +230,7 @@ pub async fn get_table_preview_data(
         .execution_svc
         .query(&session_id, sql_string.as_str(), context)
         .await
-        .map_err(|e| TablesAPIError::Execution { source: e })?;
+        .context(ExecutionSnafu)?;
 
     let mut preview_data_columns = Vec::new();
     for batch in &batches {
@@ -337,9 +335,7 @@ pub async fn upload_file(
                     parameters.clone(),
                 )
                 .await
-                .map_err(|e| TablesAPIError::CreateUpload {
-                    source: TableError::Execution { source: e },
-                })?;
+                .context(ExecutionSnafu)?;
             uploaded = true;
         }
     }
@@ -392,7 +388,7 @@ pub async fn get_tables(
 ) -> TablesResult<Json<TablesResponse>> {
     let context = QueryContext::new(Some(database_name.clone()), None, None);
     let sql_string = format!(
-        "SELECT * FROM slatedb.public.tables WHERE schema_name = '{}' AND database_name = '{}'",
+        "SELECT * FROM slatedb.meta.tables WHERE schema_name = '{}' AND database_name = '{}'",
         schema_name.clone(),
         database_name.clone()
     );
@@ -411,31 +407,28 @@ pub async fn get_tables(
         .execution_svc
         .query(&session_id, sql_string.as_str(), context)
         .await
-        .map_err(|e| TablesAPIError::Execution { source: e })?;
+        .context(ExecutionSnafu)?;
     let mut items = Vec::new();
     for record in records {
-        let table_names = downcast_string_column(&record, "table_name")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let schema_names = downcast_string_column(&record, "schema_name")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let database_names = downcast_string_column(&record, "database_name")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let volume_names = downcast_string_column(&record, "volume_name")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let owners = downcast_string_column(&record, "owner")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let table_types = downcast_string_column(&record, "table_type")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let table_format_values = downcast_string_column(&record, "table_format")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let total_bytes_values = downcast_int64_column(&record, "total_bytes")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let total_rows_values = downcast_int64_column(&record, "total_rows")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let created_at_timestamps = downcast_string_column(&record, "created_at")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
-        let updated_at_timestamps = downcast_string_column(&record, "updated_at")
-            .map_err(|e| TablesAPIError::Execution { source: e })?;
+        let table_names = downcast_string_column(&record, "table_name").context(ExecutionSnafu)?;
+        let schema_names =
+            downcast_string_column(&record, "schema_name").context(ExecutionSnafu)?;
+        let database_names =
+            downcast_string_column(&record, "database_name").context(ExecutionSnafu)?;
+        let volume_names =
+            downcast_string_column(&record, "volume_name").context(ExecutionSnafu)?;
+        let owners = downcast_string_column(&record, "owner").context(ExecutionSnafu)?;
+        let table_types = downcast_string_column(&record, "table_type").context(ExecutionSnafu)?;
+        let table_format_values =
+            downcast_string_column(&record, "table_format").context(ExecutionSnafu)?;
+        let total_bytes_values =
+            downcast_int64_column(&record, "total_bytes").context(ExecutionSnafu)?;
+        let total_rows_values =
+            downcast_int64_column(&record, "total_rows").context(ExecutionSnafu)?;
+        let created_at_timestamps =
+            downcast_string_column(&record, "created_at").context(ExecutionSnafu)?;
+        let updated_at_timestamps =
+            downcast_string_column(&record, "updated_at").context(ExecutionSnafu)?;
         for i in 0..record.num_rows() {
             items.push(Table {
                 name: table_names.value(i).to_string(),

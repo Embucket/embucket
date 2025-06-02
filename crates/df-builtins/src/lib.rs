@@ -19,12 +19,11 @@ mod date_add;
 mod date_diff;
 mod date_from_parts;
 //pub mod geospatial;
-mod array_flatten;
-mod array_to_string;
 mod booland;
 mod boolor;
 mod boolxor;
 mod equal_null;
+mod get;
 mod get_path;
 mod iff;
 mod insert;
@@ -44,6 +43,8 @@ mod time_from_parts;
 mod timestamp_from_parts;
 mod to_boolean;
 mod to_time;
+pub mod variant;
+pub mod visitors;
 
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
@@ -62,13 +63,12 @@ pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
         nullifzero::get_udf(),
         is_object::get_udf(),
         is_array::get_udf(),
-        array_flatten::get_udf(),
-        array_to_string::get_udf(),
         rtrimmed_length::get_udf(),
         get_path::get_udf(),
         insert::get_udf(),
         strtok_to_array::get_udf(),
         object_keys::get_udf(),
+        get::get_udf(),
         Arc::new(ScalarUDF::from(ToBooleanFunc::new(false))),
         Arc::new(ScalarUDF::from(ToBooleanFunc::new(true))),
         Arc::new(ScalarUDF::from(ToTimeFunc::new(false))),
@@ -78,6 +78,8 @@ pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
     for func in functions {
         registry.register_udf(func)?;
     }
+
+    variant::register_udfs(registry)?;
     session::register_session_context_udfs(registry)?;
     Ok(())
 }

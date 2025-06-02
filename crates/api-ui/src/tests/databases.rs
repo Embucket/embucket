@@ -6,9 +6,7 @@ use crate::databases::models::{
 use crate::error::ErrorResponse;
 use crate::tests::common::{Entity, Op, req, ui_test_op};
 use crate::tests::server::run_test_server;
-use crate::volumes::models::{VolumeCreatePayload, VolumeCreateResponse, VolumePayload};
-use core_metastore::VolumeType as MetastoreVolumeType;
-use core_metastore::{Database as MetastoreDatabase, Volume as MetastoreVolume};
+use crate::volumes::models::{VolumeCreatePayload, VolumeCreateResponse, VolumeType};
 use http::Method;
 
 #[tokio::test]
@@ -25,61 +23,43 @@ async fn test_ui_databases_metastore_update_bug() {
         Op::Create,
         None,
         &Entity::Volume(VolumeCreatePayload {
-            data: VolumePayload::from(MetastoreVolume {
-                ident: String::from("t"),
-                volume: MetastoreVolumeType::Memory,
-            }),
+            name: String::from("t"),
+            volume: VolumeType::Memory,
         }),
     )
     .await;
-    let volume = res
-        .json::<VolumeCreateResponse>()
-        .await
-        .expect("Failed to create volume");
+    let VolumeCreateResponse(volume) = res.json().await.unwrap();
 
     // Create database, Ok
     let expected = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "test".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "test".to_string(),
+        volume: volume.name.clone(),
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Database(expected.clone())).await;
     assert_eq!(http::StatusCode::OK, res.status());
-    let created_database = res
-        .json::<DatabaseCreateResponse>()
-        .await
-        .expect("Failed to create database");
-    assert_eq!(expected.data.name, created_database.data.name);
-    assert_eq!(expected.data.volume, created_database.data.volume);
+    let DatabaseCreateResponse(created_database) = res.json().await.unwrap();
+    assert_eq!(expected.name, created_database.name);
+    assert_eq!(expected.volume, created_database.volume);
 
     // Update database test -> new-test, Ok
     let new_database = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "new-test".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "new-test".to_string(),
+        volume: volume.name.clone(),
     };
     let res = ui_test_op(
         addr,
         Op::Update,
         Some(&Entity::Database(DatabaseCreatePayload {
-            data: created_database.data.clone().into(),
+            name: created_database.name.clone(),
+            volume: created_database.volume.clone(),
         })),
         &Entity::Database(new_database.clone()),
     )
     .await;
     assert_eq!(http::StatusCode::OK, res.status());
-    let renamed_database = res
-        .json::<DatabaseUpdateResponse>()
-        .await
-        .expect("Failed to update database");
-    assert_eq!(new_database.data.name, renamed_database.data.name); // server confirmed it's renamed
-    assert_eq!(new_database.data.volume, renamed_database.data.volume);
+    let DatabaseUpdateResponse(renamed_database) = res.json().await.unwrap();
+    assert_eq!(new_database.name, renamed_database.name); // server confirmed it's renamed
+    assert_eq!(new_database.volume, renamed_database.volume);
 
     // get non existing database using old name, expected error 404
     let res = ui_test_op(
@@ -87,7 +67,8 @@ async fn test_ui_databases_metastore_update_bug() {
         Op::Get,
         None,
         &Entity::Database(DatabaseCreatePayload {
-            data: created_database.data.into(),
+            name: created_database.name.clone(),
+            volume: created_database.volume.clone(),
         }),
     )
     .await;
@@ -105,7 +86,8 @@ async fn test_ui_databases_metastore_update_bug() {
         Op::Get,
         None,
         &Entity::Database(DatabaseCreatePayload {
-            data: renamed_database.data.into(),
+            name: renamed_database.name.clone(),
+            volume: renamed_database.volume.clone(),
         }),
     )
     .await;
@@ -129,23 +111,17 @@ async fn test_ui_databases() {
         Op::Create,
         None,
         &Entity::Volume(VolumeCreatePayload {
-            data: VolumePayload::from(MetastoreVolume {
-                ident: String::new(),
-                volume: MetastoreVolumeType::Memory,
-            }),
+            name: String::new(),
+            volume: VolumeType::Memory,
         }),
     )
     .await;
-    let volume = res.json::<VolumeCreateResponse>().await.unwrap();
+    let VolumeCreateResponse(volume) = res.json().await.unwrap();
 
     // Create database with empty name, error 400
     let expected = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: String::new(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: String::new(),
+        volume: volume.name.clone(),
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Database(expected.clone())).await;
     assert_eq!(http::StatusCode::BAD_REQUEST, res.status());
@@ -162,42 +138,26 @@ async fn test_ui_databases() {
 
     // Create database, Ok
     let expected1 = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "test".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "test".to_string(),
+        volume: volume.name.clone(),
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Database(expected1.clone())).await;
     assert_eq!(http::StatusCode::OK, res.status());
-    let created_database = res.json::<DatabaseCreateResponse>().await.unwrap();
-    assert_eq!(expected1.data.name, created_database.data.name);
-    assert_eq!(expected1.data.volume, created_database.data.volume);
+    let DatabaseCreateResponse(created_database) = res.json().await.unwrap();
+    assert_eq!(expected1.name, created_database.name);
+    assert_eq!(expected1.volume, created_database.volume);
 
     let expected2 = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "test2".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "test2".to_string(),
+        volume: volume.name.clone(),
     };
     let expected3 = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "test3".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "test3".to_string(),
+        volume: volume.name.clone(),
     };
     let expected4 = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "test4".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "test4".to_string(),
+        volume: volume.name.clone(),
     };
     //4 DBs
     let _res = ui_test_op(addr, Op::Create, None, &Entity::Database(expected2.clone())).await;
@@ -215,7 +175,8 @@ async fn test_ui_databases() {
         addr,
         Op::Delete,
         Some(&Entity::Database(DatabaseCreatePayload {
-            data: created_database.data.into(),
+            name: created_database.name.clone(),
+            volume: created_database.volume.clone(),
         })),
         &stub,
     )
@@ -266,12 +227,8 @@ async fn test_ui_databases() {
 
     // Create database with another name, Ok
     let expected_another = DatabaseCreatePayload {
-        data: MetastoreDatabase {
-            ident: "name".to_string(),
-            properties: None,
-            volume: volume.data.name.clone(),
-        }
-        .into(),
+        name: "name".to_string(),
+        volume: volume.name.clone(),
     };
     let res = ui_test_op(
         addr,

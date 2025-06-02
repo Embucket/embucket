@@ -6,10 +6,7 @@ use utoipa::{IntoParams, ToSchema};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct TableStatisticsResponse {
-    #[serde(flatten)]
-    pub data: TableStatistics,
-}
+pub struct TableStatisticsResponse(pub TableStatistics);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TableStatistics {
@@ -91,7 +88,6 @@ pub struct UploadParameters {
     pub comment: Option<u8>,
 }
 
-// TODO: Remove it when found why it can't locate .into() if only From trait implemeted
 #[allow(clippy::from_over_into)]
 impl Into<Format> for UploadParameters {
     fn into(self) -> Format {

@@ -1,3 +1,4 @@
+use crate::macros::make_udf_function;
 use datafusion::arrow::array::as_string_array;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::error::Result as DFResult;
@@ -33,6 +34,7 @@ impl Default for ArrayFlattenFunc {
 }
 
 impl ArrayFlattenFunc {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             signature: Signature::string(1, Volatility::Immutable),
@@ -146,7 +148,7 @@ fn flatten(v: &str) -> DFResult<Option<String>> {
     })?))
 }
 
-super::macros::make_udf_function!(ArrayFlattenFunc);
+make_udf_function!(ArrayFlattenFunc);
 
 #[cfg(test)]
 mod tests {

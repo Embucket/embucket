@@ -4,7 +4,7 @@ use crate::queries::models::{
 use crate::state::AppState;
 use crate::{
     error::ErrorResponse,
-    queries::error::{QueriesAPIError, QueriesResult, QueryError},
+    queries::error::{QueriesAPIError, QueriesResult, QueryError, QuerySnafu},
 };
 use api_sessions::DFSessionId;
 use axum::{
@@ -14,6 +14,7 @@ use axum::{
 use core_executor::models::{QueryContext, QueryResult};
 use core_history::{QueryRecordId, WorksheetId};
 use core_utils::iterable::IterableEntity;
+use snafu::ResultExt;
 use std::collections::HashMap;
 use utoipa::OpenApi;
 
@@ -103,10 +104,9 @@ pub async fn query(
             Err(err) => Err(QueriesAPIError::Query {
                 source: QueryError::Store { source: err },
             }),
-            Ok(query_record) => Ok(Json(QueryCreateResponse {
-                data: QueryRecord::try_from(query_record)
-                    .map_err(|e| QueriesAPIError::Query { source: e })?,
-            })),
+            Ok(query_record) => Ok(Json(QueryCreateResponse(
+                QueryRecord::try_from(query_record).context(QuerySnafu)?,
+            ))),
         },
         Err(err) => Err(QueriesAPIError::Query {
             source: QueryError::Execution { source: err },

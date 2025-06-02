@@ -3,12 +3,8 @@
 use crate::tests::common::{Entity, Op, req, ui_test_op};
 use crate::tests::server::run_test_server;
 use crate::volumes::models::{
-    VolumeCreatePayload, VolumeCreateResponse, VolumePayload, VolumesResponse,
-};
-use core_metastore::Volume as MetastoreVolume;
-use core_metastore::{
-    AwsAccessKeyCredentials, AwsCredentials, FileVolume as MetastoreFileVolume,
-    S3Volume as MetastoreS3Volume, VolumeType as MetastoreVolumeType,
+    AwsAccessKeyCredentials, AwsCredentials, FileVolume, S3Volume, VolumeCreatePayload,
+    VolumeCreateResponse, VolumeType, VolumesResponse,
 };
 use http::Method;
 use serde_json;
@@ -21,15 +17,13 @@ async fn test_ui_volumes() {
 
     // memory volume with empty ident create Ok
     let expected = VolumeCreatePayload {
-        data: VolumePayload::from(MetastoreVolume {
-            ident: "embucket1".to_string(),
-            volume: MetastoreVolumeType::Memory,
-        }),
+        name: "embucket1".to_string(),
+        volume: VolumeType::Memory,
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Volume(expected.clone())).await;
     assert_eq!(200, res.status());
-    let created = res.json::<VolumeCreateResponse>().await.unwrap();
-    assert_eq!(expected.data.name, created.data.name);
+    let VolumeCreateResponse(created) = res.json().await.unwrap();
+    assert_eq!(expected.name, created.name);
 
     // memory volume with empty ident create Ok
     let payload = r#"{"name":"embucket2","type": "file", "path":"/tmp/data"}"#;
@@ -37,15 +31,13 @@ async fn test_ui_volumes() {
     let res = ui_test_op(addr, Op::Create, None, &Entity::Volume(expected.clone())).await;
     // let res = create_test_volume(addr, &expected).await;
     assert_eq!(200, res.status());
-    let created = res.json::<VolumeCreateResponse>().await.unwrap();
-    assert_eq!(expected.data.name, created.data.name);
+    let VolumeCreateResponse(created) = res.json().await.unwrap();
+    assert_eq!(expected.name, created.name);
 
     let expected = VolumeCreatePayload {
-        data: VolumePayload::from(MetastoreVolume {
-            ident: "embucket2".to_string(),
-            volume: MetastoreVolumeType::File(MetastoreFileVolume {
-                path: "/tmp/data".to_string(),
-            }),
+        name: "embucket2".to_string(),
+        volume: VolumeType::File(FileVolume {
+            path: "/tmp/data".to_string(),
         }),
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Volume(expected.clone())).await;
@@ -54,26 +46,24 @@ async fn test_ui_volumes() {
 
     // memory volume with empty ident create Ok
     let expected = VolumeCreatePayload {
-        data: VolumePayload::from(MetastoreVolume {
-            ident: "embucket3".to_string(),
-            volume: MetastoreVolumeType::S3(MetastoreS3Volume {
-                region: Some("us-west-1".to_string()),
-                bucket: Some("embucket".to_string()),
-                endpoint: Some("http://localhost:9000".to_string()),
-                skip_signature: None,
-                metadata_endpoint: None,
-                credentials: Some(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
-                    aws_access_key_id: "********".to_string(),
-                    aws_secret_access_key: "********".to_string(),
-                })),
-            }),
+        name: "embucket3".to_string(),
+        volume: VolumeType::S3(S3Volume {
+            region: Some("us-west-1".to_string()),
+            bucket: Some("embucket".to_string()),
+            endpoint: Some("http://localhost:9000".to_string()),
+            skip_signature: None,
+            metadata_endpoint: None,
+            credentials: Some(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
+                aws_access_key_id: "********".to_string(),
+                aws_secret_access_key: "********".to_string(),
+            })),
         }),
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Volume(expected.clone())).await;
     // let res = create_test_volume(addr, &expected).await;
     assert_eq!(200, res.status());
-    let created = res.json::<VolumeCreateResponse>().await.unwrap();
-    assert_eq!(expected.data.name, created.data.name);
+    let VolumeCreateResponse(created) = res.json().await.unwrap();
+    assert_eq!(expected.name, created.name);
 
     //Get list volumes
     let res = req(
@@ -128,15 +118,13 @@ async fn test_ui_volumes() {
 
     //Create a volume with diffrent name
     let expected = VolumeCreatePayload {
-        data: VolumePayload::from(MetastoreVolume {
-            ident: "icebucket1".to_string(),
-            volume: MetastoreVolumeType::Memory,
-        }),
+        name: "icebucket1".to_string(),
+        volume: VolumeType::Memory,
     };
     let res = ui_test_op(addr, Op::Create, None, &Entity::Volume(expected.clone())).await;
     assert_eq!(200, res.status());
-    let created = res.json::<VolumeCreateResponse>().await.unwrap();
-    assert_eq!(expected.data.name, created.data.name);
+    let VolumeCreateResponse(created) = res.json().await.unwrap();
+    assert_eq!(expected.name, created.name);
 
     //Get list volumes
     let res = req(

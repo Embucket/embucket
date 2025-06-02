@@ -1815,6 +1815,7 @@ dependencies = [
  "slatedb",
  "snafu",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2712,6 +2713,7 @@ dependencies = [
  "datafusion-expr",
  "datafusion-macros",
  "datafusion-physical-plan",
+ "indexmap 2.9.0",
  "insta",
  "jsonpath_lib",
  "paste",
@@ -2729,6 +2731,7 @@ dependencies = [
  "aws-credential-types",
  "bytes",
  "chrono",
+ "core-history",
  "core-metastore",
  "core-utils",
  "dashmap",

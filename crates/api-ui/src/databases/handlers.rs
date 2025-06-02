@@ -3,10 +3,10 @@ use crate::{OrderDirection, apply_parameters};
 use crate::{
     SearchParameters,
     databases::error::{
-        CreateSnafu, DatabasesAPIError, DatabasesResult, DeleteSnafu, GetSnafu, UpdateSnafu,
+        CreateSnafu, DatabasesResult, DeleteSnafu, GetSnafu, ListSnafu, UpdateSnafu,
     },
     databases::models::{
-        Database, DatabaseCreatePayload, DatabaseCreateResponse, DatabasePayload, DatabaseResponse,
+        Database, DatabaseCreatePayload, DatabaseCreateResponse, DatabaseResponse,
         DatabaseUpdatePayload, DatabaseUpdateResponse, DatabasesResponse,
     },
     downcast_string_column,
@@ -19,8 +19,8 @@ use axum::{
 };
 use core_executor::models::{QueryContext, QueryResult};
 use core_metastore::Database as MetastoreDatabase;
-use core_metastore::error::MetastoreError;
-use snafu::{IntoError, ResultExt};
+use core_metastore::error::{MetastoreError, ValidationSnafu};
+use snafu::ResultExt;
 use utoipa::OpenApi;
 use validator::Validate;
 
@@ -39,7 +39,7 @@ use validator::Validate;
             DatabaseCreateResponse,
             DatabaseResponse,
             DatabasesResponse,
-            DatabasePayload,
+            //DatabasePayload,
             Database,
             ErrorResponse,
             OrderDirection,
@@ -80,16 +80,24 @@ pub async fn create_database(
     State(state): State<AppState>,
     Json(database): Json<DatabaseCreatePayload>,
 ) -> DatabasesResult<Json<DatabaseCreateResponse>> {
-    let database: MetastoreDatabase = database.data.into();
-    database.validate().map_err(|e| DatabasesAPIError::Create {
-        source: MetastoreError::Validation { source: e },
-    })?;
+    let database = MetastoreDatabase {
+        ident: database.name,
+        volume: database.volume,
+        properties: None,
+    };
+    database
+        .validate()
+        .context(ValidationSnafu)
+        .map_err(Into::into)
+        .context(CreateSnafu)?;
     state
         .metastore
         .create_database(&database.ident.clone(), database)
         .await
         .context(CreateSnafu)
-        .map(|o| Json(DatabaseCreateResponse { data: o.into() }))
+        .map(Database::from)
+        .map(DatabaseCreateResponse)
+        .map(Json)
 }
 
 #[utoipa::path(
@@ -116,15 +124,22 @@ pub async fn get_database(
     State(state): State<AppState>,
     Path(database_name): Path<String>,
 ) -> DatabasesResult<Json<DatabaseResponse>> {
-    match state.metastore.get_database(&database_name).await {
-        Ok(Some(db)) => Ok(Json(DatabaseResponse { data: db.into() })),
-        Ok(None) => Err(
-            GetSnafu.into_error(Box::new(MetastoreError::DatabaseNotFound {
-                db: database_name.clone(),
-            })),
-        ),
-        Err(e) => Err(e).context(GetSnafu),
-    }
+    state
+        .metastore
+        .get_database(&database_name)
+        .await
+        .map(|opt_rw_obj| {
+            opt_rw_obj.ok_or_else(|| {
+                Box::new(MetastoreError::DatabaseNotFound {
+                    db: database_name.clone(),
+                })
+            })
+        })
+        .context(GetSnafu)?
+        .map(Database::from)
+        .map(DatabaseResponse)
+        .map(Json)
+        .context(GetSnafu)
 }
 
 #[utoipa::path(
@@ -186,17 +201,25 @@ pub async fn update_database(
     Path(database_name): Path<String>,
     Json(database): Json<DatabaseUpdatePayload>,
 ) -> DatabasesResult<Json<DatabaseUpdateResponse>> {
-    let database: MetastoreDatabase = database.data.into();
-    database.validate().map_err(|e| DatabasesAPIError::Update {
-        source: MetastoreError::Validation { source: e },
-    })?;
+    let database = MetastoreDatabase {
+        ident: database.name,
+        volume: database.volume,
+        properties: None,
+    };
+    database
+        .validate()
+        .context(ValidationSnafu)
+        .map_err(Into::into)
+        .context(UpdateSnafu)?;
     //TODO: Implement database renames
     state
         .metastore
         .update_database(&database_name, database)
         .await
         .context(UpdateSnafu)
-        .map(|o| Json(DatabaseUpdateResponse { data: o.into() }))
+        .map(Database::from)
+        .map(DatabaseUpdateResponse)
+        .map(Json)
 }
 
 #[utoipa::path(
@@ -230,23 +253,21 @@ pub async fn list_databases(
     State(state): State<AppState>,
 ) -> DatabasesResult<Json<DatabasesResponse>> {
     let context = QueryContext::default();
-    let sql_string = "SELECT * FROM slatedb.public.databases".to_string();
+    let sql_string = "SELECT * FROM slatedb.meta.databases".to_string();
     let sql_string = apply_parameters(&sql_string, parameters, &["database_name", "volume_name"]);
     let QueryResult { records, .. } = state
         .execution_svc
         .query(&session_id, sql_string.as_str(), context)
         .await
-        .map_err(|e| DatabasesAPIError::List { source: e })?;
+        .context(ListSnafu)?;
     let mut items = Vec::new();
     for record in records {
-        let database_names = downcast_string_column(&record, "database_name")
-            .map_err(|e| DatabasesAPIError::List { source: e })?;
-        let volume_names = downcast_string_column(&record, "volume_name")
-            .map_err(|e| DatabasesAPIError::List { source: e })?;
-        let created_at_timestamps = downcast_string_column(&record, "created_at")
-            .map_err(|e| DatabasesAPIError::List { source: e })?;
-        let updated_at_timestamps = downcast_string_column(&record, "updated_at")
-            .map_err(|e| DatabasesAPIError::List { source: e })?;
+        let database_names = downcast_string_column(&record, "database_name").context(ListSnafu)?;
+        let volume_names = downcast_string_column(&record, "volume_name").context(ListSnafu)?;
+        let created_at_timestamps =
+            downcast_string_column(&record, "created_at").context(ListSnafu)?;
+        let updated_at_timestamps =
+            downcast_string_column(&record, "updated_at").context(ListSnafu)?;
         for i in 0..record.num_rows() {
             items.push(Database {
                 name: database_names.value(i).to_string(),
