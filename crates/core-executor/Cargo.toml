@@ -48,6 +48,7 @@ tokio-stream = "0.1.17"
 url = { workspace = true }
 uuid = { workspace = true }
 indexmap = { workspace = true }
+pin-project-lite = "0.2.16"
 
 [dev-dependencies]
 bytes = { workspace = true }
