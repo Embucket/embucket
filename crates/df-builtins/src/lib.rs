@@ -25,6 +25,7 @@ mod booland;
 mod boolor;
 mod boolxor;
 mod equal_null;
+mod get_path;
 mod iff;
 mod insert;
 mod is_array;
@@ -38,7 +39,6 @@ mod time_from_parts;
 mod timestamp_from_parts;
 mod to_boolean;
 mod to_time;
-mod get_path;
 
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![

@@ -43,9 +43,7 @@ impl ScalarUDFImpl for GetPathFunc {
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let ScalarFunctionArgs { args, .. } = args;
 
-        match (&args[0],&args[0]) {
-            
-        }
+        match (&args[0], &args[0]) {}
         let input = match args[0].clone() {
             ColumnarValue::Array(arr) => arr,
             ColumnarValue::Scalar(v) => v.to_array()?,
