@@ -179,7 +179,7 @@ json_length
 json_object_keys                   
 lag
 last_day
-last_query_id                                
+last_query_id
 last_value                         
 lcm                                
 lead                               
@@ -375,8 +375,10 @@ uuid
 var                                
 var_pop                            
 var_population                     
-var_samp                           
+var_samp
 var_sample
+variance
+variance_samp
 variant_element
 version
 jarowinkler_similarity
