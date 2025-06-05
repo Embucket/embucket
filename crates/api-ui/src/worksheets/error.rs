@@ -5,6 +5,7 @@ use axum::response::IntoResponse;
 use core_history::errors::HistoryStoreError;
 use http::status::StatusCode;
 use snafu::prelude::*;
+use core_executor::error::ExecutionError;
 
 pub type WorksheetsResult<T> = Result<T, WorksheetsAPIError>;
 
@@ -29,7 +30,7 @@ pub enum WorksheetsAPIError {
     #[snafu(display("Update worksheet error: {source}"))]
     Update { source: WorksheetUpdateError },
     #[snafu(display("Get worksheets error: {source}"))]
-    List { source: HistoryStoreError },
+    List { source: ExecutionError },
 }
 
 // Select which status code to return.
@@ -58,10 +59,7 @@ impl IntoStatusCode for WorksheetsAPIError {
                     _ => StatusCode::INTERNAL_SERVER_ERROR,
                 },
             },
-            Self::List { source } => match &source {
-                HistoryStoreError::WorksheetsList { .. } => StatusCode::BAD_REQUEST,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            },
+            Self::List { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

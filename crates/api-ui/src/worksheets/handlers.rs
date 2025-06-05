@@ -13,8 +13,13 @@ use chrono::Utc;
 use core_history::WorksheetId;
 use snafu::ResultExt;
 use std::convert::From;
+use datafusion::arrow::array::ArrayAccessor;
 use tracing;
 use utoipa::OpenApi;
+use api_sessions::DFSessionId;
+use core_executor::models::{QueryContext, QueryResult};
+use crate::{apply_parameters, downcast_int64_column, downcast_string_column, SearchParameters};
+use crate::databases::models::{Database, DatabasesResponse};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -59,43 +64,37 @@ pub struct ApiDoc;
 )]
 #[tracing::instrument(level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn worksheets(
+    DFSessionId(session_id): DFSessionId,
     State(state): State<AppState>,
-    Query(GetWorksheetsParams {
-        sort_order,
-        sort_by,
-    }): Query<GetWorksheetsParams>,
+    Query(parameters): Query<SearchParameters>,
 ) -> WorksheetsResult<Json<WorksheetsResponse>> {
-    let history_worksheets = state
-        .history_store
-        .get_worksheets()
+    let context = QueryContext::default();
+    let sql_string = "SELECT * FROM slatedb.history.worksheets".to_string();
+    let sql_string = apply_parameters(&sql_string, parameters, &["id", "name", "content"]);
+    let QueryResult { records, .. } = state
+        .execution_svc
+        .query(&session_id, sql_string.as_str(), context)
         .await
         .context(ListSnafu)?;
-
-    let mut items = history_worksheets
-        .into_iter()
-        .map(Worksheet::from)
-        .collect::<Vec<Worksheet>>();
-
-    let sort_order = sort_order.unwrap_or_default();
-    let sort_by = sort_by.unwrap_or_default();
-
-    items.sort_by(|w1, w2| {
-        let cmp_res = match sort_by {
-            SortBy::Name => w1.name.clone().cmp(&w2.name),
-            SortBy::CreatedAt => w1
-                .created_at
-                .timestamp_millis()
-                .cmp(&w2.created_at.timestamp_millis()),
-            SortBy::UpdatedAt => w1
-                .updated_at
-                .timestamp_millis()
-                .cmp(&w2.updated_at.timestamp_millis()),
-        };
-        match sort_order {
-            SortOrder::Ascending => cmp_res,
-            SortOrder::Descending => cmp_res.reverse(),
+    let mut items = Vec::new();
+    for record in records {
+        let ids = downcast_int64_column(&record, "id").context(ListSnafu)?;
+        let names = downcast_string_column(&record, "name").context(ListSnafu)?;
+        let content_values = downcast_string_column(&record, "content").context(ListSnafu)?;
+        let created_at_timestamps =
+            downcast_string_column(&record, "created_at").context(ListSnafu)?;
+        let updated_at_timestamps =
+            downcast_string_column(&record, "updated_at").context(ListSnafu)?;
+        for i in 0..record.num_rows() {
+            items.push(Worksheet {
+                id: ids.value(i),
+                name: names.value(i).to_string(),
+                content: content_values.value(i).to_string(),
+                created_at: created_at_timestamps.value(i).to_string(),
+                updated_at: updated_at_timestamps.value(i).to_string(),
+            });
         }
-    });
+    }
 
     Ok(Json(WorksheetsResponse { items }))
 }

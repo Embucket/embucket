@@ -27,8 +27,8 @@ pub struct Worksheet {
     pub id: WorksheetId,
     pub name: String,
     pub content: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 impl From<core_history::Worksheet> for Worksheet {
@@ -37,8 +37,8 @@ impl From<core_history::Worksheet> for Worksheet {
             id: worksheet.id,
             name: worksheet.name,
             content: worksheet.content,
-            created_at: worksheet.created_at,
-            updated_at: worksheet.updated_at,
+            created_at: worksheet.created_at.to_string(),
+            updated_at: worksheet.updated_at.to_string(),
         }
     }
 }
@@ -50,8 +50,9 @@ impl Into<core_history::Worksheet> for Worksheet {
             id: self.id,
             name: self.name,
             content: self.content,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
+            //Shouldn't fail
+            created_at: self.created_at.parse().unwrap(),
+            updated_at: self.updated_at.parse().unwrap(),
         }
     }
 }
