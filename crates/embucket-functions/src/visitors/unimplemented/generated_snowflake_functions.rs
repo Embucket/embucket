@@ -2661,12 +2661,6 @@ pub const STRING_BINARY_FUNCTIONS: &[(&str, FunctionInfo)] = &[
     )
     .with_docs("https://docs.snowflake.com/en/sql-reference/functions/startswith")
     ),
-    ("STRTOK", FunctionInfo::new(
-        "STRTOK",
-        "Tokenizes a given string and returns the requested part."
-    )
-    .with_docs("https://docs.snowflake.com/en/sql-reference/functions/strtok")
-    ),
     ("SUMMARIZE", FunctionInfo::new(
         "SUMMARIZE",
         "Summarizes the given English-language input text."
