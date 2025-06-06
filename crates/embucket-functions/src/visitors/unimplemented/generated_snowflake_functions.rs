@@ -931,12 +931,6 @@ pub const DATETIME_FUNCTIONS: &[(&str, FunctionInfo)] = &[
     )
     .with_docs("https://docs.snowflake.com/en/sql-reference/functions/next_day")
     ),
-    ("PREVIOUS_DAY", FunctionInfo::new(
-        "PREVIOUS_DAY",
-        "Returns the date of the first specified DOW (day of week) that occurs before the input date."
-    )
-    .with_docs("https://docs.snowflake.com/en/sql-reference/functions/previous_day")
-    ),
     ("QUARTER", FunctionInfo::new(
         "QUARTER",
         "Extracts the corresponding date part from a date or timestamp."
