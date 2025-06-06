@@ -1869,6 +1869,7 @@ dependencies = [
  "insta",
  "object_store",
  "paste",
+ "pin-project-lite",
  "regex",
  "serde",
  "serde_json",
