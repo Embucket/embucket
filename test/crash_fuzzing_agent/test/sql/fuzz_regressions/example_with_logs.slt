@@ -1,0 +1,14 @@
+# Fuzzing regression test
+# Generated on: 2025-06-06T12:13:29.475241
+# Error type: timeout
+# Status code: 500
+# Execution time: 30.000s
+# Embucket server logs:
+# STDOUT: test/logs/embucket_stdout_20250606_121244.log
+# STDERR: test/logs/embucket_stderr_20250606_121244.log
+
+# Original error response:
+# Query execution timed out after 30 seconds
+
+statement error
+SELECT COUNT(*) FROM large_table t1 JOIN large_table t2 ON t1.id = t2.id

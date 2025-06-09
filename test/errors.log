@@ -1,0 +1,33 @@
+timeout_1749200574_87: 38
+
+================================================================================
+Query failed with unexpected error! (sql/fuzz_regressions/timeout_1749200574_87.slt:38)!
+================================================================================
+WITH cte_data AS (
+  SELECT
+    t1.quantity,
+    ABS(product_id),
+    LOWER(id),
+    t2.id
+  FROM products AS t1
+  LEFT JOIN transactions AS t2
+    ON t1.id = t2.id
+  GROUP BY
+    t1.quantity
+  HAVING
+    COUNT(*) > 0
+  LIMIT 100
+)
+SELECT
+  *
+FROM cte_data
+LIMIT 50;
+================================================================================
+Expected error:
+002028 (42601): SQL compilation error:
+ambiguous column name 'ID'
+================================================================================
+Actual error:
+000200: DataFusion error: Schema error: Ambiguous reference to unqualified field id
+================================================================================
+
