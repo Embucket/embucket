@@ -374,11 +374,9 @@ upper
 uuid                               
 var                                
 var_pop                            
-var_population                     
+var_population
 var_samp
 var_sample
-variance
-variance_samp
 variant_element
 version
 jarowinkler_similarity

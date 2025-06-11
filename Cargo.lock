@@ -2984,7 +2984,6 @@ dependencies = [
  "core-metastore",
  "core-utils",
  "dotenv",
- "insta",
  "object_store",
  "opentelemetry",
  "opentelemetry-otlp",
