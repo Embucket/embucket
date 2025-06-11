@@ -43,7 +43,7 @@ use df_catalog::catalog::CachingCatalog;
 use df_catalog::information_schema::session_params::SessionProperty;
 use embucket_functions::semi_structured::variant::visitors::visit_all;
 use embucket_functions::visitors::{
-    copy_into_identifiers, functions_rewriter, json_element,
+    copy_into_identifiers, functions_rewriter, json_element, top_limit,
     unimplemented::functions_checker::visit as unimplemented_functions_checker,
 };
 use iceberg_rust::catalog::Catalog;
@@ -178,6 +178,7 @@ impl UserQuery {
         if let DFStatement::Statement(value) = statement {
             json_element::visit(value);
             functions_rewriter::visit(value);
+            top_limit::visit(value);
             unimplemented_functions_checker(value).map_err(|e| ExecutionError::DataFusion {
                 source: DataFusionError::NotImplemented(e.to_string()),
             })?;
