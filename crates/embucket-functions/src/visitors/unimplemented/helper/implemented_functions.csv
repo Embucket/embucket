@@ -179,7 +179,7 @@ json_length
 json_object_keys                   
 lag
 last_day
-last_query_id                                
+last_query_id
 last_value                         
 lcm                                
 lead                               
@@ -374,8 +374,8 @@ upper
 uuid                               
 var                                
 var_pop                            
-var_population                     
-var_samp                           
+var_population
+var_samp
 var_sample
 variant_element
 version
