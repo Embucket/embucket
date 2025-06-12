@@ -335,6 +335,7 @@ string_agg
 string_to_array
 string_to_list
 strpos
+strtok
 strtok_to_array
 struct
 substr
