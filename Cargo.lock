@@ -2938,6 +2938,7 @@ dependencies = [
  "datafusion-functions-json",
  "datafusion-macros",
  "datafusion-physical-plan",
+ "hex",
  "indexmap 2.9.0",
  "insta",
  "jsonpath_lib",
