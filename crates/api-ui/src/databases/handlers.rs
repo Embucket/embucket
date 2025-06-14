@@ -3,7 +3,7 @@ use crate::{OrderDirection, apply_parameters};
 use crate::{
     SearchParameters,
     databases::error::{
-        CreateSnafu, DatabasesResult, DeleteSnafu, GetSnafu, ListSnafu, UpdateSnafu,
+        self as databases_error, CreateSnafu, DatabasesResult, DeleteSnafu, GetSnafu, UpdateSnafu,
     },
     databases::models::{
         Database, DatabaseCreatePayload, DatabaseCreateResponse, DatabaseResponse,
@@ -19,7 +19,7 @@ use axum::{
 };
 use core_executor::models::{QueryContext, QueryResult};
 use core_metastore::Database as MetastoreDatabase;
-use core_metastore::error::{MetastoreError, ValidationSnafu};
+use core_metastore::error::{self as metastore_error, ValidationSnafu};
 use snafu::ResultExt;
 use utoipa::OpenApi;
 use validator::Validate;
@@ -88,7 +88,6 @@ pub async fn create_database(
     database
         .validate()
         .context(ValidationSnafu)
-        .map_err(Into::into)
         .context(CreateSnafu)?;
     state
         .metastore
@@ -130,9 +129,10 @@ pub async fn get_database(
         .await
         .map(|opt_rw_obj| {
             opt_rw_obj.ok_or_else(|| {
-                Box::new(MetastoreError::DatabaseNotFound {
+                metastore_error::DatabaseNotFoundSnafu {
                     db: database_name.clone(),
-                })
+                }
+                .build()
             })
         })
         .context(GetSnafu)?
@@ -209,7 +209,6 @@ pub async fn update_database(
     database
         .validate()
         .context(ValidationSnafu)
-        .map_err(Into::into)
         .context(UpdateSnafu)?;
     //TODO: Implement database renames
     state
@@ -259,15 +258,17 @@ pub async fn list_databases(
         .execution_svc
         .query(&session_id, sql_string.as_str(), context)
         .await
-        .context(ListSnafu)?;
+        .context(databases_error::ListSnafu)?;
     let mut items = Vec::new();
     for record in records {
-        let database_names = downcast_string_column(&record, "database_name").context(ListSnafu)?;
-        let volume_names = downcast_string_column(&record, "volume_name").context(ListSnafu)?;
+        let database_names =
+            downcast_string_column(&record, "database_name").context(databases_error::ListSnafu)?;
+        let volume_names =
+            downcast_string_column(&record, "volume_name").context(databases_error::ListSnafu)?;
         let created_at_timestamps =
-            downcast_string_column(&record, "created_at").context(ListSnafu)?;
+            downcast_string_column(&record, "created_at").context(databases_error::ListSnafu)?;
         let updated_at_timestamps =
-            downcast_string_column(&record, "updated_at").context(ListSnafu)?;
+            downcast_string_column(&record, "updated_at").context(databases_error::ListSnafu)?;
         for i in 0..record.num_rows() {
             items.push(Database {
                 name: database_names.value(i).to_string(),

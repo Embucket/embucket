@@ -53,7 +53,7 @@ use iceberg_rust::spec::namespace::Namespace;
 use iceberg_rust::spec::schema::Schema;
 use iceberg_rust::spec::types::StructType;
 use object_store::aws::AmazonS3Builder;
-use snafu::ResultExt;
+use snafu::{IntoError, ResultExt};
 use sqlparser::ast::helpers::attached_token::AttachedToken;
 use sqlparser::ast::{
     BinaryOperator, GroupByExpr, MergeAction, MergeClauseKind, MergeInsertKind, ObjectNamePart,
@@ -101,8 +101,10 @@ impl UserQuery {
         let state = self.session.ctx.state();
         let dialect = state.config().options().sql_parser.dialect.as_str();
         let mut statement = state.sql_to_statement(&self.raw_query, dialect)?;
+        // it is designed to return DataFusionError, this is the reason why we
+        // create DataFusionError manually. This is also requires manual unboxing.
         Self::postprocess_query_statement_with_validation(&mut statement).map_err(|e| match e {
-            ExecutionError::DataFusion { source } => source,
+            ExecutionError::DataFusion { error, .. } => *error,
             _ => DataFusionError::NotImplemented(e.to_string()),
         })?;
         Ok(statement)
@@ -178,9 +180,12 @@ impl UserQuery {
         if let DFStatement::Statement(value) = statement {
             json_element::visit(value);
             functions_rewriter::visit(value);
-            unimplemented_functions_checker(value).map_err(|e| ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(e.to_string()),
-            })?;
+            unimplemented_functions_checker(value)
+                // Can't use context here since underlying Error require handling
+                .map_err(|e| {
+                    ex_error::DataFusionSnafu
+                        .into_error(DataFusionError::NotImplemented(e.to_string()))
+                })?;
             copy_into_identifiers::visit(value);
             select_expr_aliases::visit(value);
             // inline_aliases_in_query::visit(value);
@@ -190,9 +195,10 @@ impl UserQuery {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     #[instrument(name = "UserQuery::execute", level = "debug", skip(self), err)]
     pub async fn execute(&mut self) -> ExecutionResult<QueryResult> {
-        let statement = self.parse_query().context(super::error::DataFusionSnafu)?;
+        let statement = self.parse_query().context(ex_error::DataFusionSnafu)?;
         self.query = statement.to_string();
 
         // TODO: Code should be organized in a better way
@@ -233,11 +239,7 @@ impl UserQuery {
                         Use::Default => ("", String::new()),
                     };
                     if variable.is_empty() | value.is_empty() {
-                        return Err(ExecutionError::DataFusion {
-                            source: DataFusionError::NotImplemented(
-                                "Only USE with variables are supported".to_string(),
-                            ),
-                        });
+                        return ex_error::OnyUseWithVariablesSnafu.fail();
                     }
                     let params = HashMap::from([(
                         variable.to_string(),
@@ -256,11 +258,7 @@ impl UserQuery {
                                 &v.value,
                                 self.session.ctx.session_id(),
                             )),
-                            _ => Err(ExecutionError::DataFusion {
-                                source: DataFusionError::NotImplemented(
-                                    "Only primitive statements are supported".to_string(),
-                                ),
-                            }),
+                            _ => ex_error::OnlyPrimitiveStatementsSnafu.fail(),
                         })
                         .collect::<Result<_, _>>()?;
                     let params = variables
@@ -277,11 +275,7 @@ impl UserQuery {
                 Statement::CreateDatabase { .. } => {
                     // TODO: Databases are only able to be created through the
                     // metastore API. We need to add Snowflake volume syntax to CREATE DATABASE query
-                    return Err(ExecutionError::DataFusion {
-                        source: DataFusionError::NotImplemented(
-                            "Only CREATE TABLE/CREATE SCHEMA statements are supported".to_string(),
-                        ),
-                    });
+                    return ex_error::OnlyTableSchemaCreateStatementsSnafu.fail();
                     /*return self
                     .create_database(db_name, if_not_exists)
                     .await;*/
@@ -346,11 +340,17 @@ impl UserQuery {
 
     #[instrument(name = "UserQuery::get_catalog", level = "trace", skip(self), err)]
     pub fn get_catalog(&self, name: &str) -> ExecutionResult<Arc<dyn CatalogProvider>> {
-        self.session.ctx.state().catalog_list().catalog(name).ok_or(
-            ExecutionError::CatalogNotFound {
-                catalog: name.to_string(),
-            },
-        )
+        self.session
+            .ctx
+            .state()
+            .catalog_list()
+            .catalog(name)
+            .ok_or_else(|| {
+                ex_error::CatalogNotFoundSnafu {
+                    catalog: name.to_string(),
+                }
+                .build()
+            })
     }
 
     /// The code below relies on [`Catalog`] trait for different iceberg catalog
@@ -375,9 +375,12 @@ impl UserQuery {
             if let Some(caching_catalog) = catalog.as_any().downcast_ref::<CachingCatalog>() {
                 &caching_catalog.catalog
             } else {
-                return IcebergCatalogResult::Result(Err(ExecutionError::CatalogDownCast {
-                    catalog: catalog_name,
-                }));
+                return IcebergCatalogResult::Result(
+                    ex_error::CatalogDownCastSnafu {
+                        catalog: catalog_name,
+                    }
+                    .fail(),
+                );
             };
 
         // Try to resolve the actual underlying catalog type
@@ -393,9 +396,12 @@ impl UserQuery {
             let result = self.execute_logical_plan(plan).await;
             IcebergCatalogResult::Result(result)
         } else {
-            IcebergCatalogResult::Result(Err(ExecutionError::CatalogDownCast {
-                catalog: catalog_name,
-            }))
+            IcebergCatalogResult::Result(
+                ex_error::CatalogDownCastSnafu {
+                    catalog: catalog_name,
+                }
+                .fail(),
+            )
         }
     }
 
@@ -405,11 +411,7 @@ impl UserQuery {
             names, object_type, ..
         } = statement.clone()
         else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only DROP statements are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlyDropStatementsSnafu.fail();
         };
         let ident: MetastoreTableIdent = self.resolve_table_object_name(names[0].0.clone())?.into();
         let plan = self.sql_statement_to_plan(statement).await?;
@@ -420,10 +422,7 @@ impl UserQuery {
         {
             IcebergCatalogResult::Catalog(catalog) => catalog,
             IcebergCatalogResult::Result(result) => {
-                return match result {
-                    Ok(_) => self.status_response(),
-                    Err(err) => Err(err),
-                };
+                return result.map(|_| self.status_response())?;
             }
         };
 
@@ -447,11 +446,7 @@ impl UserQuery {
                         .context(ex_error::IcebergSnafu)?;
                 }
                 _ => {
-                    return Err(ExecutionError::DataFusion {
-                        source: DataFusionError::NotImplemented(
-                            "Only DROP TABLE/VIEW statements are supported".to_string(),
-                        ),
-                    });
+                    return ex_error::OnlyDropTableViewStatementsSnafu.fail();
                 }
             }
         }
@@ -467,11 +462,7 @@ impl UserQuery {
     )]
     pub async fn create_table_query(&self, statement: Statement) -> ExecutionResult<QueryResult> {
         let Statement::CreateTable(mut create_table_statement) = statement.clone() else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only CREATE TABLE statements are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlyCreateTableStatementsSnafu.fail();
         };
         let table_location = create_table_statement
             .location
@@ -527,22 +518,29 @@ impl UserQuery {
             if is_logical_plan_effectively_empty(&input) {
                 return self.created_entity_response();
             }
-            let schema_name = name
-                .schema()
-                .ok_or(ExecutionError::InvalidSchemaIdentifier {
+            let schema_name = name.schema().ok_or_else(|| {
+                ex_error::InvalidSchemaIdentifierSnafu {
                     ident: name.to_string(),
-                })?;
+                }
+                .build()
+            })?;
 
             let target_table = catalog
                 .schema(schema_name)
-                .ok_or(ExecutionError::SchemaNotFound {
-                    schema: schema_name.to_string(),
+                .ok_or_else(|| {
+                    ex_error::SchemaNotFoundSnafu {
+                        schema: schema_name.to_string(),
+                    }
+                    .build()
                 })?
                 .table(name.table())
                 .await
-                .context(super::error::DataFusionSnafu)?
-                .ok_or(ExecutionError::TableProviderNotFound {
-                    table_name: name.table().to_string(),
+                .context(ex_error::DataFusionSnafu)?
+                .ok_or_else(|| {
+                    ex_error::TableProviderNotFoundSnafu {
+                        table_name: name.table().to_string(),
+                    }
+                    .build()
                 })?;
 
             let insert_plan = LogicalPlan::Dml(DmlStatement::new(
@@ -578,10 +576,7 @@ impl UserQuery {
         {
             IcebergCatalogResult::Catalog(catalog) => catalog,
             IcebergCatalogResult::Result(result) => {
-                return match result {
-                    Ok(_) => self.created_entity_response(),
-                    Err(err) => Err(err),
-                };
+                return result.map(|_| self.created_entity_response())?;
             }
         };
 
@@ -605,10 +600,11 @@ impl UserQuery {
                     .await
                     .context(ex_error::IcebergSnafu)?;
             } else {
-                return Err(ExecutionError::ObjectAlreadyExists {
+                return ex_error::ObjectAlreadyExistsSnafu {
                     type_name: "table".to_string(),
                     name: ident.to_string(),
-                });
+                }
+                .fail();
             }
         }
 
@@ -617,7 +613,7 @@ impl UserQuery {
             &mut 0,
         ))
         .map_err(|err| DataFusionError::External(Box::new(err)))
-        .context(super::error::DataFusionSnafu)?;
+        .context(ex_error::DataFusionSnafu)?;
 
         // Create builder and configure it
         let mut builder = Schema::builder();
@@ -632,7 +628,7 @@ impl UserQuery {
         let schema = builder
             .build()
             .map_err(|err| DataFusionError::External(Box::new(err)))
-            .context(super::error::DataFusionSnafu)?;
+            .context(ex_error::DataFusionSnafu)?;
 
         let mut create_table = CreateTableBuilder::default();
         create_table
@@ -737,19 +733,16 @@ impl UserQuery {
             ..
         } = statement
         else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only CREATE STAGE statements are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlyCreateStageStatementsSnafu.fail();
         };
 
         let table_name = match name.0.last() {
             Some(ObjectNamePart::Identifier(ident)) => ident.value.clone(),
             _ => {
-                return Err(ExecutionError::InvalidTableIdentifier {
+                return ex_error::InvalidTableIdentifierSnafu {
                     ident: name.to_string(),
-                });
+                }
+                .fail();
             }
         };
 
@@ -774,8 +767,11 @@ impl UserQuery {
             .unwrap_or(b'"');
 
         let file_path = stage_params.url.unwrap_or_default();
-        let url = Url::parse(file_path.as_str()).map_err(|_| ExecutionError::InvalidFilePath {
-            path: file_path.clone(),
+        let url = Url::parse(file_path.as_str()).map_err(|_| {
+            ex_error::InvalidFilePathSnafu {
+                path: file_path.clone(),
+            }
+            .build()
         })?;
         let bucket = url.host_str().unwrap_or_default();
         // TODO Replace this with the new metastore volume approach
@@ -784,8 +780,11 @@ impl UserQuery {
             .with_region("eu-central-1")
             .with_bucket_name(bucket)
             .build()
-            .map_err(|_| ExecutionError::InvalidBucketIdentifier {
-                ident: bucket.to_string(),
+            .map_err(|_| {
+                ex_error::InvalidBucketIdentifierSnafu {
+                    ident: bucket.to_string(),
+                }
+                .build()
             })?;
 
         self.session.ctx.register_object_store(&url, Arc::new(s3));
@@ -843,11 +842,7 @@ impl UserQuery {
         statement: Statement,
     ) -> ExecutionResult<QueryResult> {
         let Statement::CopyIntoSnowflake { into, from_obj, .. } = statement else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only COPY INTO statements are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlyCopyIntoStatementsSnafu.fail();
         };
         if let Some(from_obj) = from_obj {
             let from_stage: Vec<ObjectNamePart> = from_obj
@@ -861,11 +856,7 @@ impl UserQuery {
             let insert_query = format!("INSERT INTO {insert_into} SELECT * FROM {insert_from}");
             self.execute_with_custom_plan(&insert_query).await
         } else {
-            Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "FROM object is required for COPY INTO statements".to_string(),
-                ),
-            })
+            ex_error::FromObjectRequiredForCopyIntoStatementsSnafu.fail()
         }
     }
 
@@ -879,11 +870,7 @@ impl UserQuery {
             ..
         } = statement
         else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only MERGE statements are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlyMergeStatementsSnafu.fail();
         };
 
         let (target_table, target_alias) = Self::get_table_with_alias(table);
@@ -962,19 +949,11 @@ impl UserQuery {
             if_not_exists,
         } = statement.clone()
         else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only CREATE SCHEMA statements are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlyCreateSchemaStatementsSnafu.fail();
         };
 
         let SchemaName::Simple(schema_name) = schema_name else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only simple schema names are supported".to_string(),
-                ),
-            });
+            return ex_error::OnlySimpleSchemaNamesSnafu.fail();
         };
 
         let ident: MetastoreSchemaIdent = self.resolve_schema_object_name(schema_name.0)?.into();
@@ -987,10 +966,7 @@ impl UserQuery {
         let iceberg_catalog = match downcast_result {
             IcebergCatalogResult::Catalog(catalog) => catalog,
             IcebergCatalogResult::Result(result) => {
-                return match result {
-                    Ok(_) => self.created_entity_response(),
-                    Err(err) => Err(err),
-                };
+                return result.map(|_| self.created_entity_response())?;
             }
         };
 
@@ -1005,10 +981,11 @@ impl UserQuery {
             if if_not_exists {
                 return self.created_entity_response();
             }
-            return Err(ExecutionError::ObjectAlreadyExists {
+            return ex_error::ObjectAlreadyExistsSnafu {
                 type_name: "schema".to_string(),
                 name: ident.schema,
-            });
+            }
+            .fail();
         }
         let namespace = Namespace::try_new(&[ident.schema])
             .map_err(|err| DataFusionError::External(Box::new(err)))
@@ -1203,11 +1180,10 @@ impl UserQuery {
                 apply_show_filters(sql, &filters)
             }
             _ => {
-                return Err(ExecutionError::DataFusion {
-                    source: DataFusionError::NotImplemented(format!(
-                        "unsupported SHOW statement: {statement}"
-                    )),
-                });
+                return ex_error::UnsupportedShowStatementSnafu {
+                    statement: statement.to_string(),
+                }
+                .fail();
             }
         };
         Box::pin(self.execute_with_custom_plan(&query)).await
@@ -1218,11 +1194,7 @@ impl UserQuery {
         table_names: Vec<TruncateTableTarget>,
     ) -> ExecutionResult<QueryResult> {
         let Some(first_table) = table_names.into_iter().next() else {
-            return Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "No table names provided for TRUNCATE TABLE".to_string(),
-                ),
-            });
+            return ex_error::NoTableNamesForTruncateTableSnafu {}.fail();
         };
 
         let object_name = self.resolve_table_object_name(first_table.name.0)?;
@@ -1272,17 +1244,13 @@ impl UserQuery {
         // TODO: revisit this pattern
         let mut statement = state
             .sql_to_statement(query, dialect)
-            .context(super::error::DataFusionSnafu)?;
+            .context(ex_error::DataFusionSnafu)?;
         self.update_statement_references(&mut statement)?;
 
         if let DFStatement::Statement(s) = statement.clone() {
             self.sql_statement_to_plan(*s).await
         } else {
-            Err(ExecutionError::DataFusion {
-                source: DataFusionError::NotImplemented(
-                    "Only SQL statements are supported".to_string(),
-                ),
-            })
+            ex_error::OnlySQLStatementsSnafu.fail()
         }
     }
 
@@ -1311,7 +1279,7 @@ impl UserQuery {
                 .sql_parser
                 .enable_ident_normalization,
         )
-        .context(super::error::DataFusionSnafu)?;
+        .context(ex_error::DataFusionSnafu)?;
         match statement {
             DFStatement::Statement(stmt) => {
                 let cte_names: HashSet<String> = ctes
@@ -1360,7 +1328,7 @@ impl UserQuery {
             ExtendedSqlToRel::new(&ctx_provider, self.session.ctx.state().get_parser_options());
         planner
             .sql_statement_to_plan(statement)
-            .context(super::error::DataFusionSnafu)
+            .context(ex_error::DataFusionSnafu)
     }
 
     async fn execute_sql(&self, query: &str) -> ExecutionResult<QueryResult> {
@@ -1375,13 +1343,17 @@ impl UserQuery {
                     .ctx
                     .sql(&query)
                     .await
-                    .context(super::error::DataFusionSnafu)?;
+                    .context(ex_error::DataFusionSnafu)?;
                 let schema = df.schema().as_arrow().clone();
-                let records = df.collect().await.context(super::error::DataFusionSnafu)?;
-                Ok(QueryResult::new(records, Arc::new(schema), query_id))
+                let records = df.collect().await.context(ex_error::DataFusionSnafu)?;
+                Ok::<QueryResult, ExecutionError>(QueryResult::new(
+                    records,
+                    Arc::new(schema),
+                    query_id,
+                ))
             })
             .await
-            .context(super::error::JobSnafu)??;
+            .context(ex_error::JobSnafu)??;
         Ok(stream)
     }
 
@@ -1397,14 +1369,18 @@ impl UserQuery {
                     .ctx
                     .execute_logical_plan(plan)
                     .await
-                    .context(super::error::DataFusionSnafu)?
+                    .context(ex_error::DataFusionSnafu)?
                     .collect()
                     .await
-                    .context(super::error::DataFusionSnafu)?;
-                Ok(QueryResult::new(records, Arc::new(schema), query_id))
+                    .context(ex_error::DataFusionSnafu)?;
+                Ok::<QueryResult, ExecutionError>(QueryResult::new(
+                    records,
+                    Arc::new(schema),
+                    query_id,
+                ))
             })
             .await
-            .context(super::error::JobSnafu)??;
+            .context(ex_error::JobSnafu)??;
         Ok(stream)
     }
 
@@ -1419,7 +1395,7 @@ impl UserQuery {
         plan = self
             .session_context_expr_rewriter()
             .rewrite_plan(&plan)
-            .context(super::error::DataFusionSnafu)?;
+            .context(ex_error::DataFusionSnafu)?;
         self.execute_logical_plan(plan).await
     }
 
@@ -1515,7 +1491,7 @@ impl UserQuery {
 
         let references = state
             .resolve_table_references(statement)
-            .context(super::error::DataFusionSnafu)?;
+            .context(ex_error::DataFusionSnafu)?;
         for reference in references {
             let resolved = self.resolve_table_ref(reference);
             if let Entry::Vacant(v) = tables.entry(resolved.clone()) {
@@ -1523,7 +1499,7 @@ impl UserQuery {
                     if let Some(table) = schema
                         .table(&resolved.table)
                         .await
-                        .context(super::error::DataFusionSnafu)?
+                        .context(ex_error::DataFusionSnafu)?
                     {
                         v.insert(provider_as_source(table));
                     }
@@ -1820,13 +1796,14 @@ impl UserQuery {
             }
             3 => {}
             _ => {
-                return Err(ExecutionError::InvalidTableIdentifier {
+                return ex_error::InvalidTableIdentifierSnafu {
                     ident: table_ident
                         .iter()
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join("."),
-                });
+                }
+                .fail();
             }
         }
 
@@ -1856,13 +1833,14 @@ impl UserQuery {
             }
             2 => {}
             _ => {
-                return Err(ExecutionError::InvalidSchemaIdentifier {
+                return ex_error::InvalidSchemaIdentifierSnafu {
                     ident: schema_ident
                         .iter()
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join("."),
-                });
+                }
+                .fail();
             }
         }
 

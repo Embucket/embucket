@@ -3,7 +3,7 @@ use crate::state::AppState;
 use crate::worksheets::{
     GetWorksheetsParams, SortBy, SortOrder, Worksheet, WorksheetCreatePayload,
     WorksheetCreateResponse, WorksheetResponse, WorksheetUpdatePayload, WorksheetsResponse,
-    error::{ListSnafu, WorksheetUpdateError, WorksheetsAPIError, WorksheetsResult},
+    error as worksheets_error, error::WorksheetsResult,
 };
 use axum::{
     Json,
@@ -11,7 +11,7 @@ use axum::{
 };
 use chrono::Utc;
 use core_history::WorksheetId;
-use snafu::ResultExt;
+use snafu::{IntoError, ResultExt};
 use std::convert::From;
 use tracing;
 use utoipa::OpenApi;
@@ -69,7 +69,8 @@ pub async fn worksheets(
         .history_store
         .get_worksheets()
         .await
-        .context(ListSnafu)?;
+        .context(worksheets_error::StoreSnafu)
+        .context(worksheets_error::ListSnafu)?;
 
     let mut items = history_worksheets
         .into_iter()
@@ -156,7 +157,8 @@ pub async fn create_worksheet(
         .history_store
         .add_worksheet(history_worksheet)
         .await
-        .map_err(|e| WorksheetsAPIError::Create { source: e })?
+        .context(worksheets_error::StoreSnafu)
+        .context(worksheets_error::CreateSnafu)?
         .into();
 
     Ok(Json(WorksheetCreateResponse(worksheet)))
@@ -192,7 +194,8 @@ pub async fn worksheet(
         .history_store
         .get_worksheet(worksheet_id)
         .await
-        .map_err(|e| WorksheetsAPIError::Get { source: e })?;
+        .context(worksheets_error::StoreSnafu)
+        .context(worksheets_error::GetSnafu)?;
 
     Ok(Json(WorksheetResponse(Worksheet::from(history_worksheet))))
 }
@@ -226,7 +229,8 @@ pub async fn delete_worksheet(
         .history_store
         .delete_worksheet(worksheet_id)
         .await
-        .map_err(|e| WorksheetsAPIError::Delete { source: e })
+        .context(worksheets_error::StoreSnafu)
+        .context(worksheets_error::DeleteSnafu)
 }
 
 #[utoipa::path(
@@ -283,18 +287,16 @@ pub async fn update_worksheet(
     Json(payload): Json<WorksheetUpdatePayload>,
 ) -> WorksheetsResult<()> {
     if payload.name.is_none() && payload.content.is_none() {
-        return Err(WorksheetsAPIError::Update {
-            source: WorksheetUpdateError::NothingToUpdate,
-        });
+        return Err(worksheets_error::UpdateSnafu
+            .into_error(worksheets_error::NothingToUpdateSnafu.build()));
     }
 
     let mut worksheet = state
         .history_store
         .get_worksheet(worksheet_id)
         .await
-        .map_err(|e| WorksheetsAPIError::Update {
-            source: WorksheetUpdateError::Store { source: e },
-        })?;
+        .context(worksheets_error::StoreSnafu)
+        .context(worksheets_error::GetSnafu)?;
 
     if let Some(name) = payload.name {
         worksheet.set_name(name);
@@ -308,7 +310,6 @@ pub async fn update_worksheet(
         .history_store
         .update_worksheet(worksheet)
         .await
-        .map_err(|e| WorksheetsAPIError::Update {
-            source: WorksheetUpdateError::Store { source: e },
-        })
+        .context(worksheets_error::StoreSnafu)
+        .context(worksheets_error::UpdateSnafu)
 }

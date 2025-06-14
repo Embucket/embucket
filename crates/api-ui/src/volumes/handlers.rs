@@ -14,7 +14,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use core_executor::models::{QueryContext, QueryResult};
-use core_metastore::error::{MetastoreError, ValidationSnafu};
+use core_metastore::error::{self as metastore_error, ValidationSnafu};
 use core_metastore::models::{AwsAccessKeyCredentials, AwsCredentials, Volume as MetastoreVolume};
 use snafu::ResultExt;
 use utoipa::OpenApi;
@@ -86,7 +86,6 @@ pub async fn create_volume(
     embucket_volume
         .validate()
         .context(ValidationSnafu)
-        .map_err(MetastoreError::into)
         .context(CreateSnafu)?;
 
     state
@@ -129,10 +128,13 @@ pub async fn get_volume(
         .get_volume(&volume_name)
         .await
         .map(|opt_rw_obj| {
+            // We create here MetastoreError since Metastore instead of error returns Option = None
+            // TODO: Remove after refactor Metastore
             opt_rw_obj.ok_or_else(|| {
-                Box::new(MetastoreError::VolumeNotFound {
+                metastore_error::VolumeNotFoundSnafu {
                     volume: volume_name.clone(),
-                })
+                }
+                .build()
             })
         })
         .context(GetSnafu)?
