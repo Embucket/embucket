@@ -26,7 +26,7 @@ use datafusion::execution::session_state::SessionState;
 use datafusion::logical_expr::{LogicalPlan, TableSource};
 use datafusion::prelude::CsvReadOptions;
 use datafusion::scalar::ScalarValue;
-use datafusion::sql::parser::{CreateExternalTable, DFParser, Statement as DFStatement};
+use datafusion::sql::parser::{CreateExternalTable, Statement as DFStatement};
 use datafusion::sql::resolve::resolve_table_references;
 use datafusion::sql::sqlparser::ast::{
     CreateTable as CreateTableStatement, Expr, Ident, ObjectName, Query, SchemaName, Statement,
@@ -43,9 +43,8 @@ use df_catalog::catalog::CachingCatalog;
 use df_catalog::information_schema::session_params::SessionProperty;
 use embucket_functions::semi_structured::variant::visitors::visit_all;
 use embucket_functions::visitors::{
-    copy_into_identifiers, functions_rewriter, inline_aliases_in_query, json_element,
-    select_expr_aliases,
-    unimplemented::functions_checker::visit as unimplemented_functions_checker,
+    copy_into_identifiers, functions_rewriter, json_element, select_expr_aliases,
+    table_result_scan, unimplemented::functions_checker::visit as unimplemented_functions_checker,
 };
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::catalog::create::CreateTableBuilder;
@@ -184,7 +183,8 @@ impl UserQuery {
             })?;
             copy_into_identifiers::visit(value);
             select_expr_aliases::visit(value);
-            inline_aliases_in_query::visit(value);
+            // inline_aliases_in_query::visit(value);
+            table_result_scan::visit(value);
             visit_all(value);
         }
         Ok(())
@@ -325,7 +325,6 @@ impl UserQuery {
                 }
                 Statement::Query(mut subquery) => {
                     self.update_qualify_in_query(subquery.as_mut());
-                    Self::update_table_result_scan_in_query(subquery.as_mut());
                     self.traverse_and_update_query(subquery.as_mut()).await;
                     return Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await;
                 }
@@ -491,6 +490,7 @@ impl UserQuery {
         create_table_statement.catalog = None;
         create_table_statement.catalog_sync = None;
         create_table_statement.storage_serialization_policy = None;
+        create_table_statement.cluster_by = None;
 
         if let Some(ref mut query) = create_table_statement.query {
             self.update_qualify_in_query(query);
@@ -1119,7 +1119,7 @@ impl UserQuery {
                         table_type as kind,
                         upper(table_catalog) as database_name,
                         upper(table_schema) as schema_name,
-                        CASE WHEN table_type='TABLE' then 'Y' else 'N' end as is_iceberg,
+                        is_iceberg,
                         'N' as is_dynamic
                     FROM {catalog}.information_schema.tables"
                 );
@@ -1285,6 +1285,21 @@ impl UserQuery {
             })
         }
     }
+
+    /// Fully qualifies all table references in the provided SQL statement.
+    ///
+    /// This function traverses the SQL statement and updates table references to their fully qualified
+    /// names (including catalog and schema), based on the current session context and catalog state.
+    ///
+    /// - Table references that are part of Common Table Expressions (CTEs) are skipped and left as-is.
+    /// - Table functions (recognized by the session context) are also skipped and left unresolved.
+    /// - All other table references are resolved using `resolve_table_object_name` and updated in-place.
+    ///
+    /// # Arguments
+    /// * `statement` - The SQL statement (`DFStatement`) to update.
+    ///
+    /// # Errors
+    /// Returns an error if table resolution fails for any non-CTE, non-table-function reference.
     pub fn update_statement_references(&self, statement: &mut DFStatement) -> ExecutionResult<()> {
         let (_tables, ctes) = resolve_table_references(
             statement,
@@ -1297,7 +1312,6 @@ impl UserQuery {
                 .enable_ident_normalization,
         )
         .context(super::error::DataFusionSnafu)?;
-
         match statement {
             DFStatement::Statement(stmt) => {
                 let cte_names: HashSet<String> = ctes
@@ -1306,7 +1320,12 @@ impl UserQuery {
                     .collect();
 
                 let _ = visit_relations_mut(stmt, |table_name: &mut ObjectName| {
-                    if !cte_names.contains(&table_name.to_string()) {
+                    let is_table_func = self
+                        .session
+                        .ctx
+                        .table_function(table_name.to_string().to_lowercase().as_str())
+                        .is_ok();
+                    if !cte_names.contains(&table_name.to_string()) && !is_table_func {
                         match self.resolve_table_object_name(table_name.0.clone()) {
                             Ok(resolved_name) => {
                                 *table_name = ObjectName::from(resolved_name.0);
@@ -1550,62 +1569,6 @@ impl UserQuery {
             .ok_or_else(|| {
                 plan_datafusion_err!("failed to resolve schema: {}", resolved_ref.schema)
             })
-    }
-
-    fn update_table_result_scan_in_query(query: &mut Query) {
-        // TODO: Add logic to get result_scan from the historical results
-        if let sqlparser::ast::SetExpr::Select(select) = query.body.as_mut() {
-            // Remove is_iceberg field since it is not supported by information_schema.tables
-            select.projection.retain(|field| {
-                if let SelectItem::UnnamedExpr(Expr::Identifier(ident)) = field {
-                    ident.value.to_lowercase() != "is_iceberg"
-                } else {
-                    true
-                }
-            });
-
-            // Replace result_scan with the select from information_schema.tables
-            for table_with_joins in &mut select.from {
-                if let TableFactor::TableFunction {
-                    expr: Expr::Function(f),
-                    alias,
-                } = &mut table_with_joins.relation
-                {
-                    if f.name.to_string().to_lowercase() == "result_scan" {
-                        let columns = [
-                                "table_catalog as 'database_name'",
-                                "table_schema as 'schema_name'",
-                                "table_name as 'name'",
-                                "case when table_type='BASE TABLE' then 'TABLE' else table_type end as 'kind'",
-                                "null as 'comment'",
-                                "case when table_type='BASE TABLE' then 'Y' else 'N' end as is_iceberg",
-                                "'N' as 'is_dynamic'",
-                            ].join(", ");
-                        let information_schema_query =
-                            format!("SELECT {columns} FROM information_schema.tables");
-
-                        match DFParser::parse_sql(information_schema_query.as_str()) {
-                            Ok(mut statements) => {
-                                if let Some(DFStatement::Statement(s)) = statements.pop_front() {
-                                    if let Statement::Query(subquery) = *s {
-                                        select.from = vec![TableWithJoins {
-                                            relation: TableFactor::Derived {
-                                                lateral: false,
-                                                alias: alias.clone(),
-                                                subquery,
-                                            },
-                                            joins: table_with_joins.joins.clone(),
-                                        }];
-                                        break;
-                                    }
-                                }
-                            }
-                            Err(_) => return,
-                        }
-                    }
-                }
-            }
-        }
     }
 
     fn convert_batches_to_exprs(batches: Vec<RecordBatch>) -> Vec<sqlparser::ast::ExprWithAlias> {

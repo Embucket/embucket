@@ -33,7 +33,7 @@ export function SqlEditorLeftBottomPanel() {
       },
     );
 
-  const { data: { items: columns } = {} } = useGetTableColumns(
+  const { data: { items: columns } = {}, isLoading: isLoadingColumns } = useGetTableColumns(
     selectedTree?.databaseName ?? '',
     selectedTree?.schemaName ?? '',
     selectedTree?.tableName ?? '',
@@ -44,7 +44,7 @@ export function SqlEditorLeftBottomPanel() {
     },
   );
 
-  if (!columns?.length) {
+  if (!selectedTree) {
     return null;
   }
 
@@ -55,16 +55,16 @@ export function SqlEditorLeftBottomPanel() {
         selectedTree={selectedTree}
         onSetOpen={setOpen}
       />
-      <SqlEditorLeftPanelTableColumns columns={columns} />
-      {selectedTree && (
-        <SqlEditorLeftPanelTableColumnsPreviewDialog
-          previewData={previewData ?? []}
-          isPreviewDataFetching={isPreviewDataFetching}
-          selectedTree={selectedTree}
-          opened={open}
-          onSetOpened={setOpen}
-        />
-      )}
+
+      <SqlEditorLeftPanelTableColumns isLoadingColumns={isLoadingColumns} columns={columns ?? []} />
+
+      <SqlEditorLeftPanelTableColumnsPreviewDialog
+        previewData={previewData ?? []}
+        isPreviewDataFetching={isPreviewDataFetching}
+        selectedTree={selectedTree}
+        opened={open}
+        onSetOpened={setOpen}
+      />
     </>
   );
 }

@@ -5,7 +5,9 @@ edition = "2024"
 license-file.workspace = true
 
 [dependencies]
+arrow-schema = { version = "55", features = ["serde"] }
 chrono = { workspace = true }
+core-history = { path = "../core-history" }
 datafusion = { workspace = true }
 datafusion-common = { workspace = true }
 datafusion-doc = { workspace = true }
@@ -22,12 +24,18 @@ base64 = "0.22.1"
 jsonpath_lib = "0.3.0"
 indexmap = "2.9.0"
 strsim = "0.11"
+tracing = "0.1.41"
+tokio = { workspace = true }
+datafusion-functions-json = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
 bytes = { workspace = true }
 insta = { version = "1.42.0", features = ["yaml", "filters"] }
 paste = "1"
+
+[[bin]]
+name = "generate-implemented-functions"
+path = "src/bin/generate_implemented_functions.rs"
 
 [lints]
 workspace = true
