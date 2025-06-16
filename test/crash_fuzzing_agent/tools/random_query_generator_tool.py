@@ -88,7 +88,7 @@ class RandomQueryGenerator:
         self.schema = schema
 
         # Success rate control - what percentage of queries should be "safe"
-        self.safe_query_probability = 0.4  # 40% of queries will be safer/more likely to succeed
+        self.safe_query_probability = 0.24  # Iteration 2: More edge cases  # Iteration 1: More aggressive  # Iteration 1: More edge cases  # Iteration 3: More edge cases  # Iteration 2: More edge cases  # Iteration 1: More edge cases  # Iteration 1: More aggressive  # 40% of queries will be safer/more likely to succeed
 
     def _random_table(self):
         """Generate a random table reference with simple table name."""
@@ -518,6 +518,45 @@ class RandomQueryGenerator:
 
         # Add LIMIT for safety
         query = query.limit(100)
+
+
+        # Add window functions for complexity
+        if random.choice([True, False]):
+            window_func = random.choice(['ROW_NUMBER', 'RANK', 'DENSE_RANK', 'LAG', 'LEAD'])
+            if window_func in ['LAG', 'LEAD']:
+                col = func(window_func, self._random_column(table1_alias, table1_name))
+            else:
+                col = func(window_func)
+            # Add OVER clause
+            over_clause = f'OVER (ORDER BY {self._random_column(table1_alias, table1_name).sql(dialect='snowflake')})'
+            columns.append(exp.Anonymous(this=f'{window_func}() {over_clause}'))
+        
+
+
+        # Add window functions for complexity
+        if random.choice([True, False]):
+            window_func = random.choice(["ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD"])
+            if window_func in ["LAG", "LEAD"]:
+                col = func(window_func, self._random_column(table1_alias, table1_name))
+            else:
+                col = func(window_func)
+            # Add OVER clause
+            over_clause = f"OVER (ORDER BY {self._random_column(table1_alias, table1_name).sql(dialect='snowflake')})"
+            columns.append(exp.Anonymous(this=f"{window_func}() {over_clause}"))
+            
+
+
+        # Add window functions for complexity
+        if random.choice([True, False]):
+            window_func = random.choice(["ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD"]);
+            if window_func in ["LAG", "LEAD"]:
+                col = func(window_func, self._random_column(table1_alias, table1_name))
+            else:
+                col = func(window_func)
+            # Add OVER clause
+            over_clause = f"OVER (ORDER BY {self._random_column(table1_alias, table1_name).sql(dialect='snowflake')})"
+            columns.append(exp.Anonymous(this=f"{window_func}() {over_clause}"))
+            
 
         # Clean up tracking
         if hasattr(self, '_current_table_schemas'):

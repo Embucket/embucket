@@ -1,0 +1,144 @@
+{
+  "session_info": {
+    "num_queries": 10,
+    "complexity": "complex",
+    "host": "localhost",
+    "port": 3000,
+    "output_dir": "test/sql/fuzz_regressions",
+    "start_time": "2024-01-15 14:30:00",
+    "end_time": "2024-01-15 14:32:15"
+  },
+  "server_lifecycle": {
+    "build_success": true,
+    "start_success": true,
+    "database_setup_success": true,
+    "stop_success": true,
+    "stdout_log_file": "/tmp/embucket_stdout_20240115_143000.log",
+    "stderr_log_file": "/tmp/embucket_stderr_20240115_143000.log"
+  },
+  "execution_summary": {
+    "queries_executed": 5,
+    "successful_queries": 2,
+    "expected_errors": 2,
+    "actual_bugs": 1,
+    "crashes_found": 1,
+    "server_errors_found": 0,
+    "timeouts_found": 0,
+    "reproduction_attempts": 1,
+    "successful_reproductions": 1,
+    "early_termination": true,
+    "early_termination_reason": "Crash detected on query 5"
+  },
+  "bug_details": [
+    {
+      "query_number": 5,
+      "error_type": "crash",
+      "error_message": "Server process terminated unexpectedly",
+      "query": "SELECT u.name, COUNT(*) FROM users u JOIN orders o ON u.id = o.user_id WHERE u.age > (SELECT AVG(age) * 2 FROM users) GROUP BY u.name HAVING COUNT(*) > 0 ORDER BY RANDOM()",
+      "timestamp": "14:31:45",
+      "full_result": {
+        "success": false,
+        "status_code": null,
+        "response": "Connection refused",
+        "error_type": "crash",
+        "error_message": "Server process terminated unexpectedly",
+        "execution_time": 1.234
+      },
+      "reproduction_attempted": true,
+      "reproduction_successful": true,
+      "reproduction_error_type": "crash",
+      "reproduction_error_message": "Server process terminated unexpectedly",
+      "original_error_type": "crash",
+      "execution_time": 3.456,
+      "details": "✅ Bug REPRODUCED: Same error type 'crash' occurred in isolation"
+    }
+  ],
+  "slt_files_created": [
+    "crash_1705327905_5.slt"
+  ],
+  "recommendations": [
+    "CRITICAL: Crashes detected - investigate immediately",
+    "All 1 bugs were reproducible with standalone queries - indicates deterministic issues"
+  ],
+  "detailed_logs": [
+    {
+      "step": "build_server",
+      "timestamp": "14:30:05",
+      "result": "Server built successfully"
+    },
+    {
+      "step": "start_server", 
+      "timestamp": "14:30:10",
+      "result": "Server start successful",
+      "stdout_log": "/tmp/embucket_stdout_20240115_143000.log",
+      "stderr_log": "/tmp/embucket_stderr_20240115_143000.log"
+    },
+    {
+      "step": "setup_database",
+      "timestamp": "14:30:15",
+      "result": "Database setup completed successfully"
+    },
+    {
+      "step": "execute_query_1",
+      "timestamp": "14:30:20",
+      "query": "SELECT * FROM users LIMIT 10",
+      "result": {
+        "success": true,
+        "status_code": 200,
+        "execution_time": 0.123
+      }
+    },
+    {
+      "step": "execute_query_2", 
+      "timestamp": "14:30:25",
+      "query": "SELECT COUNT(*) FROM products",
+      "result": {
+        "success": true,
+        "status_code": 200,
+        "execution_time": 0.089
+      }
+    },
+    {
+      "step": "execute_query_3",
+      "timestamp": "14:30:30",
+      "query": "SELECT * FROM invalid_table",
+      "result": {
+        "success": false,
+        "status_code": 422,
+        "error_type": "schema_error",
+        "error_message": "Table 'invalid_table' does not exist",
+        "execution_time": 0.045
+      }
+    },
+    {
+      "step": "execute_query_4",
+      "timestamp": "14:30:35", 
+      "query": "SELECT name FROM users WHERE age > 'invalid'",
+      "result": {
+        "success": false,
+        "status_code": 422,
+        "error_type": "validation_error",
+        "error_message": "Cannot compare integer with string",
+        "execution_time": 0.067
+      }
+    },
+    {
+      "step": "execute_query_5",
+      "timestamp": "14:31:40",
+      "query": "SELECT u.name, COUNT(*) FROM users u JOIN orders o ON u.id = o.user_id WHERE u.age > (SELECT AVG(age) * 2 FROM users) GROUP BY u.name HAVING COUNT(*) > 0 ORDER BY RANDOM()",
+      "result": {
+        "success": false,
+        "status_code": null,
+        "response": "Connection refused",
+        "error_type": "crash",
+        "error_message": "Server process terminated unexpectedly",
+        "execution_time": 1.234
+      }
+    },
+    {
+      "step": "stop_server",
+      "timestamp": "14:32:10",
+      "result": "Server stopped gracefully"
+    }
+  ]
+}

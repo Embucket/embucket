@@ -17,10 +17,18 @@ def build_embucket_server(force_rebuild: bool = False) -> str:
     """
     print("Building Embucket server...")
 
+    original_cwd = os.getcwd()  # Initialize outside try block
+
     try:
-        # Check if we're in the right directory (should have Cargo.toml)
-        if not os.path.exists("Cargo.toml"):
-            return "Error: Cargo.toml not found. Make sure you're in the Embucket project root."
+        # Find the workspace root directory (where Cargo.toml is located)
+        workspace_root = _find_workspace_root()
+        if not workspace_root:
+            return "Error: Could not find Embucket workspace root (Cargo.toml not found in current or parent directories)"
+
+        print(f"Using workspace root: {workspace_root}")
+
+        # Change to workspace root for building
+        os.chdir(workspace_root)
 
         # Determine binary path (debug build only)
         binary_path = "target/debug/embucketd"
@@ -44,7 +52,7 @@ def build_embucket_server(force_rebuild: bool = False) -> str:
         )
 
         if result.returncode == 0 and os.path.exists(binary_path):
-            return f"Build completed successfully - binary created at: {binary_path}"
+            return f"Build completed successfully - binary created at: {os.path.join(workspace_root, binary_path)}"
         else:
             return f"Build failed: {result.stderr}"
 
@@ -54,3 +62,32 @@ def build_embucket_server(force_rebuild: bool = False) -> str:
         return "Cargo not found. Make sure Rust and Cargo are installed."
     except Exception as e:
         return f"Build error: {str(e)}"
+    finally:
+        # Always restore original working directory
+        try:
+            os.chdir(original_cwd)
+        except:
+            pass
+
+
+def _find_workspace_root() -> str:
+    """
+    Find the workspace root directory by looking for Cargo.toml.
+
+    Returns:
+        Path to workspace root, or None if not found
+    """
+    current_dir = os.getcwd()
+
+    # Check current directory and parent directories
+    while current_dir != os.path.dirname(current_dir):  # Stop at filesystem root
+        cargo_toml_path = os.path.join(current_dir, "Cargo.toml")
+        if os.path.exists(cargo_toml_path):
+            return current_dir
+        current_dir = os.path.dirname(current_dir)
+
+    # Check if Cargo.toml is in the current directory
+    if os.path.exists("Cargo.toml"):
+        return os.getcwd()
+
+    return None

@@ -5,6 +5,19 @@ Database setup tool for creating test tables before fuzzing.
 import requests
 import json
 from typing import List, Dict, Any
+from urllib.parse import urlparse
+
+try:
+    from snowflake.connector import connect
+    from snowflake.connector.errors import (
+        ProgrammingError,
+        DatabaseError,
+        InterfaceError,
+        OperationalError
+    )
+    SNOWFLAKE_AVAILABLE = True
+except ImportError:
+    SNOWFLAKE_AVAILABLE = False
 # Table schemas that match the random query generator expectations
 TEST_TABLES = [
     {
@@ -180,36 +193,93 @@ TEST_TABLES = [
 
 
 def _execute_sql_query(embucket_url: str, sql_query: str) -> Dict[str, Any]:
-    """Execute a SQL query against Embucket using the correct UI endpoint."""
-    try:
-        response = requests.post(
-            f"{embucket_url}/ui/queries",
-            json={"query": sql_query},
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
-
-        result = {
-            "status_code": response.status_code,
-            "success": response.status_code == 200,
-            "response_text": response.text
+    """Execute a SQL query against Embucket using Snowflake connector."""
+    if not SNOWFLAKE_AVAILABLE:
+        return {
+            "status_code": 500,
+            "success": False,
+            "error": "snowflake-connector-python not available",
+            "response_text": "snowflake-connector-python library is required but not installed"
         }
 
-        if response.status_code == 200:
+    # Parse the URL to extract host and port
+    parsed_url = urlparse(embucket_url)
+    host = parsed_url.hostname or "localhost"
+    port = parsed_url.port or 3000
+    protocol = parsed_url.scheme or "http"
+
+    # Configure connection parameters for Embucket
+    connection_config = {
+        'account': 'test',
+        'user': 'test',
+        'password': 'test',
+        'warehouse': 'COMPUTE_WH',
+        'database': 'embucket',
+        'schema': 'public',
+        'host': host,
+        'port': port,
+        'protocol': protocol,
+        'timeout': 30
+    }
+
+    connection = None
+    try:
+        # Establish connection to Embucket using Snowflake connector
+        connection = connect(**connection_config)
+
+        with connection.cursor() as cursor:
+            # Execute the query
+            cursor.execute(sql_query)
+
+            # Try to fetch results if available
             try:
-                result["data"] = response.json()
-            except json.JSONDecodeError:
-                result["data"] = response.text
+                results = cursor.fetchall()
+                column_names = [desc[0] for desc in cursor.description] if cursor.description else []
 
-        return result
+                # Format response similar to UI endpoint
+                response_data = {
+                    "columns": column_names,
+                    "rows": results,
+                    "rowCount": len(results) if results else 0
+                }
+                response_text = json.dumps(response_data)
 
-    except requests.exceptions.RequestException as e:
+                return {
+                    "status_code": 200,
+                    "success": True,
+                    "response_text": response_text,
+                    "data": response_data
+                }
+            except Exception:
+                # Query executed but no results to fetch (e.g., DDL statements)
+                return {
+                    "status_code": 200,
+                    "success": True,
+                    "response_text": json.dumps({"message": "Query executed successfully", "rowCount": 0}),
+                    "data": {"message": "Query executed successfully", "rowCount": 0}
+                }
+
+    except (ProgrammingError, DatabaseError, InterfaceError, OperationalError) as e:
         return {
-            "status_code": 0,
+            "status_code": 422,
             "success": False,
             "error": str(e),
-            "response_text": f"Request failed: {e}"
+            "response_text": str(e)
         }
+    except Exception as e:
+        return {
+            "status_code": 500,
+            "success": False,
+            "error": str(e),
+            "response_text": f"Unexpected error: {str(e)}"
+        }
+    finally:
+        # Clean up connection
+        if connection:
+            try:
+                connection.close()
+            except Exception:
+                pass  # Ignore cleanup errors
 
 
 def _setup_embucket_infrastructure(embucket_url: str, database: str = "embucket", schema: str = "public") -> Dict[str, Any]:

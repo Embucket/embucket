@@ -84,13 +84,53 @@ def get_current_log_files() -> Tuple[Optional[str], Optional[str]]:
     return _log_stdout_file, _log_stderr_file
 
 
-def start_embucket_server(host: str = "localhost", port: int = 3000) -> bool:
+def _kill_processes_on_port(port: int) -> bool:
+    """
+    Kill any processes that might be using the specified port.
+
+    Args:
+        port: Port number to check
+
+    Returns:
+        True if any processes were killed, False otherwise
+    """
+    try:
+        import psutil
+        killed_any = False
+
+        for proc in psutil.process_iter(['pid', 'name', 'connections']):
+            try:
+                connections = proc.info['connections']
+                if connections:
+                    for conn in connections:
+                        if hasattr(conn, 'laddr') and conn.laddr and conn.laddr.port == port:
+                            print(f"🔪 Killing process {proc.info['pid']} ({proc.info['name']}) using port {port}")
+                            proc.kill()
+                            killed_any = True
+                            break
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+
+        if killed_any:
+            time.sleep(2)  # Give processes time to die
+
+        return killed_any
+    except ImportError:
+        print("⚠️ psutil not available - cannot automatically kill processes on port")
+        return False
+    except Exception as e:
+        print(f"⚠️ Error killing processes on port {port}: {e}")
+        return False
+
+
+def start_embucket_server(host: str = "localhost", port: int = 3000, kill_existing: bool = True) -> bool:
     """
     Start the Embucket server process.
 
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
+        kill_existing: Whether to kill existing processes on the port
 
     Returns:
         True if server started successfully, False otherwise
@@ -102,38 +142,66 @@ def start_embucket_server(host: str = "localhost", port: int = 3000) -> bool:
         print("✓ Embucket server is already running")
         return True
 
-    # Check if binary exists
-    binary_path = "./target/debug/embucketd"
+    # Find workspace root and check if binary exists
+    workspace_root = _find_workspace_root()
+    if not workspace_root:
+        print("✗ Could not find Embucket workspace root (Cargo.toml not found)")
+        return False
+
+    binary_path = os.path.join(workspace_root, "target/debug/embucketd")
     if not os.path.exists(binary_path):
         print(f"✗ Embucket binary not found at {binary_path}")
         print("Please build the server first using: cargo build --bin embucketd")
         return False
 
-    # Check if port is already in use (test both IPv4 and IPv6)
+    # Check if port is already in use (prioritize IPv4, IPv6 is optional)
     import socket
-    port_available = True
+    ipv4_available = False
+    ipv6_available = False
 
-    # Test IPv4
+    # Test IPv4 (required)
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((host, port))
         print(f"✓ Port {port} is available on IPv4")
+        ipv4_available = True
     except OSError as e:
         print(f"✗ Port {port} is already in use on IPv4: {e}")
-        port_available = False
 
-    # Test IPv6
+    # Test IPv6 (optional - many systems may not have IPv6 or it may be in use)
     try:
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
             s.bind((host, port))
         print(f"✓ Port {port} is available on IPv6")
+        ipv6_available = True
     except OSError as e:
-        print(f"✗ Port {port} is already in use on IPv6: {e}")
-        port_available = False
+        print(f"⚠️ Port {port} is not available on IPv6: {e}")
+        print("   (This is often normal and won't prevent server startup)")
 
-    if not port_available:
-        print("Please choose a different port or stop the process using that port")
-        return False
+    # Only fail if IPv4 is not available (IPv6 is optional)
+    if not ipv4_available:
+        if kill_existing:
+            print("🔄 Attempting to kill existing processes on port...")
+            if _kill_processes_on_port(port):
+                print("✓ Killed existing processes, retrying port check...")
+                # Retry IPv4 check after killing processes
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.bind((host, port))
+                    print(f"✓ Port {port} is now available on IPv4")
+                    ipv4_available = True
+                except OSError as e:
+                    print(f"✗ Port {port} is still in use on IPv4 after cleanup: {e}")
+
+        if not ipv4_available:
+            print("✗ IPv4 port is required but not available")
+            print("Please choose a different port or manually stop the process using that port")
+            return False
+
+    if ipv4_available and not ipv6_available:
+        print("ℹ️ Server will start on IPv4 only (IPv6 not available)")
+    elif ipv4_available and ipv6_available:
+        print("ℹ️ Server will start on both IPv4 and IPv6")
 
     # Create log files for this session
     stdout_log_path, stderr_log_path = _create_log_files()
@@ -280,3 +348,26 @@ def stop_embucket_server() -> str:
         _log_stdout_file = None
         _log_stderr_file = None
         return f"Error stopping server: {str(e)}"
+
+
+def _find_workspace_root() -> str:
+    """
+    Find the workspace root directory by looking for Cargo.toml.
+
+    Returns:
+        Path to workspace root, or None if not found
+    """
+    current_dir = os.getcwd()
+
+    # Check current directory and parent directories
+    while current_dir != os.path.dirname(current_dir):  # Stop at filesystem root
+        cargo_toml_path = os.path.join(current_dir, "Cargo.toml")
+        if os.path.exists(cargo_toml_path):
+            return current_dir
+        current_dir = os.path.dirname(current_dir)
+
+    # Check if Cargo.toml is in the current directory
+    if os.path.exists("Cargo.toml"):
+        return os.getcwd()
+
+    return None
