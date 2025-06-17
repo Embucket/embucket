@@ -1,6 +1,6 @@
 use crate::visitors::{
-    functions_rewriter, inline_aliases_in_query, json_element, select_expr_aliases,
-    table_result_scan,
+    fetch_to_limit, functions_rewriter, inline_aliases_in_query, json_element,
+    select_expr_aliases, table_result_scan,
 };
 use datafusion::prelude::SessionContext;
 use datafusion::sql::parser::Statement as DFStatement;
@@ -223,6 +223,30 @@ fn test_table_function_result_scan() -> DFResult<()> {
         let mut statement = state.sql_to_statement(input, "snowflake")?;
         if let DFStatement::Statement(ref mut stmt) = statement {
             table_result_scan::visit(stmt);
+        }
+        assert_eq!(statement.to_string(), expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn test_fetch_to_limit() -> DFResult<()> {
+    let state = SessionContext::new().state();
+    let cases = vec![
+        (
+            "SELECT * FROM test FETCH FIRST 2 ROWS ONLY",
+            "SELECT * FROM test LIMIT 2",
+        ),
+        (
+            "SELECT * FROM test OFFSET 3 ROWS FETCH NEXT 5 ROWS ONLY",
+            "SELECT * FROM test OFFSET 3 LIMIT 5",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let mut statement = state.sql_to_statement(input, "snowflake")?;
+        if let DFStatement::Statement(ref mut stmt) = statement {
+            fetch_to_limit::visit(stmt);
         }
         assert_eq!(statement.to_string(), expected);
     }
