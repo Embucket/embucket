@@ -676,6 +676,18 @@ test_query!(
     snapshot_path = "session"
 );
 
+test_query!(
+    merge_into_insert_and_update,
+    "SELECT count(1) FROM embucket.public.merge_target WHERE description = 'updated row'",
+    setup_queries = [
+        "CREATE TABLE embucket.public.merge_target (ID INTEGER, description VARCHAR)",
+        "CREATE TABLE embucket.public.merge_source (ID INTEGER, description VARCHAR)",
+        "INSERT INTO embucket.public.merge_target VALUES (1, 'existing row'), (2, 'existing row')",
+        "INSERT INTO embucket.public.merge_source VALUES (2, 'updated row'), (3, 'new row')",
+        "MERGE INTO merge_target t USING merge_source s ON t.ID = s.ID WHEN MATCHED THEN UPDATE SET description = s.description WHEN NOT MATCHED THEN INSERT (ID, description) VALUES (s.ID, s.description)",
+    ]
+);
+
 // TRUNCATE TABLE
 test_query!(truncate_table, "TRUNCATE TABLE employee_table");
 test_query!(
