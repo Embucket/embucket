@@ -8,6 +8,7 @@ use super::datafusion::planner::ExtendedSqlToRel;
 use super::error::{self as ex_error, Error, RefreshCatalogListSnafu, Result};
 use super::session::UserSession;
 use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
+use crate::datafusion::logical_plan::merge::MergeIntoSink;
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::models::{QueryContext, QueryResult};
 use core_history::HistoryStore;
@@ -20,14 +21,16 @@ use datafusion::arrow::array::{Int64Array, RecordBatch};
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef};
 use datafusion::catalog::MemoryCatalogProvider;
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
+use datafusion::datasource::DefaultTableSource;
 use datafusion::datasource::default_table_source::provider_as_source;
 use datafusion::execution::session_state::SessionContextProvider;
 use datafusion::execution::session_state::SessionState;
 use datafusion::logical_expr::col;
 use datafusion::logical_expr::{LogicalPlan, TableSource};
-use datafusion::prelude::CsvReadOptions;
+use datafusion::prelude::{CsvReadOptions, DataFrame};
 use datafusion::scalar::ScalarValue;
 use datafusion::sql::parser::{CreateExternalTable, Statement as DFStatement};
+use datafusion::sql::planner::ParserOptions;
 use datafusion::sql::resolve::resolve_table_references;
 use datafusion::sql::sqlparser::ast::{
     CreateTable as CreateTableStatement, Expr, Ident, ObjectName, Query, SchemaName, Statement,
@@ -38,7 +41,11 @@ use datafusion_common::{
     DataFusionError, ResolvedTableReference, SchemaReference, TableReference, plan_datafusion_err,
 };
 use datafusion_expr::logical_plan::dml::{DmlStatement, InsertOp, WriteOp};
-use datafusion_expr::{CreateMemoryTable, DdlStatement, Expr as DFExpr, Projection, TryCast};
+use datafusion_expr::{
+    CreateMemoryTable, DdlStatement, Expr as DFExpr, Extension, JoinType, LogicalPlanBuilder,
+    Projection, TryCast, lit,
+};
+use datafusion_iceberg::DataFusionTable;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use df_catalog::catalog::CachingCatalog;
 use df_catalog::catalog_list::CachedEntity;
@@ -61,9 +68,9 @@ use object_store::aws::AmazonS3Builder;
 use snafu::ResultExt;
 use sqlparser::ast::helpers::attached_token::AttachedToken;
 use sqlparser::ast::{
-    BinaryOperator, GroupByExpr, MergeAction, MergeClauseKind, MergeInsertKind, ObjectNamePart,
-    ObjectType, PivotValueSource, Select, SelectItem, ShowObjects, ShowStatementFilter,
-    ShowStatementIn, TruncateTableTarget, Use, Value, visit_relations_mut,
+    BinaryOperator, GroupByExpr, ObjectNamePart, ObjectType, PivotValueSource, Select, SelectItem,
+    ShowObjects, ShowStatementFilter, ShowStatementIn, TruncateTableTarget, Use, Value,
+    visit_relations_mut,
 };
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -72,6 +79,9 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 use tracing_attributes::instrument;
 use url::Url;
+
+static SOURCE_EXISTS: &str = "__source_exists";
+static TARGET_EXISTS: &str = "__target_exists";
 
 pub struct UserQuery {
     pub metastore: Arc<dyn Metastore>,
@@ -931,11 +941,45 @@ impl UserQuery {
         else {
             return ex_error::OnlyMergeStatementsSnafu.fail();
         };
+        let df_session_state = self.session.ctx.state();
 
         let (target_table, target_alias) = Self::get_table_with_alias(table);
         let (_source_table, source_alias) = Self::get_table_with_alias(source.clone());
 
         let target_table = self.resolve_table_object_name(target_table.0)?;
+
+        let target_provider = self
+            .session
+            .ctx
+            .table_provider(&target_table)
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+
+        let target = target_provider
+            .as_any()
+            .downcast_ref::<DataFusionTable>()
+            .ok_or_else(|| {
+                ex_error::CatalogDownCastSnafu {
+                    catalog: "DataFusionTable".to_string(),
+                }
+                .build()
+            })?
+            .clone();
+
+        let target_table_source = Arc::new(DefaultTableSource::new(target_provider));
+
+        let target_plan = DataFrame::new(
+            df_session_state.clone(),
+            LogicalPlanBuilder::scan(&target_table, target_table_source.clone(), None)
+                .context(ex_error::DataFusionSnafu)?
+                .build()
+                .context(ex_error::DataFusionSnafu)?,
+        )
+        .with_column(TARGET_EXISTS, lit(true))
+        .context(ex_error::DataFusionSnafu)?
+        .into_unoptimized_plan();
+
+        let target_schema = target_plan.schema().clone();
 
         let source_query = if let TableFactor::Derived {
             subquery,
@@ -953,52 +997,99 @@ impl UserQuery {
             source.to_string()
         };
 
-        // Prepare WHERE clause to filter unmatched records
-        let where_clause = self
-            .get_expr_where_clause(*on.clone(), target_alias.as_str())
-            .iter()
-            .map(|v| format!("{v} IS NULL"))
-            .collect::<Vec<_>>();
-        let where_clause_str = if where_clause.is_empty() {
-            String::new()
-        } else {
-            format!(" WHERE {}", where_clause.join(" AND "))
+        let source_plan = DataFrame::new(
+            df_session_state.clone(),
+            df_session_state
+                .create_logical_plan(&source_query)
+                .await
+                .context(ex_error::DataFusionSnafu)?,
+        )
+        .with_column(SOURCE_EXISTS, lit(true))
+        .context(ex_error::DataFusionSnafu)?
+        .into_unoptimized_plan();
+
+        let source_statement = df_session_state
+            .sql_to_statement(&source_query, "Snowflake")
+            .context(ex_error::DataFusionSnafu)?;
+
+        let mut tables = self
+            .table_references_for_statement(&source_statement, &self.session.ctx.state())
+            .await?;
+
+        tables.insert(self.resolve_table_ref(&target_table), target_table_source);
+
+        let session_context_planner = SessionContextProvider {
+            state: &df_session_state,
+            tables,
         };
+        let sql_planner = ExtendedSqlToRel::new(&session_context_planner, ParserOptions::default());
+        let mut planner_context = datafusion::sql::planner::PlannerContext::new();
 
-        // Check NOT MATCHED for records to INSERT
-        // Extract columns and values from clauses
-        let mut columns = String::new();
-        let mut values = String::new();
-        for clause in clauses {
-            if clause.clause_kind == MergeClauseKind::NotMatched {
-                if let MergeAction::Insert(insert) = clause.action {
-                    columns = insert
-                        .columns
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    if let MergeInsertKind::Values(values_insert) = insert.kind {
-                        values = values_insert
-                            .rows
-                            .into_iter()
-                            .flatten()
-                            .collect::<Vec<_>>()
-                            .iter()
-                            .map(|v| format!("{source_alias}.{v}"))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                    }
-                }
-            }
-        }
-        let select_query = format!(
-            "SELECT {values} FROM {source_query} LEFT JOIN {target_table} {target_alias} ON {on}{where_clause_str}"
-        );
+        let on_expr = sql_planner
+            .as_ref()
+            .sql_to_expr((*on).clone(), &target_schema, &mut planner_context)
+            .context(ex_error::DataFusionSnafu)?;
 
-        // Construct the INSERT statement
-        let insert_query = format!("INSERT INTO {target_table} ({columns}) {select_query}");
-        self.execute_with_custom_plan(&insert_query).await
+        let join_plan = LogicalPlanBuilder::new(target_plan)
+            .join_on(source_plan, JoinType::Full, [on_expr; 1])
+            .context(ex_error::DataFusionSnafu)?
+            .build()
+            .context(ex_error::DataFusionSnafu)?;
+
+        let merge_into_plan = MergeIntoSink::new(Arc::new(join_plan), target.clone())
+            .context(ex_error::DataFusionSnafu)?;
+
+        self.execute_logical_plan(LogicalPlan::Extension(Extension {
+            node: Arc::new(merge_into_plan),
+        }))
+        .await
+
+        // // Prepare WHERE clause to filter unmatched records
+        // let where_clause = self
+        //     .get_expr_where_clause(*on.clone(), target_alias.as_str())
+        //     .iter()
+        //     .map(|v| format!("{v} IS NULL"))
+        //     .collect::<Vec<_>>();
+        // let where_clause_str = if where_clause.is_empty() {
+        //     String::new()
+        // } else {
+        //     format!(" WHERE {}", where_clause.join(" AND "))
+        // };
+        //
+        // // Check NOT MATCHED for records to INSERT
+        // // Extract columns and values from clauses
+        // let mut columns = String::new();
+        // let mut values = String::new();
+        // for clause in clauses {
+        //     if clause.clause_kind == MergeClauseKind::NotMatched {
+        //         if let MergeAction::Insert(insert) = clause.action {
+        //             columns = insert
+        //                 .columns
+        //                 .iter()
+        //                 .map(ToString::to_string)
+        //                 .collect::<Vec<_>>()
+        //                 .join(", ");
+        //             if let MergeInsertKind::Values(values_insert) = insert.kind {
+        //                 values = values_insert
+        //                     .rows
+        //                     .into_iter()
+        //                     .flatten()
+        //                     .collect::<Vec<_>>()
+        //                     .iter()
+        //                     .map(|v| format!("{source_alias}.{v}"))
+        //                     .collect::<Vec<_>>()
+        //                     .join(", ");
+        //             }
+        //         }
+        //     }
+        // }
+        // let select_query = format!(
+        //     "SELECT {values} FROM {source_query} LEFT JOIN {target_table} {target_alias} ON {on}{where_clause_str}"
+        // );
+        //
+        // // Construct the INSERT statement
+        // let insert_query = format!("INSERT INTO {target_table} ({columns}) {select_query}");
+        // self.execute_with_custom_plan(&insert_query).await
     }
 
     #[instrument(name = "UserQuery::create_schema", level = "trace", skip(self), err)]
