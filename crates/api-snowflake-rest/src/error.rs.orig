@@ -139,6 +139,7 @@ impl IntoResponse for Error {
 #[allow(clippy::too_many_lines)]
 fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCode, String) {
     let status_code = match error {
+<<<<<<< HEAD
         core_executor::Error::RegisterUDF { .. }
         | core_executor::Error::RegisterUDAF { .. }
         | core_executor::Error::InvalidTableIdentifier { .. }
@@ -171,13 +172,10 @@ fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCo
         | core_executor::Error::NoTableNamesForTruncateTable { .. }
         | core_executor::Error::OnlySQLStatements { .. }
         | core_executor::Error::MissingOrInvalidColumn { .. }
-        | core_executor::Error::NotMatchedBySourceNotSupported { .. }
-        | core_executor::Error::MergeInsertOnlyOneRow { .. }
         | core_executor::Error::UploadFailed { .. } => http::StatusCode::BAD_REQUEST,
         core_executor::Error::Arrow { .. }
         | core_executor::Error::SerdeParse { .. }
         | core_executor::Error::S3Tables { .. }
-        | core_executor::Error::SqlParser { .. }
         | core_executor::Error::Iceberg { .. }
         | core_executor::Error::CatalogListDowncast { .. }
         | core_executor::Error::CatalogDownCast { .. }
@@ -188,9 +186,59 @@ fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCo
         | core_executor::Error::CatalogNotFound { .. }
         | core_executor::Error::Metastore { .. }
         | core_executor::Error::DataFusion { .. }
-        | core_executor::Error::DataFusionQuery { .. }
-        | core_executor::Error::UnimplementedFunction { .. }
-        | core_executor::Error::SqlParser { .. } => http::StatusCode::OK,
+        | core_executor::Error::DataFusionQuery { .. } => http::StatusCode::OK,
+=======
+        ExecutionError::RegisterUDF { .. }
+        | ExecutionError::RegisterUDAF { .. }
+        | ExecutionError::InvalidTableIdentifier { .. }
+        | ExecutionError::InvalidSchemaIdentifier { .. }
+        | ExecutionError::InvalidFilePath { .. }
+        | ExecutionError::InvalidBucketIdentifier { .. }
+        | ExecutionError::TableProviderNotFound { .. }
+        | ExecutionError::MissingDataFusionSession { .. }
+        | ExecutionError::Utf8 { .. }
+        | ExecutionError::VolumeNotFound { .. }
+        | ExecutionError::ObjectStore { .. }
+        | ExecutionError::ObjectAlreadyExists { .. }
+        | ExecutionError::UnsupportedFileFormat { .. }
+        | ExecutionError::RefreshCatalogList { .. }
+        | ExecutionError::UrlParse { .. }
+        | ExecutionError::JobError { .. }
+        | ExecutionError::OnyUseWithVariables { .. }
+        | ExecutionError::OnlyPrimitiveStatements { .. }
+        | ExecutionError::OnlyTableSchemaCreateStatements { .. }
+        | ExecutionError::OnlyDropStatements { .. }
+        | ExecutionError::OnlyDropTableViewStatements { .. }
+        | ExecutionError::OnlyCreateTableStatements { .. }
+        | ExecutionError::OnlyCreateStageStatements { .. }
+        | ExecutionError::OnlyCopyIntoStatements { .. }
+        | ExecutionError::FromObjectRequiredForCopyIntoStatements { .. }
+        | ExecutionError::OnlyCreateSchemaStatements { .. }
+        | ExecutionError::OnlySimpleSchemaNames { .. }
+        | ExecutionError::OnlyMergeStatements { .. }
+        | ExecutionError::UnsupportedShowStatement { .. }
+        | ExecutionError::NoTableNamesForTruncateTable { .. }
+        | ExecutionError::OnlySQLStatements { .. }
+        | ExecutionError::MissingOrInvalidColumn { .. }
+        | ExecutionError::NotMatchedBySourceNotSupported { .. }
+        | ExecutionError::MergeInsertOnlyOneRow { .. }
+        | ExecutionError::UploadFailed { .. } => http::StatusCode::BAD_REQUEST,
+        ExecutionError::Arrow { .. }
+        | ExecutionError::SerdeParse { .. }
+        | ExecutionError::S3Tables { .. }
+        | ExecutionError::SqlParser { .. }
+        | ExecutionError::Iceberg { .. }
+        | ExecutionError::CatalogListDowncast { .. }
+        | ExecutionError::CatalogDownCast { .. }
+        | ExecutionError::RegisterCatalog { .. } => http::StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::DatabaseNotFound { .. }
+        | ExecutionError::TableNotFound { .. }
+        | ExecutionError::SchemaNotFound { .. }
+        | ExecutionError::CatalogNotFound { .. }
+        | ExecutionError::Metastore { .. }
+        | ExecutionError::DataFusion { .. }
+        | ExecutionError::DataFusionQuery { .. } => http::StatusCode::OK,
+>>>>>>> d8f915e2 (fix errors)
     };
 
     let message = match error {
