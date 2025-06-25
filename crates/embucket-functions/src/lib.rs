@@ -1,6 +1,7 @@
 pub use crate::aggregate::register_udafs;
 use crate::conversion::to_binary::ToBinaryFunc;
 use crate::conversion::{ToBooleanFunc, ToTimeFunc, to_array};
+use crate::datetime::date_part_extract;
 use crate::semi_structured::get::GetFunc;
 use crate::semi_structured::is_typeof;
 use crate::semi_structured::is_typeof::IsTypeofFunc;
@@ -40,21 +41,11 @@ pub mod visitors;
 
 #[allow(clippy::too_many_lines)]
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
+    datetime::register_udfs(registry)?;
+
     let functions: Vec<Arc<ScalarUDF>> = vec![
-        datetime::convert_timezone::get_udf(),
-        datetime::date_add::get_udf(),
         semi_structured::json::parse_json::get_udf(),
         semi_structured::json::try_parse_json::get_udf(),
-        datetime::date_diff::get_udf(),
-        datetime::timestamp_from_parts::get_udf(),
-        datetime::time_from_parts::get_udf(),
-        datetime::date_from_parts::get_udf(),
-        datetime::last_day::get_udf(),
-        datetime::add_months::get_udf(),
-        datetime::monthname::get_udf(),
-        datetime::dayname::get_udf(),
-        datetime::previous_day::get_udf(),
-        datetime::next_day::get_udf(),
         conditional::booland::get_udf(),
         conditional::boolor::get_udf(),
         conditional::boolxor::get_udf(),
