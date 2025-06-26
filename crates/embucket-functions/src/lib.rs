@@ -63,6 +63,7 @@ pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
         conditional::iff::get_udf(),
         conditional::equal_null::get_udf(),
         conditional::nullifzero::get_udf(),
+        conditional::zeroifnull::get_udf(),
         semi_structured::object::is_object::get_udf(),
         semi_structured::array::is_array::get_udf(),
         string_binary::rtrimmed_length::get_udf(),
