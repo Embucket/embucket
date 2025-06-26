@@ -4,6 +4,7 @@ pub mod boolxor;
 pub mod equal_null;
 pub mod iff;
 pub mod nullifzero;
+pub mod zeroifnull;
 
 // Re-export the get_udf functions
 pub use booland::get_udf as booland_get_udf;
