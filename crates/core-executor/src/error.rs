@@ -344,4 +344,29 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("NotMatchedByTarget is not supported in merge statements"))]
+    NotMatchedBySourceNotSupported {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Merge inserts only support one row"))]
+    MergeInsertOnlyOneRow {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("MERGE statement target must be a table"))]
+    MergeTargetMustBeTable {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("MERGE statement currently supports only tables as sources"))]
+    MergeSourceMustBeTable {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("MERGE statement target must be an Iceberg table"))]
+    MergeTargetMustBeIcebergTable {
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
