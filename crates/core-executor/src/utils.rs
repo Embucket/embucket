@@ -6,6 +6,7 @@ use core_metastore::SchemaIdent as MetastoreSchemaIdent;
 use core_metastore::TableIdent as MetastoreTableIdent;
 use datafusion::arrow::array::{
     Array, Decimal128Array, Int16Array, Int32Array, Int64Array, StringArray,
+    Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
     TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
     TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array, UnionArray,
 };
@@ -188,6 +189,18 @@ pub fn convert_record_batches(
                 }
                 DataType::Date32 | DataType::Date64 => {
                     let converted_column = convert_date(column, data_format);
+                    fields.push(
+                        Field::new(
+                            field.name(),
+                            converted_column.data_type().clone(),
+                            field.is_nullable(),
+                        )
+                        .with_metadata(metadata),
+                    );
+                    Arc::clone(&converted_column)
+                }
+                DataType::Time32(unit) | DataType::Time64(unit) => {
+                    let converted_column = convert_time(column, *unit, data_format);
                     fields.push(
                         Field::new(
                             field.name(),
@@ -428,6 +441,53 @@ fn convert_uint_to_int_datatypes(
             fields.push(field.clone().with_metadata(metadata));
             Arc::clone(column)
         }
+    }
+}
+#[allow(clippy::unwrap_used, clippy::as_conversions)]
+fn convert_time(
+    column: &ArrayRef,
+    unit: TimeUnit,
+    data_format: DataSerializationFormat,
+) -> ArrayRef {
+    match data_format {
+        DataSerializationFormat::Json => {
+            let time: Vec<_> = match unit {
+                TimeUnit::Second => downcast_and_iter!(column, Time32SecondArray)
+                    .map(|time| {
+                        time.map(|ts| {
+                            let ts = DateTime::from_timestamp(i64::from(ts), 0).unwrap();
+                            format!("{}000000000", ts.timestamp())
+                        })
+                    })
+                    .collect(),
+                TimeUnit::Millisecond => downcast_and_iter!(column, Time32MillisecondArray)
+                    .map(|time| {
+                        time.map(|ts| {
+                            let ts = DateTime::from_timestamp_millis(i64::from(ts)).unwrap();
+                            format!("{}000000", ts.timestamp())
+                        })
+                    })
+                    .collect(),
+                TimeUnit::Microsecond => downcast_and_iter!(column, Time64MicrosecondArray)
+                    .map(|time| {
+                        time.map(|ts| {
+                            let ts = DateTime::from_timestamp_micros(ts).unwrap();
+                            format!("{}000", ts.timestamp())
+                        })
+                    })
+                    .collect(),
+                TimeUnit::Nanosecond => downcast_and_iter!(column, Time64NanosecondArray)
+                    .map(|time| {
+                        time.map(|ts| {
+                            let ts = DateTime::from_timestamp_nanos(ts);
+                            format!("{}", ts.timestamp())
+                        })
+                    })
+                    .collect(),
+            };
+            Arc::new(StringArray::from(time)) as ArrayRef
+        }
+        DataSerializationFormat::Arrow => column.clone(),
     }
 }
 
