@@ -141,6 +141,7 @@ fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCo
     let status_code = match error {
         core_executor::Error::RegisterUDF { .. }
         | core_executor::Error::RegisterUDAF { .. }
+        | core_executor::Error::InvalidColumnIdentifier { .. }
         | core_executor::Error::InvalidTableIdentifier { .. }
         | core_executor::Error::InvalidSchemaIdentifier { .. }
         | core_executor::Error::InvalidFilePath { .. }
