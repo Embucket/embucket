@@ -141,6 +141,7 @@ fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCo
     let status_code = match error {
         core_executor::Error::RegisterUDF { .. }
         | core_executor::Error::RegisterUDAF { .. }
+        | core_executor::Error::InvalidColumnIdentifier { .. }
         | core_executor::Error::InvalidTableIdentifier { .. }
         | core_executor::Error::InvalidSchemaIdentifier { .. }
         | core_executor::Error::InvalidFilePath { .. }
@@ -171,6 +172,11 @@ fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCo
         | core_executor::Error::NoTableNamesForTruncateTable { .. }
         | core_executor::Error::OnlySQLStatements { .. }
         | core_executor::Error::MissingOrInvalidColumn { .. }
+        | core_executor::Error::NotMatchedBySourceNotSupported { .. }
+        | core_executor::Error::MergeInsertOnlyOneRow { .. }
+        | core_executor::Error::MergeTargetMustBeTable { .. }
+        | core_executor::Error::MergeSourceNotSupported { .. }
+        | core_executor::Error::MergeTargetMustBeIcebergTable { .. }
         | core_executor::Error::UploadFailed { .. } => http::StatusCode::BAD_REQUEST,
         core_executor::Error::Arrow { .. }
         | core_executor::Error::SerdeParse { .. }
@@ -178,6 +184,13 @@ fn convert_into_status_code_and_error(error: &core_executor::Error) -> (StatusCo
         | core_executor::Error::Iceberg { .. }
         | core_executor::Error::CatalogListDowncast { .. }
         | core_executor::Error::CatalogDownCast { .. }
+        | core_executor::Error::DataFusionLogicalPlanMergeTarget { .. }
+        | core_executor::Error::DataFusionLogicalPlanMergeSource { .. }
+        | core_executor::Error::DataFusionLogicalPlanMergeJoin { .. }
+        | core_executor::Error::LogicalExtensionChildCount { .. }
+        | core_executor::Error::MergeFilterStreamNotMatching { .. }
+        | core_executor::Error::MatchingFilesAlreadyConsumed { .. }
+        | core_executor::Error::MissingFilterPredicates { .. }
         | core_executor::Error::RegisterCatalog { .. } => http::StatusCode::INTERNAL_SERVER_ERROR,
         core_executor::Error::DatabaseNotFound { .. }
         | core_executor::Error::TableNotFound { .. }
