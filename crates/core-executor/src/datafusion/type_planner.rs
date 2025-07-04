@@ -29,11 +29,6 @@ impl TypePlanner for CustomTypePlanner {
             }
             SQLDataType::Custom(a, b) => match a.to_string().to_uppercase().as_str() {
                 "VARIANT" => Ok(Some(DataType::Utf8)),
-                "TIMESTAMP_NTZ" | "TIMESTAMP_LTZ" | "TIMESTAMP_TZ" => {
-                    let parsed_b: Option<u64> = b.iter().next().and_then(|s| s.parse().ok());
-                    let time_unit = parse_timestamp_precision(parsed_b)?;
-                    Ok(Some(DataType::Timestamp(time_unit, None)))
-                }
                 "NUMBER" => {
                     let (precision, scale) = match b.len() {
                         0 => (Some(u64::from(DECIMAL128_MAX_PRECISION)), None),
