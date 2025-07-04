@@ -55,17 +55,21 @@ use datafusion_expr::{
     is_null, lit, or, when,
 };
 use datafusion_iceberg::DataFusionTable;
+use datafusion_expr::{
+    CreateMemoryTable, DdlStatement, Expr as DFExpr, Projection, ScalarUDF, TryCast,
+};
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
 use df_catalog::catalog::CachingCatalog;
 use df_catalog::catalog_list::CachedEntity;
 use df_catalog::error::Error as CatalogError;
 use df_catalog::information_schema::session_params::SessionProperty;
+use embucket_functions::datetime::to_timestamp::ToTimestampFunc;
 use df_catalog::table::CachingTable;
 use embucket_functions::semi_structured::variant::visitors::visit_all;
 use embucket_functions::visitors::{
     copy_into_identifiers, fetch_to_limit, functions_rewriter, inline_aliases_in_query,
-    json_element, qualify_in_query, select_expr_aliases, table_functions, top_limit,
+    json_element, qualify_in_query, select_expr_aliases, table_functions, timestamp, top_limit,
     unimplemented::functions_checker::visit as unimplemented_functions_checker,
 };
 use iceberg_rust::catalog::Catalog;
@@ -211,6 +215,64 @@ impl UserQuery {
     }
 
     fn session_context_expr_rewriter(&self) -> SessionContextExprRewriter {
+        {
+            // https://docs.snowflake.com/en/sql-reference/parameters
+            let format = self
+                .session
+                .get_session_variable("timestamp_input_format")
+                .unwrap_or("YYYY-MM-DD HH24:MI:SS.FF3 TZHTZM".to_string());
+            let tz = self
+                .session
+                .get_session_variable("timezone")
+                .unwrap_or("America/Los_Angeles".to_string());
+
+            let mapping = self
+                .session
+                .get_session_variable("timestamp_input_mapping")
+                .unwrap_or("timestamp_ntz".to_string());
+
+            if mapping != "timestamp_ntz" {
+                self.session
+                    .ctx
+                    .register_udf(ScalarUDF::from(ToTimestampFunc::new(
+                        Some(Arc::from(tz.clone())),
+                        format.clone(),
+                        "to_timestamp".to_string(),
+                    )));
+            } else {
+                self.session
+                    .ctx
+                    .register_udf(ScalarUDF::from(ToTimestampFunc::new(
+                        None,
+                        format.clone(),
+                        "to_timestamp".to_string(),
+                    )));
+            }
+
+            self.session
+                .ctx
+                .register_udf(ScalarUDF::from(ToTimestampFunc::new(
+                    None,
+                    format.clone(),
+                    "to_timestamp_ntz".to_string(),
+                )));
+            self.session
+                .ctx
+                .register_udf(ScalarUDF::from(ToTimestampFunc::new(
+                    Some(Arc::from(tz.clone())),
+                    format.clone(),
+                    "to_timestamp_tz".to_string(),
+                )));
+            self.session
+                .ctx
+                .register_udf(ScalarUDF::from(ToTimestampFunc::new(
+                    Some(Arc::from(tz.clone())),
+                    format.clone(),
+                    "to_timestamp_ltz".to_string(),
+                )));
+        }
+
+        // self.session.ctx.register_udf()
         let current_database = self.current_database();
         let schemas: Vec<String> = self
             .session
@@ -248,6 +310,7 @@ impl UserQuery {
             fetch_to_limit::visit(value).context(ex_error::SqlParserSnafu)?;
             table_functions::visit(value);
             qualify_in_query::visit(value);
+            timestamp::visit(value);
             visit_all(value);
         }
         Ok(())
