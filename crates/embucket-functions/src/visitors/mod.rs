@@ -6,5 +6,6 @@ pub mod json_element;
 pub mod qualify_in_query;
 pub mod select_expr_aliases;
 pub mod table_functions;
+pub mod timestamp;
 pub mod top_limit;
 pub mod unimplemented;
