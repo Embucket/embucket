@@ -375,6 +375,9 @@ to_hex
 to_local_time
 to_time
 to_timestamp
+to_timestamp_tz
+to_timestamp_ntz
+to_timestamp_ltz
 to_timestamp_micros
 to_timestamp_millis
 to_timestamp_nanos
