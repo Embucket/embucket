@@ -207,6 +207,8 @@ impl From<Error> for SnowflakeError {
             Error::MatchingFilesAlreadyConsumed { .. } => Self { message },
             Error::MissingFilterPredicates { .. } => Self { message },
             Error::UnsupportedIcebergValueType { .. } => Self { message },
+            Error::InvalidDatabaseIdentifier { .. } => Self { message },
+            Error::DropCatalog { .. } => Self { message },
         }
     }
 }
