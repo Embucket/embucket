@@ -4,6 +4,7 @@ pub mod to_time;
 
 pub mod to_array;
 pub mod to_binary;
+pub mod to_timestamp;
 pub mod to_variant;
 
 use datafusion_expr::ScalarUDF;
