@@ -214,6 +214,14 @@ macro_rules! test_query {
     };
 }
 
+test_query!(drop_database_error_in_use, "DROP DATABASE embucket");
+
+test_query!(
+    drop_database,
+    "DROP DATABASE embucket",
+    setup_queries = ["DROP SCHEMA embucket.public"]
+);
+
 // CREATE SCHEMA
 test_query!(
     create_schema,
