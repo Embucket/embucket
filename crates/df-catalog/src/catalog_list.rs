@@ -5,6 +5,7 @@ use crate::catalogs::slatedb::catalog::{SLATEDB_CATALOG, SlateDBCatalog};
 use crate::df_error;
 use crate::error::{
     self as df_catalog_error, InvalidCacheSnafu, MetastoreSnafu, NotImplementedSnafu, Result,
+    UnsupportedFeature,
 };
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
@@ -74,16 +75,16 @@ impl EmbucketCatalogList {
             .fail();
         };
         match catalog.catalog_type {
-            CatalogType::Internal => {
-                // Set cascade to true to delete all tables in the database
+            CatalogType::Embucket => {
                 self.metastore
-                    .delete_database(&name.to_string(), true)
+                    .delete_database(&name.to_string(), cascade)
                     .await
                     .context(MetastoreSnafu)?;
                 Ok(())
             }
             CatalogType::Memory => Ok(()),
             CatalogType::S3tables => NotImplementedSnafu {
+                feature: UnsupportedFeature::DropS3TablesDatabase,
                 details: "Dropping S3 tables catalogs is not supported",
             }
             .fail(),

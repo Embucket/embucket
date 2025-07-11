@@ -144,6 +144,7 @@ impl From<Error> for SnowflakeError {
                     MetastoreError::TableAlreadyExists { .. } => Self { message },
                     MetastoreError::TableNotFound { .. } => Self { message },
                     MetastoreError::TableObjectStoreNotFound { .. } => Self { message },
+                    MetastoreError::DatabaseInUse { .. } => Self { message },
                     MetastoreError::VolumeInUse { .. } => Self { message },
                     MetastoreError::Iceberg { .. } => Self { message },
                     MetastoreError::TableMetadataBuilder { .. } => Self { message },

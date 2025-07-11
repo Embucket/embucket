@@ -81,8 +81,13 @@ pub enum Error {
     },
     #[snafu(display("Feature not implemented: '{details:?}'"))]
     NotImplemented {
+        feature: UnsupportedFeature,
         details: String,
         #[snafu(implicit)]
         location: Location,
     },
+}
+
+pub enum UnsupportedFeature {
+    DropS3TablesDatabase,
 }
