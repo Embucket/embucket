@@ -41,18 +41,16 @@ pub struct S3Volume {
     pub region: Option<String>,
     pub bucket: Option<String>,
     pub endpoint: Option<String>,
-    pub skip_signature: Option<bool>,
-    pub metadata_endpoint: Option<String>,
     pub credentials: Option<AwsCredentials>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Eq, PartialEq)]
 pub struct S3TablesVolume {
-    pub region: String,
-    pub bucket: Option<String>,
-    pub endpoint: String,
+    pub endpoint: Option<String>,
     pub credentials: AwsCredentials,
-    pub name: String,
+    // following renamed from 'name' to 'db_name' to avoid flatten conflict.
+    // issue #1306
+    pub database: String,
     pub arn: String,
 }
 
@@ -78,16 +76,12 @@ impl Into<MetastoreVolumeType> for VolumeType {
                 region: volume.region,
                 bucket: volume.bucket,
                 endpoint: volume.endpoint,
-                skip_signature: volume.skip_signature,
-                metadata_endpoint: volume.metadata_endpoint,
                 credentials: volume.credentials.map(AwsCredentials::into),
             }),
             Self::S3Tables(volume) => MetastoreVolumeType::S3Tables(MetastoreS3TablesVolume {
-                region: volume.region,
-                bucket: volume.bucket,
                 endpoint: volume.endpoint,
                 credentials: volume.credentials.into(),
-                name: volume.name,
+                database: volume.database,
                 arn: volume.arn,
             }),
             Self::File(volume) => {
