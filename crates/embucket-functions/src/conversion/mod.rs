@@ -1,6 +1,7 @@
 pub mod errors;
 pub mod to_boolean;
 pub mod to_time;
+pub mod to_varchar;
 
 pub mod to_array;
 pub mod to_binary;
@@ -13,6 +14,7 @@ use std::sync::Arc;
 pub use to_binary::ToBinaryFunc;
 pub use to_boolean::ToBooleanFunc;
 pub use to_time::ToTimeFunc;
+pub use to_varchar::ToVarcharFunc;
 
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> datafusion_common::Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
@@ -24,6 +26,8 @@ pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> datafusion_common::
         Arc::new(ScalarUDF::from(ToBooleanFunc::new(true))),
         Arc::new(ScalarUDF::from(ToTimeFunc::new(false))),
         Arc::new(ScalarUDF::from(ToTimeFunc::new(true))),
+        Arc::new(ScalarUDF::from(ToVarcharFunc::new(false))),
+        Arc::new(ScalarUDF::from(ToVarcharFunc::new(true))),
     ];
     for func in functions {
         registry.register_udf(func)?;

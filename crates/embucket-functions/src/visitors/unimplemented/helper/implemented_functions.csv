@@ -383,6 +383,7 @@ to_timestamp_millis
 to_timestamp_nanos
 to_timestamp_seconds
 to_unixtime
+to_varchar
 to_variant
 today
 translate
@@ -392,6 +393,7 @@ try_parse_json
 try_to_binary
 try_to_boolean
 try_to_time
+try_to_varchar
 typeof
 union_extract
 upper
