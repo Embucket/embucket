@@ -391,6 +391,7 @@ trunc
 try_parse_json
 try_to_binary
 try_to_boolean
+try_to_char
 try_to_time
 try_to_varchar
 typeof
