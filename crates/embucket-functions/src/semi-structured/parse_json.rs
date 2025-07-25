@@ -1,5 +1,5 @@
 use crate::macros::make_udf_function;
-use crate::semi_structured::errors;
+use crate::semi_structured::errors::FailedToDeserializeJsonSnafu;
 use datafusion::arrow::array::{StringBuilder, as_string_array};
 use datafusion::arrow::datatypes::DataType;
 use datafusion::error::Result as DFResult;
@@ -14,22 +14,24 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct ParseJsonFunc {
     signature: Signature,
+    try_mode: bool,
 }
 
 impl Default for ParseJsonFunc {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
 impl ParseJsonFunc {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(try_mode: bool) -> Self {
         Self {
             signature: Signature::one_of(
                 vec![TypeSignature::String(1), TypeSignature::String(2)],
                 Volatility::Immutable,
             ),
+            try_mode,
         }
     }
 }
@@ -40,7 +42,11 @@ impl ScalarUDFImpl for ParseJsonFunc {
     }
 
     fn name(&self) -> &'static str {
-        "parse_json"
+        if self.try_mode {
+            "try_parse_json"
+        } else {
+            "parse_json"
+        }
     }
 
     fn signature(&self) -> &Signature {
@@ -67,12 +73,21 @@ impl ScalarUDFImpl for ParseJsonFunc {
                 let v = v.replace(",,", ",null,");
                 let v = v.replace(",]", ",null]");
                 let v = v.replace("[,", "[null,");
-                let v = serde_json::from_str::<Value>(&v)
-                    .context(errors::FailedToSerializeValueSnafu)?;
-                if v.is_null() {
-                    b.append_null();
-                } else {
-                    b.append_value(v.to_string());
+                match serde_json::from_str::<Value>(&v) {
+                    Ok(v) => {
+                        if v.is_null() {
+                            b.append_null();
+                        } else {
+                            b.append_value(v.to_string());
+                        }
+                    }
+                    Err(err) => {
+                        if self.try_mode {
+                            b.append_null();
+                        } else {
+                            return Err(err).context(FailedToDeserializeJsonSnafu)?;
+                        }
+                    }
                 }
             } else {
                 b.append_null();
@@ -100,7 +115,7 @@ mod tests {
     #[tokio::test]
     async fn test_basic() -> DFResult<()> {
         let ctx = SessionContext::new();
-        ctx.register_udf(ScalarUDF::from(ParseJsonFunc::new()));
+        ctx.register_udf(ScalarUDF::from(ParseJsonFunc::new(false)));
 
         let sql = "SELECT parse_json('{\"key\": \"value\"}') AS parsed_json";
         let result = ctx.sql(sql).await?.collect().await?;
