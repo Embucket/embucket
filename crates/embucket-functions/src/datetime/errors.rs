@@ -15,6 +15,17 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Can't parse timezone"))]
+    CantParseTimezone {
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("can't convert timezone: {err}"))]
+    CantConvertTimezone {
+        err: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 // Enum variants from this error return DataFusionError
