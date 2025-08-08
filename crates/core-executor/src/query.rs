@@ -1320,8 +1320,7 @@ impl UserQuery {
                         .enable_manifest_file_path_column(true)
                         .build()
                         .map_err(DataFusionIcebergError::from)
-                        .map_err(IcebergError::from)
-                        .context(ex_error::IcebergSnafu)?,
+                        .context(ex_error::DatafusionIcebergSnafu)?,
                 ),
             )
             .await?;
