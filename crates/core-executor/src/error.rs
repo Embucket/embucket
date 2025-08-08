@@ -269,7 +269,7 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Iceberg error: {error}"))]
+    #[snafu(display("DatafusionIceberg error: {error}"))]
     DatafusionIceberg {
         #[snafu(source(from(DatafusionIcebergError, Box::new)))]
         error: Box<DatafusionIcebergError>,
