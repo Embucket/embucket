@@ -1,4 +1,5 @@
 use datafusion_common::DataFusionError;
+use datafusion_iceberg::error::Error as DatafusionIcebergError;
 use df_catalog::error::Error as CatalogError;
 use error_stack_trace;
 use iceberg_rust::error::Error as IcebergError;
@@ -264,6 +265,14 @@ pub enum Error {
     Iceberg {
         #[snafu(source(from(IcebergError, Box::new)))]
         error: Box<IcebergError>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("DatafusionIceberg error: {error}"))]
+    DatafusionIceberg {
+        #[snafu(source(from(DatafusionIcebergError, Box::new)))]
+        error: Box<DatafusionIcebergError>,
         #[snafu(implicit)]
         location: Location,
     },
