@@ -73,6 +73,7 @@ use df_catalog::catalog_list::CachedEntity;
 use df_catalog::information_schema::session_params::{SessionParams, SessionProperty};
 use df_catalog::table::CachingTable;
 use embucket_functions::conversion::to_timestamp::ToTimestampFunc;
+use embucket_functions::datetime::convert_timezone::ConvertTimezoneFunc;
 use embucket_functions::datetime::date_part_extract;
 use embucket_functions::semi_structured::variant::visitors::visit_all;
 use embucket_functions::visitors::{
@@ -279,7 +280,6 @@ impl UserQuery {
 
         date_part_extract::register_udfs(&self.session.ctx, week_start, week_of_year_policy);
 
-        // TO_TIMESTAMP
         let format = self
             .session
             .get_session_variable("timestamp_input_format")
@@ -294,6 +294,12 @@ impl UserQuery {
             .get_session_variable("timestamp_input_mapping")
             .unwrap_or_else(|| "timestamp_ntz".to_string());
 
+        // CONVERT_TIMEZONE
+        self.session
+            .ctx
+            .register_udf(ScalarUDF::from(ConvertTimezoneFunc::new(tz.clone())));
+
+        // TO_TIMESTAMP
         let funcs = [
             (
                 if mapping == "timestamp_ntz" {

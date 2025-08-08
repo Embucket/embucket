@@ -16,12 +16,12 @@ pub mod next_day;
 pub mod previous_day;
 pub mod time_from_parts;
 pub mod timestamp_from_parts;
+
 pub use errors::Error;
 
 pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> datafusion_common::Result<()> {
     let functions: Vec<Arc<ScalarUDF>> = vec![
         add_months::get_udf(),
-        convert_timezone::get_udf(),
         date_add::get_udf(),
         date_diff::get_udf(),
         date_from_parts::get_udf(),
