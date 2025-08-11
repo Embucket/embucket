@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: servicenow_prd
-    database: RAW
+    database: embucket
     schema: servicenow_prd
     loaded_at_field: _fivetran_synced
     loader: fivetran

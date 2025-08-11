@@ -3,7 +3,7 @@ default:
   outputs:
     snowflake:
       type: snowflake
-      threads: 4
+      threads: 8
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}" 
       user: "{{ env_var('SNOWFLAKE_USER') }}" 
       password: "{{ env_var('DBT_ENV_SECRET_SNOWFLAKE_PASS') }}" 

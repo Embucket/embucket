@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::Mutex;
+use crate::datafusion::logical_analyzer::function_rewriters::register_func_rewriters;
 
 pub const SESSION_INACTIVITY_EXPIRATION_SECONDS: i64 = 5 * 60;
 
@@ -89,6 +90,7 @@ impl UserSession {
         register_udafs(&mut ctx).context(ex_error::RegisterUDAFSnafu)?;
         register_udtfs(&ctx, history_store.clone());
         register_json_udfs(&mut ctx).context(ex_error::RegisterUDFSnafu)?;
+        // register_func_rewriters(&mut ctx).context(ex_error::RegisterUDFSnafu)?;
         //register_geo_native(&ctx);
         //register_geo_udfs(&ctx);
 

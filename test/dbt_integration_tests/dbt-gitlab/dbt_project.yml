@@ -91,263 +91,263 @@ seeds:
 
     seed_sales:
       +schema: seed_sales
-      +database: RAW
+      +database: embucket
 # raw data upload
     account_usage:
       +schema: account_usage
-      +database: RAW
+      +database: embucket
     airflow_stitch:
       +schema: airflow_stitch
-      +database: RAW
+      +database: embucket
     aws_billing:
       +schema: aws_billing
-      +database: RAW
+      +database: embucket
     bamboohr:
       +schema: bamboohr
-      +database: RAW
+      +database: embucket
     bizible:
       +schema: bizible
-      +database: RAW
+      +database: embucket
     clari:
       +schema: clari
-      +database: RAW
+      +database: embucket
     commonroom:
       +schema: commonroom
-      +database: RAW
+      +database: embucket
     coupa:
       +schema: coupa
-      +database: RAW
+      +database: embucket
     data_science:
       +schema: data_science
-      +database: RAW
+      +database: embucket
     dbt:
       +schema: dbt
-      +database: RAW
+      +database: embucket
     demandbase:
       +schema: demandbase
-      +database: RAW
+      +database: embucket
     demo_architecture_portal:
       +schema: demo_architecture_portal
-      +database: RAW
+      +database: embucket
     discourse:
       +schema: discourse
-      +database: RAW
+      +database: embucket
     driveload:
       +schema: driveload
-      +database: RAW
+      +database: embucket
     e2e_metrics:
       +schema: e2e_metrics
-      +database: RAW
+      +database: embucket
     ecosystems:
       +schema: ecosystems
-      +database: RAW
+      +database: embucket
     elasticsearch_billing:
       +schema: elasticsearch_billing
-      +database: RAW
+      +database: embucket
     engineering_extracts:
       +schema: engineering_extracts
-      +database: RAW
+      +database: embucket
     facebook_ads:
       +schema: facebook_ads
-      +database: RAW
+      +database: embucket
     full_table_clones:
       +schema: full_table_clones
-      +database: RAW
+      +database: embucket
     gainsight:
       +schema: gainsight
-      +database: RAW
+      +database: embucket
     gainsight_customer_success:
       +schema: gainsight_customer_success
-      +database: RAW
+      +database: embucket
     gcp_billing:
       +schema: gcp_billing
-      +database: RAW
+      +database: embucket
     zoominfo:
       +schema: zoominfo
       +database: ZOOMINFO_INBOUND
     gitlab:
       +schema: gitlab
-      +database: RAW
+      +database: embucket
     gitlab_data_yaml:
       +schema: gitlab_data_yaml
-      +database: RAW
+      +database: embucket
     gong:
       +schema: gong
-      +database: RAW
+      +database: embucket
     google_ads:
       +schema: google_ads
-      +database: RAW
+      +database: embucket
     google_analytics_360_fivetran:
       +schema: google_analytics_360_fivetran
-      +database: RAW
+      +database: embucket
     google_analytics_4_bigquery:
       +schema: google_analytics_4_bigquery
-      +database: RAW
+      +database: embucket
     google_search_console:
       +schema: google_search_console
-      +database: RAW
+      +database: embucket
     greenhouse:
       +schema: greenhouse
-      +database: RAW
+      +database: embucket
     hackerone:
       +schema: hackerone
-      +database: RAW
+      +database: embucket
     handbook:
       +schema: handbook
-      +database: RAW
+      +database: embucket
     hyperproof:
       +schema: hyperproof
-      +database: RAW
+      +database: embucket
     influx_db:
       +schema: influx_db
-      +database: RAW
+      +database: embucket
     iterable:
       +schema: iterable
-      +database: RAW
+      +database: embucket
     just_global_campaigns:
       +schema: just_global_campaigns
-      +database: RAW
+      +database: embucket
     kantata:
       +schema: kantata
-      +database: RAW
+      +database: embucket
     level_up:
       +schema: level_up
-      +database: RAW
+      +database: embucket
     linkedin_ads:
       +schema: linkedin_ads
-      +database: RAW
+      +database: embucket
     mailgun:
       +schema: mailgun
-      +database: RAW
+      +database: embucket
     marketo:
       +schema: marketo
-      +database: RAW
+      +database: embucket
     mock_source:
       +schema: mock_source
       +database: prep
     netsuite_fivetran:
       +schema: netsuite_fivetran
-      +database: RAW
+      +database: embucket
     omamori:
       +schema: omamori
-      +database: RAW
+      +database: embucket
     pajamas_adoption_scanner:
       +schema: pajamas_adoption_scanner
-      +database: RAW
+      +database: embucket
     prod_insights:
       +schema: prod_insights
       +database: MONTE_CARLO
     PROMETHEUS:
       +schema: PROMETHEUS
-      +database: RAW
+      +database: embucket
     pto:
       +schema: pto
-      +database: RAW
+      +database: embucket
     public:
       +schema: public
-      +database: RAW
+      +database: embucket
     qualtrics:
       +schema: qualtrics
-      +database: RAW
+      +database: embucket
     rally_initial_export:
       +schema: rally_initial_export
-      +database: RAW
+      +database: embucket
     rally_webhook_stitch:
       +schema: rally_webhook_stitch
-      +database: RAW
+      +database: embucket
     rspec:
       +schema: rspec
-      +database: RAW
+      +database: embucket
     runner_usage:
       +schema: runner_usage
-      +database: RAW
+      +database: embucket
     saas_usage_ping:
       +schema: saas_usage_ping
-      +database: RAW
+      +database: embucket
     salesforce_stitch_sandbox_v2:
       +schema: salesforce_stitch_sandbox_v2
-      +database: RAW
+      +database: embucket
     salesforce_v2_stitch:
       +schema: salesforce_v2_stitch
-      +database: RAW
+      +database: embucket
     seed_customer_success:
       +schema: seed_customer_success
-      +database: RAW
+      +database: embucket
     sensitive:
       +schema: sensitive
       +database: STATIC
     servicenow_prd:
       +schema: servicenow_prd
-      +database: RAW
+      +database: embucket
     sheetload:
       +schema: sheetload
-      +database: RAW
+      +database: embucket
     sirt_alertapp:
       +schema: sirt_alertapp
-      +database: RAW
+      +database: embucket
     snapshots:
       +schema: snapshots
       +database: MY_SNOWFLAKE_SNAPSHOT_DATABASE
     snowflake:
       +schema: snowflake
-      +database: RAW
+      +database: embucket
     snowflake_imports:
       +schema: snowflake_imports
-      +database: RAW
+      +database: embucket
     snowplow:
       +schema: snowplow
-      +database: RAW
+      +database: embucket
     tableau_cloud:
       +schema: tableau_cloud
-      +database: RAW
+      +database: embucket
     tableau_fivetran:
       +schema: tableau_fivetran
-      +database: RAW
+      +database: embucket
     tap_postgres:
       +schema: tap_postgres
-      +database: RAW
+      +database: embucket
     tap_xactly:
       +schema: tap_xactly
-      +database: RAW
+      +database: embucket
     tap_zendesk:
       +schema: tap_zendesk
-      +database: RAW
+      +database: embucket
     tap_zengrc:
       +schema: tap_zengrc
-      +database: RAW
+      +database: embucket
     version_db:
       +schema: version_db
-      +database: RAW
+      +database: embucket
     workday:
       +schema: workday
-      +database: RAW
+      +database: embucket
     workday_hcm:
       +schema: workday_hcm
-      +database: RAW
+      +database: embucket
     zip_sandbox:
       +schema: zip_sandbox
-      +database: RAW
+      +database: embucket
     zuora_api_sandbox_stitch:
       +schema: zuora_api_sandbox_stitch
-      +database: RAW
+      +database: embucket
     zuora_central_sandbox_fivetran:
       +schema: zuora_central_sandbox_fivetran
-      +database: RAW
+      +database: embucket
     zuora_query_api:
       +schema: zuora_query_api
-      +database: RAW
+      +database: embucket
     zuora_query_api_sandbox:
       +schema: zuora_query_api_sandbox
-      +database: RAW
+      +database: embucket
     zuora_revenue:
       +schema: zuora_revenue
-      +database: RAW
+      +database: embucket
     zuora_stitch:
       +schema: zuora_stitch
-      +database: RAW
+      +database: embucket
     zuora_stitch_rest_api:
       +schema: zuora_stitch_rest_api
-      +database: RAW
+      +database: embucket
 
 
 
@@ -433,7 +433,7 @@ models:
       +database: "{{ env_var('SNOWFLAKE_PREP_DATABASE') }}" #PREP
       +schema: dbt_artifacts
     sources:
-      +database: "{{ env_var('SNOWFLAKE_LOAD_DATABASE') }}" #RAW
+      +database: embucket #RAW
       +schema: dbt_artifacts
 
   # ==================
@@ -1114,7 +1114,7 @@ snapshots:
     - "alter table {{ this }} set DATA_RETENTION_TIME_IN_DAYS = 30"
   +query_tag: dbt
   gitlab_snowflake:
-    target_database: "RAW"
+    target_database: "embucket"
     target_schema: "snapshots"
     transient: false
 
