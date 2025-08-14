@@ -10,6 +10,7 @@ use super::error::{
 };
 use super::session::UserSession;
 use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
+use crate::datafusion::logical_analyzer::function_rewriters::json_get_float_as_number::JsonGetFloatRewriter;
 use crate::datafusion::logical_plan::merge::MergeIntoCOWSink;
 use crate::datafusion::physical_plan::merge::{
     DATA_FILE_PATH_COLUMN, MANIFEST_FILE_PATH_COLUMN, SOURCE_EXISTS_COLUMN, TARGET_EXISTS_COLUMN,
@@ -40,6 +41,7 @@ use datafusion::datasource::listing::{
 use datafusion::execution::session_state::{SessionContextProvider, SessionState};
 use datafusion::logical_expr::{self, col};
 use datafusion::logical_expr::{LogicalPlan, TableSource};
+use datafusion::optimizer::Analyzer;
 use datafusion::prelude::{CsvReadOptions, DataFrame};
 use datafusion::scalar::ScalarValue;
 use datafusion::sql::parser::{CreateExternalTable, Statement as DFStatement};
@@ -50,6 +52,7 @@ use datafusion::sql::sqlparser::ast::{
     TableFactor,
 };
 use datafusion::sql::statement::object_name_to_string;
+use datafusion_common::config::ConfigOptions;
 use datafusion_common::{
     Column, DFSchema, DataFusionError, ParamValues, ResolvedTableReference, SchemaReference,
     TableReference, plan_datafusion_err,
@@ -261,7 +264,7 @@ impl UserQuery {
     #[instrument(name = "UserQuery::postprocess_query_statement", level = "trace", err)]
     pub fn postprocess_query_statement_with_validation(statement: &mut DFStatement) -> Result<()> {
         if let DFStatement::Statement(value) = statement {
-            json_element::visit(value);
+            // json_element::visit(value);
             rlike_regexp_expr_rewriter::visit(value);
             functions_rewriter::visit(value);
             top_limit::visit(value);
@@ -669,9 +672,16 @@ impl UserQuery {
         create_table_statement.storage_serialization_policy = None;
         create_table_statement.cluster_by = None;
 
-        let plan = self
+        let mut plan = self
             .get_custom_logical_plan(&create_table_statement.to_string())
             .await?;
+        // Apply functions rewriter to get correct data types
+        let mut analyzer = Analyzer::new();
+        analyzer.add_function_rewrite(Arc::new(JsonGetFloatRewriter::default()));
+        plan = analyzer
+            .execute_and_check(plan, &ConfigOptions::default(), |_, _| {})
+            .context(ex_error::DataFusionSnafu)?;
+
         let ident: MetastoreTableIdent = new_table_ident.into();
 
         let catalog = self.get_catalog(ident.database.as_str())?;

@@ -10,6 +10,7 @@ pub mod typeof_func;
 
 mod conversion;
 pub mod is_typeof;
+pub mod json;
 pub mod parse_json;
 
 use crate::semi_structured::array::{
@@ -21,6 +22,7 @@ use crate::semi_structured::array::{
 };
 use crate::semi_structured::get::GetFunc;
 use crate::semi_structured::is_typeof::IsTypeofFunc;
+use crate::semi_structured::json::json_get_float;
 use crate::semi_structured::object::object_construct::ObjectConstructUDF;
 use crate::semi_structured::object::{object_delete, object_insert, object_pick};
 use crate::semi_structured::parse_json::ParseJsonFunc;
@@ -82,6 +84,7 @@ pub fn register_udfs(registry: &mut dyn FunctionRegistry) -> Result<()> {
         Arc::new(ScalarUDF::from(GetFunc::new(true))),
         typeof_func::get_udf(),
         variant_element::get_udf(),
+        json_get_float::get_udf(),
     ];
 
     for func in functions {
