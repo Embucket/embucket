@@ -182,6 +182,7 @@ impl ExecutionService for CoreExecutionService {
         name = "ExecutionService::create_session",
         level = "debug",
         skip(self),
+        fields(new_sessions_count),
         err
     )]
     async fn create_session(&self, session_id: String) -> Result<Arc<UserSession>> {
@@ -203,6 +204,9 @@ impl ExecutionService for CoreExecutionService {
             let mut sessions = self.df_sessions.write().await;
             tracing::trace!("Acquired write lock for df_sessions");
             sessions.insert(session_id.clone(), user_session.clone());
+
+            // Record the result as part of the current span.
+            tracing::Span::current().record("new_sessions_count", sessions.len());
         }
         Ok(user_session)
     }
@@ -211,12 +215,16 @@ impl ExecutionService for CoreExecutionService {
         name = "ExecutionService::delete_session",
         level = "debug",
         skip(self),
+        fields(new_sessions_count),
         err
     )]
     async fn delete_session(&self, session_id: String) -> Result<()> {
         // TODO: Need to have a timeout for the lock
         let mut session_list = self.df_sessions.write().await;
         session_list.remove(&session_id);
+
+        // Record the result as part of the current span.
+        tracing::Span::current().record("new_sessions_count", session_list.len());
         Ok(())
     }
     async fn get_sessions(&self) -> Arc<RwLock<HashMap<String, Arc<UserSession>>>> {
