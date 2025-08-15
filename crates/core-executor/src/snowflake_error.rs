@@ -17,6 +17,9 @@ use snafu::GenerateImplicitData;
 use snafu::{Location, Snafu, location};
 use sqlparser::parser::ParserError;
 
+// SnowflakeError have no query_id, it is inconvinient adding it here.
+// query_id should be taken from core_executor::Error::QueryExecution
+
 #[derive(Snafu, Debug)]
 pub enum SnowflakeError {
     #[snafu(display("SQL compilation error: {error}"))]
@@ -86,8 +89,16 @@ pub enum SqlCompilationError {
         location: Location,
     },
 
+    #[snafu(display("Schema '{db}.{schema}' does not exist or not authorized"))]
+    SchemaDoesntExist {
+        db: String,
+        schema: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("{error}"))]
-    CompilationUnknown {
+    CompilationGeneric {
         error: String,
         #[snafu(implicit)]
         location: Location,
@@ -96,47 +107,19 @@ pub enum SqlCompilationError {
 
 impl SnowflakeError {
     #[must_use]
-    pub fn display_debug_error_messages(&self) -> (String, String) {
-        (self.to_string(), format!("{self:?}"))
+    pub fn display_error_message(&self) -> String {
+        self.to_string()
+    }
+    #[must_use]
+    pub fn debug_error_message(&self) -> String {
+        format!("{self:?}")
     }
 }
 
 // Self { message: format!("SQL execution error: {}", message) }
 impl SnowflakeError {
     pub fn from_executor_error(value: &Error) -> Self {
-        let message = value.to_string();
-        match value {
-            Error::RegisterUDF { error, .. }
-            | Error::RegisterUDAF { error, .. }
-            | Error::DataFusionQuery { error, .. }
-            | Error::DataFusionLogicalPlanMergeTarget { error, .. }
-            | Error::DataFusionLogicalPlanMergeSource { error, .. }
-            | Error::DataFusionLogicalPlanMergeJoin { error, .. }
-            | Error::DataFusion { error, .. } => datafusion_error(error, &[]),
-            Error::Metastore { source, .. } => metastore_error(source, &[]),
-            Error::Iceberg { error, .. } => iceberg_error(error, &[]),
-            Error::RefreshCatalogList { source, .. }
-            | Error::RegisterCatalog { source, .. }
-            | Error::DropDatabase { source, .. }
-            | Error::CreateDatabase { source, .. } => catalog_error(source, &[]),
-            Error::Arrow { .. }
-            | Error::SerdeParse { .. }
-            | Error::CatalogListDowncast { .. }
-            | Error::CatalogDownCast { .. }
-            | Error::LogicalExtensionChildCount { .. }
-            | Error::MergeFilterStreamNotMatching { .. }
-            | Error::MatchingFilesAlreadyConsumed { .. }
-            | Error::MissingFilterPredicates { .. } => CustomSnafu {
-                message,
-                status_code: StatusCode::Internal,
-            }
-            .build(),
-            _ => CustomSnafu {
-                message,
-                status_code: StatusCode::Other,
-            }
-            .build(),
-        }
+        executor_error(value)
     }
 }
 
@@ -151,6 +134,51 @@ fn format_message(subtext: &[&str], error: String) -> String {
         error
     } else {
         format!("{subtext}: {error}")
+    }
+}
+
+pub fn executor_error(error: &Error) -> SnowflakeError {
+    let message = error.to_string();
+    match error {
+        Error::RegisterUDF { error, .. }
+        | Error::RegisterUDAF { error, .. }
+        | Error::DataFusionQuery { error, .. }
+        | Error::DataFusionLogicalPlanMergeTarget { error, .. }
+        | Error::DataFusionLogicalPlanMergeSource { error, .. }
+        | Error::DataFusionLogicalPlanMergeJoin { error, .. }
+        | Error::DataFusion { error, .. } => datafusion_error(error, &[]),
+        Error::Metastore { source, .. } => metastore_error(source, &[]),
+        Error::Iceberg { error, .. } => iceberg_error(error, &[]),
+        Error::RefreshCatalogList { source, .. }
+        | Error::RegisterCatalog { source, .. }
+        | Error::DropDatabase { source, .. }
+        | Error::CreateDatabase { source, .. } => catalog_error(source, &[]),
+        Error::QueryExecution { source, .. } => executor_error(source),
+        Error::SchemaNotFoundInDatabase { schema, db, .. } => SnowflakeError::SqlCompilation {
+            error: SchemaDoesntExistSnafu { db, schema }.build(),
+            status_code: StatusCode::MetastoreSchemaNotFound,
+        },
+        Error::NotSupportedStatement { statement, .. } => SnowflakeError::SqlCompilation {
+            error: CompilationUnsupportedFeatureSnafu { error: statement }.build(),
+            status_code: StatusCode::UnsupportedFeature,
+        },
+        Error::Arrow { .. }
+        | Error::SerdeParse { .. }
+        | Error::CatalogListDowncast { .. }
+        | Error::CatalogDownCast { .. }
+        | Error::LogicalExtensionChildCount { .. }
+        | Error::MergeFilterStreamNotMatching { .. }
+        | Error::MatchingFilesAlreadyConsumed { .. }
+        | Error::MissingFilterPredicates { .. } => CustomSnafu {
+            message,
+            status_code: StatusCode::Internal,
+        }
+        .build(),
+        _ => CustomSnafu {
+            message,
+            status_code: StatusCode::Other,
+        }
+        .build(),
     }
 }
 
@@ -199,6 +227,10 @@ fn metastore_error(error: &MetastoreError, subtext: &[&str]) -> SnowflakeError {
         MetastoreError::ObjectStore { error, .. } => object_store_error(error, &subtext),
         MetastoreError::UtilSlateDB { source, .. } => core_utils_error(source, &subtext),
         MetastoreError::Iceberg { error, .. } => iceberg_error(error, &subtext),
+        MetastoreError::SchemaNotFound { schema, db, .. } => SnowflakeError::SqlCompilation {
+            error: SchemaDoesntExistSnafu { db, schema }.build(),
+            status_code: StatusCode::MetastoreSchemaNotFound,
+        },
         _ => CustomSnafu {
             message: format_message(&subtext, message),
             status_code: StatusCode::Metastore,
@@ -307,7 +339,7 @@ fn datafusion_error(df_error: &DataFusionError, subtext: &[&str]) -> SnowflakeEr
             }
         }
         DataFusionError::Execution(error) => SnowflakeError::SqlCompilation {
-            error: CompilationUnknownSnafu { error }.build(),
+            error: CompilationGenericSnafu { error }.build(),
             status_code: StatusCode::Datafusion,
         },
         DataFusionError::IoError(_io_error) => CustomSnafu {
@@ -347,7 +379,7 @@ fn datafusion_error(df_error: &DataFusionError, subtext: &[&str]) -> SnowflakeEr
             // since parse error is just a text and not a structure
             {
                 SnowflakeError::SqlCompilation {
-                    error: CompilationUnknownSnafu { error }.build(),
+                    error: CompilationGenericSnafu { error }.build(),
                     status_code: StatusCode::DataFusionSql,
                 }
             }

@@ -2,6 +2,7 @@
 pub enum StatusCode {
     Db,
     Metastore = 101,
+    MetastoreSchemaNotFound,
     ObjectStore = 201,
     Datafusion = 301,
     DataFusionSql = 401,
@@ -20,4 +21,5 @@ pub enum StatusCode {
     Iceberg = 801,
     Internal = 901,
     Other = 10001,
+    UnsupportedFeature,
 }
