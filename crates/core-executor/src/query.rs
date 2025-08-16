@@ -91,8 +91,9 @@ use iceberg_rust::spec::table_metadata::TableMetadata;
 use iceberg_rust::spec::types::StructType;
 use iceberg_rust::spec::values::Value as IcebergValue;
 use iceberg_rust::table::manifest_list::snapshot_partition_bounds;
-use object_store::ObjectStore;
-use object_store::aws::AmazonS3Builder;
+use object_store::aws::{AmazonS3Builder, resolve_bucket_region};
+use object_store::local::LocalFileSystem;
+use object_store::{ClientOptions, ObjectStore};
 use snafu::{OptionExt, ResultExt};
 use sqlparser::ast::helpers::key_value_options::KeyValueOptions;
 use sqlparser::ast::helpers::stmt_data_loading::StageParamsObject;
@@ -1047,11 +1048,10 @@ impl UserQuery {
                 .await
                 .context(ex_error::DataFusionSnafu)?;
 
-            let object_store = self
-                .get_object_store_from_stage_params(stage_params)
-                .await?;
-
             let url = ListingTableUrl::parse(&location.value).context(ex_error::DataFusionSnafu)?;
+
+            let object_store = self.get_object_store(stage_params, &url).await?;
+
             self.session
                 .ctx
                 .register_object_store(url.object_store().as_ref(), object_store);
@@ -2442,10 +2442,12 @@ impl UserQuery {
         })
     }
 
-    async fn get_object_store_from_stage_params(
+    async fn get_object_store(
         &self,
         stage_params: StageParamsObject,
+        url: &ListingTableUrl,
     ) -> Result<Arc<dyn ObjectStore + 'static>> {
+        // First, try to get object store from stage parameters
         let object_store = match (stage_params.storage_integration, stage_params.credentials) {
             (Some(volume), _) => {
                 let volume = self
@@ -2454,15 +2456,65 @@ impl UserQuery {
                     .await
                     .context(ex_error::MetastoreSnafu)?
                     .context(ex_error::VolumeNotFoundSnafu { volume })?;
-                volume
-                    .get_object_store()
-                    .context(ex_error::MetastoreSnafu)?
+                Some(
+                    volume
+                        .get_object_store()
+                        .context(ex_error::MetastoreSnafu)?,
+                )
             }
-            (None, _) => {
-                todo!()
+            (None, credentials) => {
+                if credentials.options.is_empty() {
+                    None
+                } else {
+                    todo!()
+                }
             }
         };
-        Ok(object_store)
+
+        // If no object store from stage params, create one from URL
+        if let Some(store) = object_store {
+            Ok(store)
+        } else {
+            match url.scheme() {
+                "s3" => {
+                    let object_store = url.object_store();
+                    let bucket = object_store
+                        .as_str()
+                        .trim_start_matches("s3://")
+                        .trim_end_matches('/');
+                    let region = resolve_bucket_region(bucket, &ClientOptions::default())
+                        .await
+                        .context(ex_error::ObjectStoreSnafu)?;
+                    let builder = AmazonS3Builder::new()
+                        .with_bucket_name(bucket)
+                        .with_region(region)
+                        .with_skip_signature(true);
+
+                    let builder = if let Some(endpoint) = stage_params.endpoint {
+                        builder.with_endpoint(endpoint)
+                    } else {
+                        builder
+                    };
+
+                    let Ok(s3) = builder.build() else {
+                        return ex_error::InvalidBucketIdentifierSnafu {
+                            ident: bucket.to_string(),
+                        }
+                        .fail();
+                    };
+                    Ok(Arc::new(s3))
+                }
+                "file" => {
+                    let local_fs = LocalFileSystem::new();
+                    Ok(Arc::new(local_fs))
+                }
+                _ => ex_error::UnsupportedUrlSchemeSnafu {
+                    scheme: url.scheme().to_string(),
+                    url: url.as_str().to_string(),
+                }
+                .fail(),
+            }
+        }
     }
 
     async fn build_listing_table_config(
