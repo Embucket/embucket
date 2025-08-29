@@ -11,6 +11,8 @@ pub enum QueryStatus {
     Running,
     Successful,
     Failed,
+    Canceled,
+    TimedOut,
 }
 
 impl Display for QueryStatus {
@@ -19,6 +21,8 @@ impl Display for QueryStatus {
             Self::Running => write!(f, "Running"),
             Self::Successful => write!(f, "Successful"),
             Self::Failed => write!(f, "Failed"),
+            Self::Canceled => write!(f, "Canceled"),
+            Self::TimedOut => write!(f, "TimedOut"),
         }
     }
 }
@@ -78,7 +82,7 @@ impl QueryRecord {
 
     pub fn finished_with_error(&mut self, error: crate::QueryResultError) {
         self.finished(0, None);
-        self.status = QueryStatus::Failed;
+        self.status = error.status;
         self.error = Some(error.message);
         self.diagnostic_error = Some(error.diagnostic_message);
     }

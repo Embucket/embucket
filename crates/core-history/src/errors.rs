@@ -1,3 +1,4 @@
+use crate::QueryRecordId;
 use error_stack_trace;
 use slatedb::SlateDBError;
 use snafu::Location;
@@ -127,6 +128,13 @@ pub enum Error {
     #[snafu(display("Query execution error: {message}"))]
     ExecutionResult {
         message: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("No result set for QueryRecord: {query_id}"))]
+    NoResultSet {
+        query_id: QueryRecordId,
         #[snafu(implicit)]
         location: Location,
     },

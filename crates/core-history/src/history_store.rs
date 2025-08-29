@@ -1,7 +1,8 @@
 use crate::errors::{self as core_history_errors, Result};
 use crate::result_set::ResultSet;
 use crate::{
-    QueryRecord, QueryRecordId, QueryRecordReference, SlateDBHistoryStore, Worksheet, WorksheetId,
+    QueryRecord, QueryRecordId, QueryRecordReference, QueryStatus, SlateDBHistoryStore, Worksheet,
+    WorksheetId,
 };
 use async_trait::async_trait;
 use core_utils::Db;
@@ -21,11 +22,14 @@ pub enum SortOrder {
 
 #[derive(Debug)]
 pub struct QueryResultError {
+    // additional error status like: cancelled, timeout, etc
+    pub status: QueryStatus,
     pub message: String,
     pub diagnostic_message: String,
 }
 impl std::fmt::Display for QueryResultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // do not output status, it is just an internal context
         write!(
             f,
             "QueryResultError: {} | Diagnostic: {}",
@@ -344,7 +348,9 @@ impl HistoryStore for SlateDBHistoryStore {
                     let result_count = i64::try_from(result_set.rows.len()).unwrap_or(0);
                     query_record.finished(result_count, Some(encoded_res));
                 }
+                // serde error
                 Err(err) => query_record.finished_with_error(QueryResultError {
+                    status: QueryStatus::Failed,
                     message: err.to_string(),
                     diagnostic_message: format!("{err:?}"),
                 }),
@@ -394,9 +400,10 @@ mod tests {
                     item.finished(1, Some(String::from("pseudo result")));
                     item
                 }
-                QueryStatus::Failed => {
+                QueryStatus::Canceled | QueryStatus::TimedOut | QueryStatus::Failed => {
                     let mut item = query_record_fn(format!("select {i}").as_str(), *worksheet_id);
                     item.finished_with_error(QueryResultError {
+                        status: query_status.clone(),
                         message: String::from("Test query pseudo error"),
                         diagnostic_message: String::from("diagnostic message"),
                     });

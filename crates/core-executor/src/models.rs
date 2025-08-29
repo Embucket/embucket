@@ -1,10 +1,25 @@
+use crate::error;
+use crate::utils::query_result_to_result_set;
+use arrow_schema::SchemaRef;
+use core_history::{QueryRecord, QueryStatus, result_set::ResultSet};
+use datafusion::arrow;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
+use datafusion::arrow::json::StructMode;
+use datafusion::arrow::json::reader::ReaderBuilder;
 use datafusion_common::arrow::datatypes::Schema;
 use embucket_functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
+use snafu::ResultExt;
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::sync::Arc;
+use tokio::sync::oneshot;
+
+pub struct AsyncQueryHandle {
+    pub query_id: i64,
+    pub rx: oneshot::Receiver<QueryResultStatus>,
+}
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct QueryContext {
@@ -13,6 +28,7 @@ pub struct QueryContext {
     pub worksheet_id: Option<i64>,
     pub query_id: i64,
     pub ip_address: Option<String>,
+    pub async_query: bool,
 }
 
 impl QueryContext {
@@ -28,6 +44,7 @@ impl QueryContext {
             worksheet_id,
             query_id: Default::default(),
             ip_address: None,
+            async_query: false,
         }
     }
 
@@ -42,6 +59,12 @@ impl QueryContext {
         self.ip_address = Some(ip_address);
         self
     }
+
+    #[must_use]
+    pub const fn with_async_query(mut self, async_query: bool) -> Self {
+        self.async_query = async_query;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +74,56 @@ pub struct QueryResult {
     /// This is required to construct a valid response even when `records` are empty
     pub schema: Arc<ArrowSchema>,
     pub query_id: i64,
+}
+
+impl TryInto<ResultSet> for QueryResult {
+    type Error = crate::Error;
+    fn try_into(self) -> Result<ResultSet, Self::Error> {
+        query_result_to_result_set(&self)
+    }
+}
+
+fn convert_resultset_to_arrow_json_lines(
+    result_set: &ResultSet,
+) -> Result<String, serde_json::Error> {
+    let mut lines = String::new();
+    for row in &result_set.rows {
+        let json_value = serde_json::Value::Array(row.0.clone());
+        lines.push_str(&serde_json::to_string(&json_value)?);
+        lines.push('\n');
+    }
+    Ok(lines)
+}
+
+impl TryFrom<QueryRecord> for QueryResult {
+    type Error = crate::Error;
+    fn try_from(value: QueryRecord) -> Result<Self, Self::Error> {
+        let query_id = value.id;
+        let result_set = ResultSet::try_from(value).context(error::QueryHistorySnafu)?;
+
+        let arrow_json =
+            convert_resultset_to_arrow_json_lines(&result_set).context(error::SerdeParseSnafu)?;
+
+        // Parse schema from serialized JSON
+        let schema_value =
+            serde_json::from_str(&result_set.schema).context(error::SerdeParseSnafu)?;
+
+        let schema_ref: SchemaRef = schema_value;
+        let json_reader = ReaderBuilder::new(schema_ref.clone())
+            .with_struct_mode(StructMode::ListOnly)
+            .build(Cursor::new(&arrow_json))
+            .context(error::ArrowSnafu)?;
+
+        let batches = json_reader
+            .collect::<arrow::error::Result<Vec<RecordBatch>>>()
+            .context(error::ArrowSnafu)?;
+
+        Ok(Self {
+            records: batches,
+            schema: schema_ref,
+            query_id,
+        })
+    }
 }
 
 impl QueryResult {
@@ -72,6 +145,12 @@ impl QueryResult {
     pub fn column_info(&self) -> Vec<ColumnInfo> {
         ColumnInfo::from_schema(&self.schema)
     }
+}
+
+#[derive(Debug)]
+pub struct QueryResultStatus {
+    pub query_result: Result<QueryResult, crate::Error>,
+    pub status: QueryStatus,
 }
 
 // TODO: We should not have serde dependency here

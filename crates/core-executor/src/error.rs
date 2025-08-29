@@ -17,8 +17,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[snafu(display("Concurrency limit reached — too many concurrent queries are running"))]
     ConcurrencyLimit {
-        #[snafu(source)]
-        error: tokio::sync::TryAcquireError,
         #[snafu(implicit)]
         location: Location,
     },
@@ -553,6 +551,36 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Query {query_id} isn't running"))]
+    QueryIsntRunning {
+        query_id: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Query History error: {source}"))]
+    QueryHistory {
+        #[snafu(source(from(core_history::errors::Error, Box::new)))]
+        source: Box<core_history::errors::Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Query {query_id} cancelled"))]
+    QueryCancelled {
+        query_id: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Query result recv error: {error}"))]
+    QueryResultRecv {
+        #[snafu(source)]
+        error: tokio::sync::oneshot::error::RecvError,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 impl Error {
@@ -566,6 +594,22 @@ impl Error {
     #[must_use]
     pub fn to_snowflake_error(&self) -> SnowflakeError {
         SnowflakeError::from_executor_error(self)
+    }
+    #[must_use]
+    pub const fn is_query_cancelled(&self) -> bool {
+        if let Self::QueryExecution { source, .. } = self {
+            source.is_query_cancelled()
+        } else {
+            matches!(self, Self::QueryCancelled { .. })
+        }
+    }
+    #[must_use]
+    pub const fn is_query_timeout(&self) -> bool {
+        if let Self::QueryExecution { source, .. } = self {
+            source.is_query_timeout()
+        } else {
+            matches!(self, Self::QueryTimeout { .. })
+        }
     }
 }
 
