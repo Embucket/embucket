@@ -1,7 +1,8 @@
 use crate::errors::{self as core_history_errors, Result};
 use crate::result_set::ResultSet;
 use crate::{
-    QueryRecord, QueryRecordId, QueryRecordReference, SlateDBHistoryStore, Worksheet, WorksheetId,
+    QueryRecord, QueryRecordId, QueryRecordReference, QueryStatus, SlateDBHistoryStore, Worksheet,
+    WorksheetId,
 };
 use async_trait::async_trait;
 use core_utils::Db;
@@ -21,11 +22,14 @@ pub enum SortOrder {
 
 #[derive(Debug)]
 pub struct QueryResultError {
+    // additional error status like: cancelled, timeout, etc
+    pub status: QueryStatus,
     pub message: String,
     pub diagnostic_message: String,
 }
 impl std::fmt::Display for QueryResultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // do not output status, it is just an internal context
         write!(
             f,
             "QueryResultError: {} | Diagnostic: {}",
@@ -97,13 +101,13 @@ pub trait HistoryStore: std::fmt::Debug + Send + Sync {
     async fn save_query_record(
         &self,
         query_record: &mut QueryRecord,
-        execution_result: std::result::Result<ResultSet, QueryResultError>,
+        execution_result: Option<std::result::Result<ResultSet, QueryResultError>>,
     );
 }
 
 async fn queries_iterator(db: &Db, cursor: Option<QueryRecordId>) -> Result<DbIterator<'_>> {
-    let start_key = QueryRecord::get_key(cursor.unwrap_or_else(QueryRecordId::min_cursor));
-    let end_key = QueryRecord::get_key(QueryRecordId::max_cursor());
+    let start_key = QueryRecord::get_key(cursor.map_or_else(i64::min_cursor, Into::into));
+    let end_key = QueryRecord::get_key(i64::max_cursor());
     db.range_iterator(start_key..end_key)
         .await
         .context(core_history_errors::GetWorksheetQueriesSnafu)
@@ -116,9 +120,9 @@ async fn worksheet_queries_references_iterator(
 ) -> Result<DbIterator<'_>> {
     let refs_start_key = QueryRecordReference::get_key(
         worksheet_id,
-        cursor.unwrap_or_else(QueryRecordId::min_cursor),
+        cursor.unwrap_or_else(|| i64::min_cursor().into()),
     );
-    let refs_end_key = QueryRecordReference::get_key(worksheet_id, QueryRecordId::max_cursor());
+    let refs_end_key = QueryRecordReference::get_key(worksheet_id, i64::max_cursor().into());
     db.range_iterator(refs_start_key..refs_end_key)
         .await
         .context(core_history_errors::GetWorksheetQueriesSnafu)
@@ -240,7 +244,7 @@ impl HistoryStore for SlateDBHistoryStore {
 
     #[instrument(name = "HistoryStore::get_query", level = "debug", skip(self), err)]
     async fn get_query(&self, id: QueryRecordId) -> Result<QueryRecord> {
-        let key_bytes = QueryRecord::get_key(id);
+        let key_bytes = QueryRecord::get_key(id.into());
         let key_str =
             std::str::from_utf8(key_bytes.as_ref()).context(core_history_errors::BadKeySnafu)?;
 
@@ -249,12 +253,7 @@ impl HistoryStore for SlateDBHistoryStore {
             .get(key_str)
             .await
             .context(core_history_errors::QueryGetSnafu)?;
-        res.ok_or_else(|| {
-            core_history_errors::QueryNotFoundSnafu {
-                key: key_str.to_string(),
-            }
-            .build()
-        })
+        res.ok_or_else(|| core_history_errors::QueryNotFoundSnafu { query_id: id }.build())
     }
 
     #[instrument(name = "HistoryStore::get_queries", level = "debug", skip(self), err)]
@@ -305,8 +304,8 @@ impl HistoryStore for SlateDBHistoryStore {
             }
             Ok(items)
         } else {
-            let start_key = QueryRecord::get_key(cursor.unwrap_or_else(QueryRecordId::min_cursor));
-            let end_key = QueryRecord::get_key(QueryRecordId::max_cursor());
+            let start_key = QueryRecord::get_key(cursor.map_or_else(i64::min_cursor, Into::into));
+            let end_key = QueryRecord::get_key(i64::max_cursor());
 
             Ok(self
                 .db
@@ -324,7 +323,7 @@ impl HistoryStore for SlateDBHistoryStore {
         name = "SlateDBHistoryStore::save_query_record",
         level = "trace",
         skip(self, query_record, execution_result),
-        fields(query_id = query_record.id,
+        fields(query_id = query_record.id.as_i64(),
             query = query_record.query,
             query_result_count = query_record.result_count,
             query_duration_ms = query_record.duration_ms,
@@ -336,20 +335,24 @@ impl HistoryStore for SlateDBHistoryStore {
     async fn save_query_record(
         &self,
         query_record: &mut QueryRecord,
-        execution_result: std::result::Result<ResultSet, QueryResultError>,
+        execution_result: Option<std::result::Result<ResultSet, QueryResultError>>,
     ) {
-        match execution_result {
-            Ok(result_set) => match serde_json::to_string(&result_set) {
-                Ok(encoded_res) => {
-                    let result_count = i64::try_from(result_set.rows.len()).unwrap_or(0);
-                    query_record.finished(result_count, Some(encoded_res));
-                }
-                Err(err) => query_record.finished_with_error(QueryResultError {
-                    message: err.to_string(),
-                    diagnostic_message: format!("{err:?}"),
-                }),
-            },
-            Err(execution_err) => query_record.finished_with_error(execution_err),
+        if let Some(execution_result) = execution_result {
+            match execution_result {
+                Ok(result_set) => match serde_json::to_string(&result_set) {
+                    Ok(encoded_res) => {
+                        let result_count = i64::try_from(result_set.rows.len()).unwrap_or(0);
+                        query_record.finished(result_count, Some(encoded_res));
+                    }
+                    // serde error
+                    Err(err) => query_record.finished_with_error(QueryResultError {
+                        status: QueryStatus::Failed,
+                        message: err.to_string(),
+                        diagnostic_message: format!("{err:?}"),
+                    }),
+                },
+                Err(execution_err) => query_record.finished_with_error(execution_err),
+            }
         }
 
         if let Err(err) = self.add_query(query_record).await {
@@ -380,7 +383,7 @@ mod tests {
                         i.try_into().expect("Failed convert idx to milliseconds"),
                     );
                 let mut record = QueryRecord::new(query, worksheet_id);
-                record.id = start_time.timestamp_millis();
+                record.id = QueryRecordId(start_time.timestamp_millis());
                 record.start_time = start_time;
                 record.status = QueryStatus::Running;
                 record
@@ -394,9 +397,10 @@ mod tests {
                     item.finished(1, Some(String::from("pseudo result")));
                     item
                 }
-                QueryStatus::Failed => {
+                QueryStatus::Canceled | QueryStatus::TimedOut | QueryStatus::Failed => {
                     let mut item = query_record_fn(format!("select {i}").as_str(), *worksheet_id);
                     item.finished_with_error(QueryResultError {
+                        status: query_status.clone(),
                         message: String::from("Test query pseudo error"),
                         diagnostic_message: String::from("diagnostic message"),
                     });
@@ -432,7 +436,7 @@ mod tests {
             db.add_query(item).await.expect("Failed adding query");
         }
 
-        let cursor = <QueryRecord as IterableEntity>::Cursor::min_cursor();
+        let cursor = QueryRecordId(<QueryRecord as IterableEntity>::Cursor::min_cursor());
         eprintln!("cursor: {cursor}");
         let get_queries_params = GetQueriesParams::new()
             .with_worksheet_id(worksheet.id)

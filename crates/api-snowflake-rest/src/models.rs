@@ -1,41 +1,38 @@
-use super::error::{self as api_snowflake_rest_error, Result};
+#[cfg(feature = "default-server")]
 use core_executor::models::ColumnInfo as ColumnInfoModel;
-use core_executor::utils::DataSerializationFormat;
-use indexmap::IndexMap;
+
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LoginRequestQuery {
+#[serde(rename_all = "camelCase")]
+pub struct LoginRequestQueryParams {
     #[serde(rename = "request_id")]
     pub request_id: String,
-    #[serde(rename = "databaseName")]
     pub database_name: Option<String>,
-    #[serde(rename = "schemaName")]
     pub schema_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoginRequestBody {
-    pub data: ClientData,
+    pub data: LoginRequestData,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoginResponse {
-    pub data: Option<LoginData>,
+    pub data: Option<LoginResponseData>,
     pub success: bool,
     pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LoginData {
+pub struct LoginResponseData {
     pub token: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
-pub struct ClientData {
+pub struct LoginRequestData {
     pub client_app_id: String,
     pub client_app_version: String,
     pub svn_revision: Option<String>,
@@ -63,18 +60,19 @@ pub struct ClientEnvironment {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QueryRequest {
-    #[serde(rename = "requestId")]
     pub request_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QueryRequestBody {
-    #[serde(rename = "sqlText")]
     pub sql_text: String,
+    pub async_exec: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseData {
     #[serde(rename = "rowtype")]
@@ -92,18 +90,6 @@ pub struct ResponseData {
     pub sql_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_id: Option<String>,
-}
-
-impl ResponseData {
-    pub fn rows_to_vec(json_rows_string: &str) -> Result<Vec<Vec<serde_json::Value>>> {
-        let json_array: Vec<IndexMap<String, serde_json::Value>> =
-            serde_json::from_str(json_rows_string)
-                .context(api_snowflake_rest_error::RowParseSnafu)?;
-        Ok(json_array
-            .into_iter()
-            .map(|obj| obj.values().cloned().collect())
-            .collect())
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -131,6 +117,7 @@ pub struct ColumnInfo {
     collation: Option<String>,
 }
 
+#[cfg(feature = "default-server")]
 impl From<ColumnInfoModel> for ColumnInfo {
     fn from(column_info: ColumnInfoModel) -> Self {
         Self {
@@ -153,27 +140,4 @@ impl From<ColumnInfoModel> for ColumnInfo {
 pub struct Auth {
     pub demo_user: String,
     pub demo_password: String,
-}
-
-#[derive(Clone, Default)]
-pub struct Config {
-    pub auth: Auth,
-    pub dbt_serialization_format: DataSerializationFormat,
-}
-
-impl Config {
-    pub fn new(data_format: &str) -> std::result::Result<Self, strum::ParseError> {
-        Ok(Self {
-            dbt_serialization_format: DataSerializationFormat::try_from(data_format)?,
-            ..Self::default()
-        })
-    }
-    #[must_use]
-    pub fn with_demo_credentials(mut self, demo_user: String, demo_password: String) -> Self {
-        self.auth = Auth {
-            demo_user,
-            demo_password,
-        };
-        self
-    }
 }

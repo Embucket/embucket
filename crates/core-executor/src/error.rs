@@ -1,4 +1,6 @@
 use super::snowflake_error::SnowflakeError;
+use core_history::QueryRecord;
+use core_history::QueryRecordId;
 use datafusion_common::DataFusionError;
 use df_catalog::error::Error as CatalogError;
 use error_stack_trace;
@@ -17,8 +19,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[snafu(display("Concurrency limit reached — too many concurrent queries are running"))]
     ConcurrencyLimit {
-        #[snafu(source)]
-        error: tokio::sync::TryAcquireError,
         #[snafu(implicit)]
         location: Location,
     },
@@ -545,27 +545,104 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("{query_id}: Query execution error: {source}"))]
+    #[snafu(display("{}: Query execution error: {source}", query_id.as_uuid()))]
     QueryExecution {
-        query_id: String,
+        query_id: QueryRecordId,
         #[snafu(source(from(Error, Box::new)))]
         source: Box<Error>,
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Query {} isn't running", query_id.as_uuid()))]
+    QueryIsntRunning {
+        query_id: QueryRecordId,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    // When user tried to get result before query finished
+    #[snafu(display("Query {} is running", query_id.as_uuid()))]
+    QueryIsRunning {
+        query_id: QueryRecordId,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Query History error: {source}"))]
+    QueryHistory {
+        #[snafu(source(from(core_history::errors::Error, Box::new)))]
+        source: Box<core_history::errors::Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Query {query_id} cancelled"))]
+    QueryCancelled {
+        query_id: QueryRecordId,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Query result recv error: {error}"))]
+    QueryResultRecv {
+        #[snafu(source)]
+        error: tokio::sync::oneshot::error::RecvError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    // This is logical error, means error getting error from QueryRecord as it contains result data
+    #[snafu(display(""))]
+    HistoricalQueryContainsData {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    // Just a text error loaded from QueryHistory
+    #[snafu(display("{error}"))]
+    HistoricalQueryError {
+        error: String,
+    }
 }
 
 impl Error {
-    pub fn query_id(&self) -> String {
+    pub fn query_id(&self) -> QueryRecordId {
         if let Self::QueryExecution { query_id, .. } = self {
-            query_id.clone()
+            *query_id
         } else {
-            String::new()
+            QueryRecordId::default()
         }
     }
     #[must_use]
     pub fn to_snowflake_error(&self) -> SnowflakeError {
         SnowflakeError::from_executor_error(self)
+    }
+    #[must_use]
+    pub const fn is_query_cancelled(&self) -> bool {
+        if let Self::QueryExecution { source, .. } = self {
+            source.is_query_cancelled()
+        } else {
+            matches!(self, Self::QueryCancelled { .. })
+        }
+    }
+    #[must_use]
+    pub const fn is_query_timeout(&self) -> bool {
+        if let Self::QueryExecution { source, .. } = self {
+            source.is_query_timeout()
+        } else {
+            matches!(self, Self::QueryTimeout { .. })
+        }
+    }
+}
+
+impl TryFrom<QueryRecord> for Error {
+    type Error = Self;
+    fn try_from(value: QueryRecord) -> std::result::Result<Self, Self::Error> {
+        value.error.map_or_else(
+            || Err(HistoricalQueryContainsDataSnafu {}.build()),
+            |error| Ok(HistoricalQuerySnafu { error }.build()),
+        )
     }
 }
 

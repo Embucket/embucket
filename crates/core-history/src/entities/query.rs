@@ -1,4 +1,4 @@
-use crate::WorksheetId;
+use crate::{QueryRecordId, WorksheetId};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use core_utils::iterable::IterableEntity;
@@ -11,6 +11,8 @@ pub enum QueryStatus {
     Running,
     Successful,
     Failed,
+    Canceled,
+    TimedOut,
 }
 
 impl Display for QueryStatus {
@@ -19,11 +21,11 @@ impl Display for QueryStatus {
             Self::Running => write!(f, "Running"),
             Self::Successful => write!(f, "Successful"),
             Self::Failed => write!(f, "Failed"),
+            Self::Canceled => write!(f, "Canceled"),
+            Self::TimedOut => write!(f, "TimedOut"),
         }
     }
 }
-
-pub type QueryRecordId = i64;
 
 // QueryRecord struct is used for storing QueryRecord History result and also used in http response
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -43,11 +45,12 @@ pub struct QueryRecord {
 }
 
 impl QueryRecord {
+    // When created - it's Running by default
     #[must_use]
     pub fn new(query: &str, worksheet_id: Option<WorksheetId>) -> Self {
         let start_time = Utc::now();
         Self {
-            id: Self::inverted_id(start_time.timestamp_millis()),
+            id: Self::inverted_id(QueryRecordId(start_time.timestamp_millis())),
             worksheet_id,
             query: String::from(query),
             start_time,
@@ -55,7 +58,7 @@ impl QueryRecord {
             duration_ms: 0,
             result_count: 0,
             result: None,
-            status: QueryStatus::Successful,
+            status: QueryStatus::Running,
             error: None,
             diagnostic_error: None,
         }
@@ -78,14 +81,14 @@ impl QueryRecord {
 
     pub fn finished_with_error(&mut self, error: crate::QueryResultError) {
         self.finished(0, None);
-        self.status = QueryStatus::Failed;
+        self.status = error.status;
         self.error = Some(error.message);
         self.diagnostic_error = Some(error.diagnostic_message);
     }
 
     // Returns a key with inverted id for descending order
     #[must_use]
-    pub fn get_key(id: QueryRecordId) -> Bytes {
+    pub fn get_key(id: i64) -> Bytes {
         Bytes::from(format!("/qh/{id}"))
     }
 
@@ -119,10 +122,10 @@ impl IterableEntity for QueryRecord {
     type Cursor = i64;
 
     fn cursor(&self) -> Self::Cursor {
-        self.id
+        self.id.into()
     }
 
     fn key(&self) -> Bytes {
-        Self::get_key(self.id)
+        Self::get_key(self.cursor())
     }
 }
