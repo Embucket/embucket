@@ -353,25 +353,33 @@ impl Stream for MergeCOWFilterStream {
                 Poll::Ready(Some(Ok(batch))) => {
                     let schema = batch.schema();
 
-                    let source_exists = batch.column(schema.index_of(SOURCE_EXISTS_COLUMN)?);
-                    let data_file_path = batch.column(schema.index_of(DATA_FILE_PATH_COLUMN)?);
-                    let manifest_file_path =
+                    let source_exists_array = batch.column(schema.index_of(SOURCE_EXISTS_COLUMN)?);
+                    let data_file_path_array =
+                        batch.column(schema.index_of(DATA_FILE_PATH_COLUMN)?);
+                    let manifest_file_path_array =
                         batch.column(schema.index_of(MANIFEST_FILE_PATH_COLUMN)?);
 
-                    let filtered_data_file_path = filter(
-                        &data_file_path,
-                        &downcast_array::<BooleanArray>(source_exists),
+                    // All data files in the current batch
+
+                    let data_and_manifest_files = unique_files_and_manifests(
+                        &data_file_path_array,
+                        &manifest_file_path_array,
                     )?;
 
-                    let all_data_and_manifest_files =
-                        unique_files_and_manifests(&data_file_path, &manifest_file_path)?;
+                    let current_data_files: HashSet<String> = data_and_manifest_files
+                        .keys()
+                        .map(ToOwned::to_owned)
+                        .collect();
 
-                    let matching_data_files = create_matching_data_files(
-                        project.matching_files,
-                        &filtered_data_file_path,
-                        &all_data_and_manifest_files,
+                    // All data files that have a matching row in the current batch
+                    let matching_data_file_array = filter(
+                        &data_file_path_array,
+                        &downcast_array::<BooleanArray>(source_exists_array),
                     )?;
 
+                    let matching_data_files = unique_values(&matching_data_file_array)?;
+
+                    // Data files that have a matching row now, but didn't before
                     let newly_matched_data_files: HashSet<String> = project
                         .not_matching_files
                         .keys()
@@ -381,20 +389,34 @@ impl Stream for MergeCOWFilterStream {
                         .map(ToOwned::to_owned)
                         .collect();
 
-                    let matching_data_and_manifest_files = collect_matching_data_and_manifest_files(
-                        &batch,
-                        all_data_and_manifest_files,
-                        &matching_data_files,
-                        project.not_matched_buffer,
-                    );
+                    // All data files that ever had a matching row, previous batches included
+                    let all_matching_data_files = {
+                        // Datafiles in the current batch that were matched before
+                        let mut previously_matched_data_files: HashSet<String> = project
+                            .matching_files
+                            .keys()
+                            .map(ToOwned::to_owned)
+                            .collect::<HashSet<String>>()
+                            .intersection(&current_data_files)
+                            .map(ToOwned::to_owned)
+                            .collect();
 
-                    if matching_data_and_manifest_files.is_empty() {
-                        // If there are no rows where source_exists is true
-                        if !filtered_data_file_path.is_empty() {
-                            return Poll::Ready(Some(Ok(batch)));
-                        }
-                        continue;
-                    }
+                        previously_matched_data_files.extend(matching_data_files.clone());
+                        previously_matched_data_files
+                    };
+
+                    let not_matched_data_files: HashSet<String> = current_data_files
+                        .difference(&all_matching_data_files)
+                        .map(ToOwned::to_owned)
+                        .collect();
+
+                    let matching_data_and_manifest_files: HashMap<String, String> =
+                        data_and_manifest_files
+                            .iter()
+                            .filter(|(file, _)| matching_data_files.contains(*file))
+                            .map(|(x, y)| (x.clone(), y.clone()))
+                            .collect();
+
                     // When datafile didn't match in previous record batches but matches now, the
                     // previous record batches have to be appended to the output
                     for file in newly_matched_data_files {
@@ -416,40 +438,64 @@ impl Stream for MergeCOWFilterStream {
                         })?;
 
                         for batch in batches {
-                            let schema = batch.schema();
-                            let data_file_path =
-                                batch.column(schema.index_of(DATA_FILE_PATH_COLUMN)?);
-
-                            let predicate = eq(&data_file_path, &StringArray::new_scalar(&file))?;
-                            let filtered_batch = filter_record_batch(&batch, &predicate)?;
-
-                            project.ready_batches.push(filtered_batch);
+                            project.ready_batches.push(batch);
                         }
 
                         project.matching_files.insert(file, manifest);
                     }
 
-                    let file_predicate = matching_data_files
-                        .iter()
-                        .try_fold(None::<BooleanArray>, |acc, x| {
-                            let new = eq(&data_file_path, &StringArray::new_scalar(x))?;
+                    // All files without a match are recorded and their record batches are stored
+                    // in the 'not_matched_buffer'
+                    for file in not_matched_data_files {
+                        let manifest = data_and_manifest_files.get(&file).ok_or_else(|| {
+                            DataFusionError::Internal(
+                                error::MergeFilterStreamNotMatchingSnafu { file: file.clone() }
+                                    .build()
+                                    .to_string(),
+                            )
+                        })?;
+                        project
+                            .not_matching_files
+                            .insert(file.clone(), manifest.clone());
+
+                        let predicate = eq(&data_file_path_array, &StringArray::new_scalar(&file))?;
+                        let filtered_batch = filter_record_batch(&batch, &predicate)?;
+                        project
+                            .not_matched_buffer
+                            .get_or_insert_mut(file, Vec::new)
+                            .push(filtered_batch);
+                    }
+
+                    if matching_data_and_manifest_files.is_empty() {
+                        // Return early if all rows only come from source
+                        if matching_data_file_array.len() == source_exists_array.len() {
+                            return Poll::Ready(Some(Ok(batch)));
+                        } else if matching_data_file_array.is_empty() {
+                            //NO matches and no rows from source
+                            continue;
+                        }
+                    }
+
+                    let file_predicate = all_matching_data_files.iter().try_fold(
+                        None::<BooleanArray>,
+                        |acc, x| {
+                            let new = eq(&data_file_path_array, &StringArray::new_scalar(x))?;
                             if let Some(acc) = acc {
                                 let result = or(&acc, &new)?;
                                 Ok::<_, DataFusionError>(Some(result))
                             } else {
                                 Ok(Some(new))
                             }
-                        })?
-                        .ok_or_else(|| {
-                            DataFusionError::Internal(
-                                error::MissingFilterPredicatesSnafu {}.build().to_string(),
-                            )
-                        })?;
-
-                    let predicate = or_kleene(
-                        &file_predicate,
-                        &downcast_array::<BooleanArray>(&source_exists),
+                        },
                     )?;
+                    let predicate = if let Some(file_predicate) = file_predicate {
+                        or_kleene(
+                            &file_predicate,
+                            &downcast_array::<BooleanArray>(&source_exists_array),
+                        )?
+                    } else {
+                        downcast_array::<BooleanArray>(&source_exists_array)
+                    };
 
                     project
                         .matching_files
@@ -484,81 +530,6 @@ impl RecordBatchStream for MergeCOWFilterStream {
     fn schema(&self) -> datafusion::arrow::datatypes::SchemaRef {
         self.input.schema()
     }
-}
-
-/// Separates data files into matching and non-matching categories.
-///
-/// For each data file in `all_data_and_manifest_files`:
-/// - If the file is in `matching_data_files`, it's added to the returned map
-/// - If the file is not matching, the current batch is buffered in `not_matched_buffer`
-///   for potential future processing if the file becomes matching later
-///
-/// # Arguments
-/// * `batch` - The current record batch to buffer for non-matching files
-/// * `all_data_and_manifest_files` - Map of data file paths to their manifest file paths
-/// * `matching_data_files` - Set of data file paths that have matching conditions
-/// * `not_matched_buffer` - LRU cache to buffer batches for non-matching files
-///
-/// # Returns
-/// A map containing only the data files that match, paired with their manifest files
-fn collect_matching_data_and_manifest_files(
-    batch: &RecordBatch,
-    mut all_data_and_manifest_files: HashMap<String, String>,
-    matching_data_files: &HashSet<String>,
-    not_matched_buffer: &mut LruCache<String, Vec<RecordBatch>>,
-) -> HashMap<String, String> {
-    let mut matching_data_and_manifest_files: HashMap<String, String> = HashMap::new();
-
-    for (file, manifest) in all_data_and_manifest_files.drain() {
-        if matching_data_files.contains(&file) {
-            matching_data_and_manifest_files.insert(file, manifest);
-        } else if let Some(batches) = not_matched_buffer.get_mut(&file) {
-            batches.push(batch.clone());
-        } else {
-            not_matched_buffer.put(file, vec![batch.clone()]);
-        }
-    }
-    matching_data_and_manifest_files
-}
-
-/// Creates a set of data files that need to be processed based on matching criteria.
-///
-/// This function combines:
-/// 1. Files from the current batch that have `__source_exists` = true (`filtered_data_file_path`)
-/// 2. Files that were previously identified as matching and are present in the current batch
-///
-/// The result represents all data files that require Copy-on-Write rewriting because they
-/// contain rows that match the merge condition.
-///
-/// # Arguments
-/// * `project_matching_files` - Previously identified matching files from earlier batches
-/// * `filtered_data_file_path` - Array of data file paths where `__source_exists` is true
-/// * `all_data_and_manifest_files` - All data files present in the current batch
-///
-/// # Returns
-/// A set of data file paths that need to be processed for the merge operation
-fn create_matching_data_files(
-    project_matching_files: &HashMap<String, String>,
-    filtered_data_file_path: &dyn Array,
-    all_data_and_manifest_files: &HashMap<String, String>,
-) -> Result<HashSet<String>, DataFusionError> {
-    let mut matching_data_files = unique_values(filtered_data_file_path)?;
-
-    let all_data_files: HashSet<String> = all_data_and_manifest_files
-        .keys()
-        .map(ToOwned::to_owned)
-        .collect();
-
-    let previously_matched_data_files: HashSet<String> = project_matching_files
-        .keys()
-        .map(ToOwned::to_owned)
-        .collect::<HashSet<String>>()
-        .intersection(&all_data_files)
-        .map(ToOwned::to_owned)
-        .collect();
-
-    matching_data_files.extend(previously_matched_data_files);
-    Ok(matching_data_files)
 }
 
 /// Extracts unique string values from an array efficiently by only comparing consecutive elements.
@@ -733,11 +704,11 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    macro_rules! test_source_exist_filter_stream {
+    macro_rules! test_merge_cow_filter_stream {
         ($test_name:ident, $input_slice:expr, $expected_sum:expr) => {
             paste::paste! {
                 #[tokio::test]
-                async fn [<test_source_exist_filter_stream_ $test_name>]() {
+                async fn [<test_merge_cow_filter_stream_ $test_name>]() {
                     use datafusion::arrow::datatypes::{DataType, Field};
                     use futures::stream;
 
@@ -834,7 +805,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_source_exist_filter_stream_simple() {
+    async fn test_merge_cow_filter_stream_simple() {
         use datafusion::arrow::datatypes::{DataType, Field};
         use futures::stream;
 
@@ -1000,16 +971,16 @@ mod tests {
         (
             vec![false, false, false, false],
             vec![
-                Some(format!("file${i}")),
-                Some(format!("file${i}")),
-                Some(format!("file${i}")),
-                Some(format!("file${i}")),
+                Some(format!("file{i}")),
+                Some(format!("file{i}")),
+                Some(format!("file{i}")),
+                Some(format!("file{i}")),
             ],
             vec![
-                Some(format!("manifest${i}")),
-                Some(format!("manifest${i}")),
-                Some(format!("manifest${i}")),
-                Some(format!("manifest${i}")),
+                Some(format!("manifest{i}")),
+                Some(format!("manifest{i}")),
+                Some(format!("manifest{i}")),
+                Some(format!("manifest{i}")),
             ],
             vec![i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4],
         )
@@ -1047,26 +1018,40 @@ mod tests {
         (
             vec![true, true, true, true],
             vec![
-                Some(format!("file${i}")),
-                Some(format!("file${i}")),
-                Some(format!("file${i}")),
-                Some(format!("file${i}")),
+                Some(format!("file{i}")),
+                Some(format!("file{i}")),
+                Some(format!("file{i}")),
+                Some(format!("file{i}")),
             ],
             vec![
-                Some(format!("manifest${i}")),
-                Some(format!("manifest${i}")),
-                Some(format!("manifest${i}")),
-                Some(format!("manifest${i}")),
+                Some(format!("manifest{i}")),
+                Some(format!("manifest{i}")),
+                Some(format!("manifest{i}")),
+                Some(format!("manifest{i}")),
             ],
             vec![i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4],
         )
     }
 
-    test_source_exist_filter_stream!(single_target, &[(0, 1)], 0);
-    test_source_exist_filter_stream!(single_source, &[(0, 2)], 10);
-    test_source_exist_filter_stream!(single_matching, &[(0, 4)], 10);
-    test_source_exist_filter_stream!(single_target_source, &[(0, 3)], 20);
-    test_source_exist_filter_stream!(single_target_matching, &[(0, 5)], 20);
-    test_source_exist_filter_stream!(single_source_matching, &[(0, 6)], 20);
-    test_source_exist_filter_stream!(single_target_source_matching, &[(0, 7)], 30);
+    test_merge_cow_filter_stream!(single_target, &[(0, 1)], 0);
+    test_merge_cow_filter_stream!(single_source, &[(0, 2)], 10);
+    test_merge_cow_filter_stream!(single_matching, &[(0, 4)], 10);
+    test_merge_cow_filter_stream!(single_target_source, &[(0, 3)], 10);
+    test_merge_cow_filter_stream!(single_target_matching, &[(0, 5)], 20);
+    test_merge_cow_filter_stream!(single_source_matching, &[(0, 6)], 20);
+    test_merge_cow_filter_stream!(single_target_source_matching, &[(0, 7)], 30);
+    test_merge_cow_filter_stream!(target_source, &[(0, 1), (0, 2)], 10);
+    test_merge_cow_filter_stream!(target_matching, &[(0, 1), (0, 4)], 20);
+    test_merge_cow_filter_stream!(source_matching, &[(0, 2), (0, 4)], 20);
+    test_merge_cow_filter_stream!(target_target_matching, &[(0, 1), (0, 1), (0, 4)], 30);
+    test_merge_cow_filter_stream!(
+        target1_target2_matching2_target3_matching1,
+        &[(0, 1), (1, 1), (1, 4), (2, 1), (0, 4)],
+        72
+    );
+    test_merge_cow_filter_stream!(
+        source_target_source_matching,
+        &[(0, 2), (0, 1), (0, 6), (0, 5)],
+        60
+    );
 }
