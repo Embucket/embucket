@@ -1,7 +1,9 @@
+use crate::Error;
 use crate::models::{QueryContext, QueryResult};
 use crate::service::{CoreExecutionService, ExecutionService};
 use crate::tests::sleep_udf;
 use crate::utils::Config;
+use core_history::QueryStatus;
 use core_history::entities::worksheet::Worksheet;
 use core_history::history_store::{GetQueriesParams, HistoryStore};
 use core_history::store::SlateDBHistoryStore;
@@ -30,7 +32,7 @@ async fn test_execute_always_returns_schema() {
     .expect("Failed to create execution service");
 
     execution_svc
-        .create_session("test_session_id".to_string())
+        .create_session("test_session_id")
         .await
         .expect("Failed to create session");
 
@@ -111,7 +113,7 @@ async fn test_service_upload_file() {
 
     let session_id = "test_session_id";
     execution_svc
-        .create_session(session_id.to_string())
+        .create_session(session_id)
         .await
         .expect("Failed to create session");
 
@@ -240,7 +242,7 @@ async fn test_service_create_table_file_volume() {
 
     let session_id = "test_session_id";
     execution_svc
-        .create_session(session_id.to_string())
+        .create_session(session_id)
         .await
         .expect("Failed to create session");
 
@@ -324,7 +326,7 @@ async fn test_query_recording() {
 
     let session_id = "test_session_id";
     execution_svc
-        .create_session(session_id.to_string())
+        .create_session(session_id)
         .await
         .expect("Failed to create session");
 
@@ -508,7 +510,7 @@ async fn test_max_concurrency_level() {
     );
 
     let session = execution_svc
-        .create_session("test_session_id".to_string())
+        .create_session("test_session_id")
         .await
         .expect("Failed to create session");
 
@@ -523,7 +525,7 @@ async fn test_max_concurrency_level() {
         let barrier = barrier.clone();
         tokio::spawn(async move {
             let _ = svc
-                .query(
+                .submit_query(
                     "test_session_id",
                     "SELECT sleep(2)",
                     QueryContext::default(),
@@ -531,10 +533,9 @@ async fn test_max_concurrency_level() {
                 .await;
             barrier.wait().await;
         });
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
     }
 
-    // Add small sleep to be sure that the first two queries are running
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     let res = execution_svc
         .query(
             "test_session_id",
@@ -553,6 +554,49 @@ async fn test_max_concurrency_level() {
 
 #[tokio::test]
 #[allow(clippy::expect_used)]
+async fn test_max_concurrency_level2() {
+    let metastore = SlateDBMetastore::new_in_memory().await;
+    let history_store = Arc::new(SlateDBHistoryStore::new(Db::memory().await));
+    let execution_svc = Arc::new(
+        CoreExecutionService::new(
+            metastore.clone(),
+            history_store.clone(),
+            Arc::new(Config::default().with_max_concurrency_level(2)),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
+
+    let session = execution_svc
+        .create_session("test_session_id")
+        .await
+        .expect("Failed to create session");
+
+    // register sleep UDF for testing purposes
+    session.ctx.register_udf(sleep_udf());
+
+    for _ in 0..2 {
+        let _ = execution_svc
+            .submit_query(
+                "test_session_id",
+                "SELECT sleep(2)",
+                QueryContext::default(),
+            )
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
+
+    let res = execution_svc
+        .query("test_session_id", "SELECT 1", QueryContext::default())
+        .await;
+    assert!(
+        res.is_err(),
+        "Expected concurrency limit error but got {res:?}"
+    );
+}
+
+#[tokio::test]
+#[allow(clippy::expect_used)]
 async fn test_query_timeout() {
     let metastore = SlateDBMetastore::new_in_memory().await;
     let history_store = Arc::new(SlateDBHistoryStore::new(Db::memory().await));
@@ -567,7 +611,7 @@ async fn test_query_timeout() {
     );
 
     let session = execution_svc
-        .create_session("test_session_id".to_string())
+        .create_session("test_session_id")
         .await
         .expect("Failed to create session");
 
@@ -585,4 +629,166 @@ async fn test_query_timeout() {
         res.is_err(),
         "Expected query execution exceeded timeout error but got {res:?}"
     );
+}
+
+#[tokio::test]
+#[allow(clippy::expect_used)]
+async fn test_submitted_query_timeout() {
+    let db = Db::memory().await;
+    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let history_store = Arc::new(SlateDBHistoryStore::new(db.clone()));
+    let execution_svc = CoreExecutionService::new(
+        metastore,
+        history_store.clone(),
+        Arc::new(Config::default().with_query_timeout(1)),
+    )
+    .await
+    .expect("Failed to create execution service");
+
+    let session = execution_svc
+        .create_session("test_session_id")
+        .await
+        .expect("Failed to create session");
+
+    // register sleep UDF for testing purposes
+    session.ctx.register_udf(sleep_udf());
+
+    // test query timeout
+    let query_handle = execution_svc
+        .submit_query(
+            "test_session_id",
+            "SELECT sleep(2)",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to submit query");
+
+    let query_id = query_handle.query_id;
+
+    let query_result = execution_svc
+        .wait_async_query_completion(query_handle)
+        .await
+        .expect_err("Query should not succeed");
+
+    let query_result_str = format!("{query_result:?}");
+    match query_result {
+        Error::QueryExecution { source, .. } => match *source {
+            Error::QueryTimeout { .. } => {}
+            _ => panic!("Expected query status: Canceled, but got {query_result_str}"),
+        },
+        _ => panic!("Expected outer QueryExecution error, but got {query_result_str}"),
+    }
+
+    let query_record = history_store
+        .get_query(query_id)
+        .await
+        .expect("Failed to get query at history store after query timeout");
+
+    assert_eq!(query_record.query_id(), query_id);
+    assert_eq!(query_record.status, QueryStatus::TimedOut);
+}
+
+#[tokio::test]
+#[allow(clippy::expect_used)]
+async fn test_submitted_query_cancellation() {
+    let db = Db::memory().await;
+    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let history_store = Arc::new(SlateDBHistoryStore::new(db.clone()));
+    let execution_svc = CoreExecutionService::new(
+        metastore,
+        history_store.clone(),
+        Arc::new(Config::default().with_query_timeout(1)),
+    )
+    .await
+    .expect("Failed to create execution service");
+
+    let session = execution_svc
+        .create_session("test_session_id")
+        .await
+        .expect("Failed to create session");
+
+    // register sleep UDF for testing purposes
+    session.ctx.register_udf(sleep_udf());
+
+    // test cancel query
+    let query_handle = execution_svc
+        .submit_query(
+            "test_session_id",
+            "SELECT sleep(2)",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to submit query");
+
+    let query_id = query_handle.query_id;
+
+    execution_svc
+        .cancel_query(query_id)
+        .await
+        .expect("Failed to cancel query");
+
+    let query_result = execution_svc
+        .wait_async_query_completion(query_handle)
+        .await
+        .expect_err("Query should not succeed");
+    let query_result_str = format!("{query_result:?}");
+    match query_result {
+        Error::QueryExecution { source, .. } => match *source {
+            Error::QueryCancelled { .. } => {}
+            _ => panic!("Expected query status: Canceled, but got {query_result_str}"),
+        },
+        _ => panic!("Expected outer QueryExecution error, but got {query_result_str}"),
+    }
+
+    let query_record = history_store
+        .get_query(query_id)
+        .await
+        .expect("Failed to get query at history store after query timeout");
+
+    assert_eq!(query_record.query_id(), query_id);
+    assert_eq!(query_record.status, QueryStatus::Canceled);
+}
+
+#[tokio::test]
+#[allow(clippy::expect_used)]
+async fn test_submitted_query_ok() {
+    let db = Db::memory().await;
+    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let history_store = Arc::new(SlateDBHistoryStore::new(db.clone()));
+    let execution_svc = CoreExecutionService::new(
+        metastore,
+        history_store.clone(),
+        Arc::new(Config::default().with_query_timeout(1)),
+    )
+    .await
+    .expect("Failed to create execution service");
+
+    let session = execution_svc
+        .create_session("test_session_id")
+        .await
+        .expect("Failed to create session");
+
+    // register sleep UDF for testing purposes
+    session.ctx.register_udf(sleep_udf());
+
+    // test cancel query
+    let query_handle = execution_svc
+        .submit_query("test_session_id", "SELECT 1", QueryContext::default())
+        .await
+        .expect("Failed to submit query");
+
+    let query_id = query_handle.query_id;
+
+    let _query_result = execution_svc
+        .wait_async_query_completion(query_handle)
+        .await
+        .expect("Query should be completed successfully");
+
+    let query_record = history_store
+        .get_query(query_id)
+        .await
+        .expect("Failed to get query at history store after query timeout");
+
+    assert_eq!(query_record.query_id(), query_id);
+    assert_eq!(query_record.status, QueryStatus::Successful);
 }

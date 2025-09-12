@@ -288,7 +288,11 @@ impl UserQuery {
         name = "UserQuery::execute",
         level = "debug",
         skip(self),
-        fields(statement),
+        fields(
+            statement,
+            query_id = self.query_context.query_id.as_i64(),
+            query_uuid = self.query_context.query_id.as_uuid().to_string(),
+        ),
         err
     )]
     pub async fn execute(&mut self) -> Result<QueryResult> {
