@@ -1,6 +1,5 @@
 use super::models::QueryResult;
 use crate::error::{ArrowSnafu, CantCastToSnafu, Result, SerdeParseSnafu, Utf8Snafu};
-use arrow_schema::ArrowError;
 use chrono::{DateTime, FixedOffset, Offset, TimeZone};
 use clap::ValueEnum;
 use core_history::result_set::{Column, ResultSet, Row};
@@ -19,6 +18,7 @@ use datafusion::arrow::array::{ArrayRef, Date32Array, Date64Array};
 use datafusion::arrow::compute::cast;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::arrow::datatypes::{Field, Schema, TimeUnit};
+use datafusion::arrow::error::ArrowError;
 use datafusion::arrow::json::WriterBuilder;
 use datafusion::arrow::json::writer::JsonArray;
 use datafusion::arrow::record_batch::RecordBatch;
@@ -111,7 +111,7 @@ pub fn is_logical_plan_effectively_empty(plan: &LogicalPlan) -> bool {
         LogicalPlan::Filter(filter) => {
             let is_false_predicate = matches!(
                 filter.predicate,
-                Expr::Literal(ScalarValue::Boolean(Some(false)))
+                Expr::Literal(ScalarValue::Boolean(Some(false)), _)
             );
             is_false_predicate || is_logical_plan_effectively_empty(&filter.input)
         }

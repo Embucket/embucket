@@ -114,7 +114,7 @@ impl TreeNodeRewriter for ExprRewriter<'_> {
                 "current_session" => Some(utf8_val(&self.rewriter.session_id)),
                 "last_query_id" => {
                     let index = match fun.args.first() {
-                        Some(Expr::Literal(value)) => value.clone().try_into().unwrap_or(-1),
+                        Some(Expr::Literal(value, _)) => value.clone().try_into().unwrap_or(-1),
                         _ => -1,
                     };
                     Some(self.rewriter.last_query_id(index)?)
@@ -129,7 +129,7 @@ impl TreeNodeRewriter for ExprRewriter<'_> {
                 "current_schemas" => Some(list_val(&self.rewriter.schemas)),
                 "system$cancel_query" => {
                     let query_id = match fun.args.first() {
-                        Some(Expr::Literal(ScalarValue::Utf8(Some(value)))) => value.clone(),
+                        Some(Expr::Literal(ScalarValue::Utf8(Some(value)), _)) => value.clone(),
                         _ => String::default(),
                     };
                     Some(self.rewriter.cancel_query(query_id)?)
@@ -137,7 +137,9 @@ impl TreeNodeRewriter for ExprRewriter<'_> {
                 _ => None,
             };
             if let Some(value) = scalar_value {
-                return Ok(Transformed::yes(Expr::Literal(value).alias(fun.name())));
+                return Ok(Transformed::yes(
+                    Expr::Literal(value, None).alias(fun.name()),
+                ));
             }
         }
 
