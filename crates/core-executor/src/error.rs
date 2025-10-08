@@ -300,6 +300,17 @@ pub enum Error {
         location: Location,
     },
 
+    #[cfg(feature = "vanilla-tokio-runtime")]
+    #[snafu(display("Threaded Job error: {error}: {backtrace}"))]
+    JobError {
+        #[snafu(source)]
+        error: tokio::task::JoinError,
+        backtrace: Backtrace,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[cfg(not(feature = "vanilla-tokio-runtime"))]
     #[snafu(display("Threaded Job error: {error}: {backtrace}"))]
     JobError {
         #[snafu(source)]

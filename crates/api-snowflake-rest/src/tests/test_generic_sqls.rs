@@ -23,6 +23,7 @@ mod snowflake_generic {
     use super::*;
     use crate::tests::sql_macro::{ARROW, JSON};
 
+    #[cfg(not(feature = "vanilla-tokio-runtime"))]
     sql_test!(
         JSON,
         submit_ok_query_with_concurrent_limit,
