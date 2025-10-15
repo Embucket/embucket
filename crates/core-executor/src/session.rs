@@ -1,7 +1,6 @@
 //use super::datafusion::functions::geospatial::register_udfs as register_geo_udfs;
 use super::datafusion::functions::register_udfs;
 use super::datafusion::type_planner::CustomTypePlanner;
-use super::dedicated_executor::DedicatedExecutor;
 use super::error::{self as ex_error, Result};
 // TODO: We need to fix this after geodatafusion is updated to datafusion 47
 //use geodatafusion::udf::native::register_native as register_geo_native;
@@ -9,6 +8,8 @@ use crate::datafusion::logical_analyzer::analyzer_rules;
 use crate::datafusion::logical_optimizer::split_ordered_aggregates::SplitOrderedAggregates;
 use crate::datafusion::physical_optimizer::physical_optimizer_rules;
 use crate::datafusion::query_planner::CustomQueryPlanner;
+#[cfg(not(feature = "vanilla-tokio-runtime"))]
+use crate::dedicated_executor::DedicatedExecutor;
 use crate::models::QueryContext;
 use crate::query::UserQuery;
 use crate::running_queries::RunningQueries;
@@ -51,10 +52,11 @@ pub struct UserSession {
     pub running_queries: Arc<dyn RunningQueries>,
     pub ctx: SessionContext,
     pub ident_normalizer: IdentNormalizer,
-    pub executor: DedicatedExecutor,
     pub config: Arc<Config>,
     pub expiry: AtomicI64,
     pub session_params: Arc<SessionParams>,
+    #[cfg(not(feature = "vanilla-tokio-runtime"))]
+    pub executor: DedicatedExecutor,
 }
 
 impl UserSession {
@@ -97,9 +99,10 @@ impl UserSession {
                     .set_str("datafusion.catalog.default_catalog", DEFAULT_CATALOG)
                     .set_bool(
                         "datafusion.execution.skip_physical_aggregate_schema_check",
-                        true,
+                        cfg!(feature = "sort-merge-join"),
                     )
                     .set_bool("datafusion.sql_parser.parse_float_as_decimal", true)
+                    .set_bool("datafusion.optimizer.prefer_hash_join", false)
                     .set_usize(
                         "datafusion.execution.parquet.maximum_parallel_row_group_writers",
                         parallelism_opt.map_or(1, |x| (x / PARALLEL_ROW_GROUP_RATIO).max(1)),
@@ -128,13 +131,28 @@ impl UserSession {
         //register_geo_udfs(&ctx);
 
         let enable_ident_normalization = ctx.enable_ident_normalization();
+        #[cfg(not(feature = "vanilla-tokio-runtime"))]
         let session = Self {
             metastore,
             history_store,
             running_queries,
             ctx,
             ident_normalizer: IdentNormalizer::new(enable_ident_normalization),
+            config,
+            expiry: AtomicI64::new(to_unix(
+                OffsetDateTime::now_utc()
+                    + Duration::seconds(SESSION_INACTIVITY_EXPIRATION_SECONDS),
+            )),
+            session_params: session_params_arc,
             executor: DedicatedExecutor::builder().build(),
+        };
+        #[cfg(feature = "vanilla-tokio-runtime")]
+        let session = Self {
+            metastore,
+            history_store,
+            running_queries,
+            ctx,
+            ident_normalizer: IdentNormalizer::new(enable_ident_normalization),
             config,
             expiry: AtomicI64::new(to_unix(
                 OffsetDateTime::now_utc()

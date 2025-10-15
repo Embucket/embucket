@@ -1,6 +1,5 @@
 pub use df_catalog as catalog;
 pub mod datafusion;
-pub mod dedicated_executor;
 pub mod error;
 pub mod error_code;
 pub mod models;
@@ -12,6 +11,8 @@ pub mod snowflake_error;
 pub mod tracing;
 pub mod utils;
 
+#[cfg(not(feature = "vanilla-tokio-runtime"))]
+pub mod dedicated_executor;
 #[cfg(test)]
 pub mod tests;
 

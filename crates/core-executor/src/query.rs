@@ -2339,6 +2339,23 @@ impl UserQuery {
         let session = self.session.clone();
         let query_id = self.query_context.query_id;
         let query = query.to_string();
+        #[cfg(feature = "vanilla-tokio-runtime")]
+        let stream = tokio::task::spawn(async move {
+            let df = session
+                .ctx
+                .sql(&query)
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            let mut schema = df.schema().as_arrow().clone();
+            let records = df.collect().await.context(ex_error::DataFusionSnafu)?;
+            if !records.is_empty() {
+                schema = records[0].schema().as_ref().clone();
+            }
+            Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema), query_id))
+        })
+        .await
+        .context(ex_error::JobSnafu)??;
+        #[cfg(not(feature = "vanilla-tokio-runtime"))]
         let stream = self
             .session
             .executor
@@ -2366,6 +2383,26 @@ impl UserQuery {
 
         let span = tracing::debug_span!("UserQuery::execute_logical_plan");
 
+        #[cfg(feature = "vanilla-tokio-runtime")]
+        let stream = tokio::task::spawn(async move {
+            let mut schema = plan.schema().as_arrow().clone();
+            let records = session
+                .ctx
+                .execute_logical_plan(plan)
+                .await
+                .context(ex_error::DataFusionSnafu)?
+                .collect()
+                .instrument(span)
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            if !records.is_empty() {
+                schema = records[0].schema().as_ref().clone();
+            }
+            Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema), query_id))
+        })
+        .await
+        .context(ex_error::JobSnafu)??;
+        #[cfg(not(feature = "vanilla-tokio-runtime"))]
         let stream = self
             .session
             .executor
@@ -2397,6 +2434,35 @@ impl UserQuery {
     ) -> Result<QueryResult> {
         let session = self.session.clone();
         let query_id = self.query_context.query_id;
+        #[cfg(feature = "vanilla-tokio-runtime")]
+        let stream = tokio::task::spawn(async move {
+            let mut schema = plan.schema().as_arrow().clone();
+            let df = session
+                .ctx
+                .execute_logical_plan(plan)
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            let task_ctx = df.task_ctx();
+            let mut physical_plan = df
+                .create_physical_plan()
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            for rule in rules {
+                physical_plan = rule
+                    .optimize(physical_plan, &ConfigOptions::new())
+                    .context(ex_error::DataFusionSnafu)?;
+            }
+            let records = collect(physical_plan, Arc::new(task_ctx))
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            if !records.is_empty() {
+                schema = records[0].schema().as_ref().clone();
+            }
+            Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema), query_id))
+        })
+        .await
+        .context(ex_error::JobSnafu)??;
+        #[cfg(not(feature = "vanilla-tokio-runtime"))]
         let stream = self
             .session
             .executor
