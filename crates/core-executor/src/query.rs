@@ -141,6 +141,115 @@ pub enum IcebergCatalogResult {
 }
 
 impl UserQuery {
+    #[instrument(
+        name = "UserQuery::execute_external",
+        level = "debug",
+        skip(self),
+        fields(
+            statement,
+            query_id = self.query_context.query_id.as_i64(),
+            query_uuid = self.query_context.query_id.as_uuid().to_string(),
+        ),
+        err
+    )]
+    async fn execute_external(
+        &mut self,
+        kind: crate::accelerators::AcceleratorKind,
+        mut statement: DFStatement,
+    ) -> Result<QueryResult> {
+        println!("Executing external query");
+        println!("Kind: {:?}", kind);
+        println!("Statement: {}", statement);
+        // Qualify references (do NOT rewrite to duckdb-specific iceberg_scan for external accel)
+        self.update_statement_references(&mut statement)?;
+
+        self.query = statement.to_string();
+
+        // Build logical plan for current statement
+        let df_session_state = self.session.ctx.state();
+        // Build logical plan using DataFusion's statement_to_plan
+        let plan = df_session_state
+            .statement_to_plan(statement.clone())
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+
+        // Determine endpoint from session variable or config
+        let endpoint = self
+            .session
+            .get_session_variable("embucket.execution.accelerator.endpoint")
+            .or_else(|| self.session.config.accelerator_endpoint.clone())
+            .ok_or_else(|| ex_error::MissingDataFusionSessionSnafu { id: "accelerator endpoint".to_string() }.build())?;
+
+        // Create Flight client and execute
+        // use of trait not required now
+        let endpoint_for_log = endpoint.clone();
+        let client = crate::accelerators::flight::FlightSubstraitClient::new(
+            endpoint.clone(),
+            kind,
+        );
+        // Open client and push inputs as Arrow
+        let mut flight = client.open().await?;
+        // Collect referenced tables and push as Arrow to push.temp.<table>
+        let referenced = self
+            .table_references_for_statement(&statement, &df_session_state)
+            .await?;
+        for (resolved_ref, source) in referenced {
+            let table_name = resolved_ref.table.to_string();
+            let tr: datafusion_common::TableReference = resolved_ref.into();
+            let df = datafusion::prelude::DataFrame::new(
+                df_session_state.clone(),
+                datafusion::logical_expr::LogicalPlanBuilder::scan(
+                    tr,
+                    source,
+                    None,
+                )
+                .context(ex_error::DataFusionSnafu)?
+                .build()
+                .context(ex_error::DataFusionSnafu)?,
+            );
+            let schema = df.schema().clone().into();
+            let batches = df
+                .collect()
+                .await
+                .context(ex_error::DataFusionSnafu)?;
+            client
+                .put_table(&mut flight, &table_name, schema, batches)
+                .await?;
+        }
+
+        // Rebuild logical plan to still reference original names; server maps catalog to temp schema
+        let stream = client.execute_with_client(&mut flight, &plan, &df_session_state).await;
+        match stream {
+            Ok(stream) => {
+                let schema = stream.schema().clone();
+                let records = stream
+                    .try_collect::<Vec<_>>()
+                    .await
+                    .context(ex_error::DataFusionSnafu)?;
+                Ok(QueryResult::new(
+                    records,
+                    schema,
+                    self.query_context.query_id,
+                ))
+            }
+            Err(err) => {
+                // Fallback with error visibility
+                tracing::warn!(
+                    error = %err,
+                    endpoint = %endpoint_for_log,
+                    kind = ?kind,
+                    "External accelerator failed; falling back to native execution"
+                );
+                println!(
+                    "External accelerator error ({} at {}): {} — falling back",
+                    format!("{:?}", kind),
+                    endpoint_for_log,
+                    err
+                );
+                self.execute_sql(&self.query).await
+            }
+        }
+    }
     pub(super) fn new<S>(session: Arc<UserSession>, query: S, query_context: QueryContext) -> Self
     where
         S: Into<String> + Clone,
@@ -315,6 +424,32 @@ impl UserQuery {
         err
     )]
     pub async fn execute(&mut self) -> Result<QueryResult> {
+        // External accelerator gating (Acero/Velox via Substrait)
+        // If backend is not set but endpoint is configured, default to Acero
+        println!("Accelerator backend: {:?}", self.session.config.accelerator_backend);
+        let accelerator_kind = if let Some(kind_str) = &self.session.config.accelerator_backend {
+            crate::accelerators::AcceleratorKind::from_str(kind_str)
+        } else if self
+            .session
+            .get_session_variable("embucket.execution.accelerator.endpoint")
+            .is_some()
+            || self.session.config.accelerator_endpoint.is_some()
+        {
+            Some(crate::accelerators::AcceleratorKind::Acero)
+        } else {
+            None
+        };
+
+        if let Some(kind) = accelerator_kind {
+            // Only accelerate pure SELECT statements for now
+            if let Ok(raw_statement) = self.statement().context(ex_error::DataFusionSnafu) {
+                if is_select_statement(&raw_statement) {
+                    if let Ok(result) = self.execute_external(kind, raw_statement).await {
+                        return Ok(result);
+                    }
+                }
+            }
+        }
         // If the config or session variable "use_duck_db" is set, we bypass DataFusion entirely
         // and execute the full SQL query directly using DuckDB in-memory engine.
         // This is typically used for heavy or complex queries that DataFusion handles poorly,

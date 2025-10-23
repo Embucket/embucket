@@ -27,6 +27,11 @@ datafusion-expr = { workspace = true }
 datafusion-functions-json = { workspace = true }
 datafusion-physical-plan = { workspace = true }
 datafusion_iceberg = { workspace = true }
+datafusion-substrait = { workspace = true }
+arrow-flight = { version = "56.0.0", package = "arrow-flight" }
+tonic = { version = "0.13.1", default-features = false, features = ["codegen", "prost", "transport"] }
+prost = "0.13"
+arrow = { version = "56.0.0" }
 futures = { workspace = true }
 sqlparser = { git = "https://github.com/Embucket/datafusion-sqlparser-rs.git", rev = "28012078c09714542c95ddbad8203a282fa37cb2", features = [
   "visitor",
@@ -71,6 +76,7 @@ dotenv = "0.15.0"
 aws-config = { version = "1.8.3", features = ["behavior-version-latest"] }
 aws-sdk-s3tables = { version = "1.32.0", features = ["behavior-version-latest"] }
 aws-sdk-sts = { version = "1.80.0", features = ["behavior-version-latest"] }
+substrait = { version = "0.58" }
 
 [lints]
 workspace = true

@@ -45,6 +45,10 @@ pub struct Config {
     pub query_history_rows_limit: usize,
     pub use_duck_db: bool,
     pub use_duck_db_explain: bool,
+    /// Optional external accelerator backend selection (e.g., "acero", "velox")
+    pub accelerator_backend: Option<String>,
+    /// Optional external accelerator endpoint (e.g., "http://localhost:31337")
+    pub accelerator_endpoint: Option<String>,
 }
 
 impl Default for Config {
@@ -62,9 +66,11 @@ impl Default for Config {
             query_history_rows_limit: DEFAULT_QUERY_HISTORY_ROWS_LIMIT,
             use_duck_db: false,
             use_duck_db_explain: false,
+            accelerator_backend: Some("acero".to_string()),
+            accelerator_endpoint: Some("http://127.0.0.1:50051".to_string()),
         }
     }
-}
+}   
 
 impl Config {
     #[must_use]

@@ -51,6 +51,7 @@ datafusion-functions-json = { git = "https://github.com/Embucket/datafusion-func
 datafusion-macros = { version = "50.0.0" }
 datafusion-physical-plan = { version = "50.0.0" }
 datafusion_iceberg = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "5664a94fcd7350c5e381aaeaf018bc0b20ce03b6" }
+datafusion-substrait = { version = "50.0.0" }
 futures = { version = "0.3" }
 http = "1.2"
 http-body-util = "0.1.0"
@@ -108,6 +109,7 @@ datafusion-expr = { git = "https://github.com/Embucket/datafusion.git", rev = "8
 datafusion-physical-plan = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
 datafusion-doc = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
 datafusion-macros = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
+datafusion-substrait = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
