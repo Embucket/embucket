@@ -692,7 +692,11 @@ pub async fn create_executor(
     eprintln!("Creating executor with object store type: {object_store_type}");
 
     let db = object_store_type.db().await?;
-    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let metastore = Arc::new(
+        SlateDBMetastore::new(db.clone())
+            .await
+            .context(TestMetastoreSnafu)?,
+    );
     let history_store = Arc::new(
         SlateDBHistoryStore::new(db.clone())
             .await
@@ -731,7 +735,11 @@ pub async fn create_executor_with_early_volumes_creation(
     eprintln!("Creating executor with object store type: {object_store_type}");
 
     let db = object_store_type.db().await?;
-    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let metastore = Arc::new(
+        SlateDBMetastore::new(db.clone())
+            .await
+            .context(TestMetastoreSnafu)?,
+    );
 
     // create volumes before execution service is not a part of normal Embucket flow,
     // but we need it now to test s3 tables somehow

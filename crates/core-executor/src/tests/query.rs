@@ -84,8 +84,7 @@ static TABLE_SETUP: &str = include_str!(r"./table_setup.sql");
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub async fn create_df_session() -> Arc<UserSession> {
-    let db = Db::memory().await;
-    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let metastore = Arc::new(SlateDBMetastore::new_in_memory().await);
     let mut mock = MockHistoryStore::new();
     mock.expect_get_queries().returning(|_| {
         let mut records = Vec::new();

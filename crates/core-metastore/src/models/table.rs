@@ -11,8 +11,10 @@ use std::{collections::HashMap, fmt::Display};
 use validator::Validate;
 
 use super::{SchemaIdent, VolumeIdent};
+use diesel::prelude::*;
+use diesel::*;
 
-#[derive(Validate, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 /// A table identifier
 pub struct TableIdent {
     #[validate(length(min = 1))]
@@ -67,7 +69,7 @@ impl Display for TableIdent {
 }
 
 #[derive(
-    Debug, Serialize, Deserialize, Clone, PartialEq, Eq, utoipa::ToSchema, strum::EnumString,
+    Debug, Serialize, Deserialize, Clone, PartialEq, Eq, strum::EnumString,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum TableFormat {
@@ -100,7 +102,8 @@ impl From<String> for TableFormat {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq,
+Queryable)]
 pub struct Table {
     pub ident: TableIdent,
     pub metadata: TableMetadata,
