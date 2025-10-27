@@ -33,6 +33,7 @@ tonic = { version = "0.13.1", default-features = false, features = ["codegen", "
 prost = "0.13"
 arrow = { version = "56.0.0" }
 futures = { workspace = true }
+velox-ffi = { path = "../velox-ffi", optional = true }
 sqlparser = { git = "https://github.com/Embucket/datafusion-sqlparser-rs.git", rev = "28012078c09714542c95ddbad8203a282fa37cb2", features = [
   "visitor",
 ] }
@@ -63,9 +64,11 @@ indexmap = { workspace = true }
 time = { workspace = true }
 pin-project-lite = "0.2.16"
 lru = "0.15.0"
-
-# added for making Snowflake error
 slatedb = { workspace = true }
+
+[features]
+default = []
+velox = ["velox-ffi"]
 
 [dev-dependencies]
 bytes = { workspace = true }

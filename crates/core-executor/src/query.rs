@@ -173,80 +173,105 @@ impl UserQuery {
             .await
             .context(ex_error::DataFusionSnafu)?;
 
-        // Determine endpoint from session variable or config
-        let endpoint = self
-            .session
-            .get_session_variable("embucket.execution.accelerator.endpoint")
-            .or_else(|| self.session.config.accelerator_endpoint.clone())
-            .ok_or_else(|| ex_error::MissingDataFusionSessionSnafu { id: "accelerator endpoint".to_string() }.build())?;
+        match kind {
+            crate::accelerators::AcceleratorKind::Acero => {
+                // Determine endpoint from session variable or config
+                let endpoint = self
+                    .session
+                    .get_session_variable("embucket.execution.accelerator.endpoint")
+                    .or_else(|| self.session.config.accelerator_endpoint.clone())
+                    .ok_or_else(|| ex_error::MissingDataFusionSessionSnafu { id: "accelerator endpoint".to_string() }.build())?;
 
-        // Create Flight client and execute
-        // use of trait not required now
-        let endpoint_for_log = endpoint.clone();
-        let client = crate::accelerators::flight::FlightSubstraitClient::new(
-            endpoint.clone(),
-            kind,
-        );
-        // Open client and push inputs as Arrow
-        let mut flight = client.open().await?;
-        // Collect referenced tables and push as Arrow to push.temp.<table>
-        let referenced = self
-            .table_references_for_statement(&statement, &df_session_state)
-            .await?;
-        for (resolved_ref, source) in referenced {
-            let table_name = resolved_ref.table.to_string();
-            let tr: datafusion_common::TableReference = resolved_ref.into();
-            let df = datafusion::prelude::DataFrame::new(
-                df_session_state.clone(),
-                datafusion::logical_expr::LogicalPlanBuilder::scan(
-                    tr,
-                    source,
-                    None,
-                )
-                .context(ex_error::DataFusionSnafu)?
-                .build()
-                .context(ex_error::DataFusionSnafu)?,
-            );
-            let schema = df.schema().clone().into();
-            let batches = df
-                .collect()
-                .await
-                .context(ex_error::DataFusionSnafu)?;
-            client
-                .put_table(&mut flight, &table_name, schema, batches)
-                .await?;
-        }
+                // Create Flight client and execute
+                let endpoint_for_log = endpoint.clone();
+                let client = crate::accelerators::flight::FlightSubstraitClient::new(
+                    endpoint.clone(),
+                    kind,
+                );
+                // Open client and push inputs as Arrow
+                let mut flight = client.open().await?;
+                // Collect referenced tables and push as Arrow to push.temp.<table>
+                let referenced = self
+                    .table_references_for_statement(&statement, &df_session_state)
+                    .await?;
+                for (resolved_ref, source) in referenced {
+                    let table_name = resolved_ref.table.to_string();
+                    let tr: datafusion_common::TableReference = resolved_ref.into();
+                    let df = datafusion::prelude::DataFrame::new(
+                        df_session_state.clone(),
+                        datafusion::logical_expr::LogicalPlanBuilder::scan(
+                            tr,
+                            source,
+                            None,
+                        )
+                        .context(ex_error::DataFusionSnafu)?
+                        .build()
+                        .context(ex_error::DataFusionSnafu)?,
+                    );
+                    let schema = df.schema().clone().into();
+                    let batches = df
+                        .collect()
+                        .await
+                        .context(ex_error::DataFusionSnafu)?;
+                    client
+                        .put_table(&mut flight, &table_name, schema, batches)
+                        .await?;
+                }
 
-        // Rebuild logical plan to still reference original names; server maps catalog to temp schema
-        let stream = client.execute_with_client(&mut flight, &plan, &df_session_state).await;
-        match stream {
-            Ok(stream) => {
-                let schema = stream.schema().clone();
-                let records = stream
-                    .try_collect::<Vec<_>>()
-                    .await
-                    .context(ex_error::DataFusionSnafu)?;
-                Ok(QueryResult::new(
-                    records,
-                    schema,
-                    self.query_context.query_id,
-                ))
+                // Rebuild logical plan to still reference original names; server maps catalog to temp schema
+                let stream = client.execute_with_client(&mut flight, &plan, &df_session_state).await;
+                match stream {
+                    Ok(stream) => {
+                        let schema = stream.schema().clone();
+                        let records = stream
+                            .try_collect::<Vec<_>>()
+                            .await
+                            .context(ex_error::DataFusionSnafu)?;
+                        Ok(QueryResult::new(
+                            records,
+                            schema,
+                            self.query_context.query_id,
+                        ))
+                    }
+                    Err(err) => {
+                        // Fallback with error visibility
+                        tracing::warn!(
+                            error = %err,
+                            endpoint = %endpoint_for_log,
+                            kind = ?kind,
+                            "External accelerator failed; falling back to native execution"
+                        );
+                        println!(
+                            "External accelerator error ({} at {}): {} — falling back",
+                            format!("{:?}", kind),
+                            endpoint_for_log,
+                            err
+                        );
+                        self.execute_sql(&self.query).await
+                    }
+                }
             }
-            Err(err) => {
-                // Fallback with error visibility
-                tracing::warn!(
-                    error = %err,
-                    endpoint = %endpoint_for_log,
-                    kind = ?kind,
-                    "External accelerator failed; falling back to native execution"
-                );
-                println!(
-                    "External accelerator error ({} at {}): {} — falling back",
-                    format!("{:?}", kind),
-                    endpoint_for_log,
-                    err
-                );
-                self.execute_sql(&self.query).await
+            crate::accelerators::AcceleratorKind::Velox => {
+                #[cfg(feature = "velox")]
+                {
+                    use crate::accelerators::velox_impl::VeloxAccelerator;
+                    use crate::accelerators::ExternalAccelerator;
+                    let accel = VeloxAccelerator::new(velox_ffi::VeloxConfig { threads: None });
+                    let stream = accel
+                        .execute(&plan, &df_session_state)
+                        .await?;
+                    let schema = stream.schema().clone();
+                    let records = stream
+                        .try_collect::<Vec<_>>()
+                        .await
+                        .context(ex_error::DataFusionSnafu)?;
+                    Ok(QueryResult::new(records, schema, self.query_context.query_id))
+                }
+                #[cfg(not(feature = "velox"))]
+                {
+                    println!("Velox feature not enabled; falling back to native execution");
+                    self.execute_sql(&self.query).await
+                }
             }
         }
     }
