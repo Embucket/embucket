@@ -48,29 +48,16 @@ async fn test_execute_always_returns_schema() {
     assert_eq!(columns[2].r#type, "text");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::expect_used, clippy::too_many_lines)]
 async fn test_service_upload_file() {
     let metastore = Arc::new(SlateDBMetastore::new_in_memory().await);
     metastore
-        .create_volume(
-            &"test_volume".to_string(),
-            MetastoreVolume::new(
-                "test_volume".to_string(),
-                core_metastore::VolumeType::Memory,
-            ),
-        )
+        .create_volume(MetastoreVolume::new("test_volume".to_string(), core_metastore::VolumeType::Memory))
         .await
         .expect("Failed to create volume");
     metastore
-        .create_database(
-            &"embucket".to_string(),
-            MetastoreDatabase {
-                ident: "embucket".to_string(),
-                properties: None,
-                volume: "test_volume".to_string(),
-            },
-        )
+        .create_database(MetastoreDatabase::new("embucket".to_string(), "test_volume".to_string()))
         .await
         .expect("Failed to create database");
     let schema_ident = MetastoreSchemaIdent {
@@ -177,7 +164,7 @@ async fn test_service_upload_file() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_service_create_table_file_volume() {
     let metastore = Arc::new(SlateDBMetastore::new_in_memory().await);
 
@@ -187,7 +174,6 @@ async fn test_service_create_table_file_volume() {
     let temp_path = temp_dir.to_str().expect("Failed to convert path to string");
     metastore
         .create_volume(
-            &"test_volume".to_string(),
             MetastoreVolume::new(
                 "test_volume".to_string(),
                 core_metastore::VolumeType::File(core_metastore::FileVolume {
@@ -199,7 +185,6 @@ async fn test_service_create_table_file_volume() {
         .expect("Failed to create volume");
     metastore
         .create_database(
-            &"embucket".to_string(),
             MetastoreDatabase {
                 ident: "embucket".to_string(),
                 properties: None,
@@ -289,7 +274,6 @@ async fn test_query_recording() {
     let history_store = Arc::new(SlateDBHistoryStore::new_in_memory().await);
     metastore
         .create_volume(
-            &"test_volume".to_string(),
             MetastoreVolume::new(
                 "test_volume".to_string(),
                 core_metastore::VolumeType::Memory,
@@ -302,12 +286,7 @@ async fn test_query_recording() {
 
     metastore
         .create_database(
-            &database_name.clone(),
-            MetastoreDatabase {
-                ident: "embucket".to_string(),
-                properties: None,
-                volume: "test_volume".to_string(),
-            },
+            MetastoreDatabase::new(database_name.clone(), "test_volume".to_string()),
         )
         .await
         .expect("Failed to create database");
@@ -751,22 +730,11 @@ async fn test_submitted_query_abort_by_query_id() {
 
     let query_id = query_handle.query_id;
 
-    execution_svc
+    let query_status = execution_svc
         .abort_query(RunningQueryId::ByQueryId(query_id))
-        .expect("Failed to cancel query");
-
-    let query_result = execution_svc
-        .wait_submitted_query_result(query_handle)
         .await
-        .expect_err("Query should not succeed");
-    let query_result_str = format!("{query_result:?}");
-    match query_result {
-        Error::QueryExecution { source, .. } => match *source {
-            Error::QueryCancelled { .. } => {}
-            _ => panic!("Expected query status: Canceled, but got {query_result_str}"),
-        },
-        _ => panic!("Expected outer QueryExecution error, but got {query_result_str}"),
-    }
+        .expect("Failed to cancel query");
+    assert_eq!(query_status, QueryStatus::Canceled);
 
     let query_record = history_store
         .get_query(query_id)
@@ -809,25 +777,14 @@ async fn test_submitted_query_abort_by_request_id() {
 
     let query_id = query_handle.query_id;
 
-    execution_svc
+    let query_status =execution_svc
         .abort_query(RunningQueryId::ByRequestId(
             request_id,
             sql_text.to_string(),
         ))
-        .expect("Failed to cancel query");
-
-    let query_result = execution_svc
-        .wait_submitted_query_result(query_handle)
         .await
-        .expect_err("Query should not succeed");
-    let query_result_str = format!("{query_result:?}");
-    match query_result {
-        Error::QueryExecution { source, .. } => match *source {
-            Error::QueryCancelled { .. } => {}
-            _ => panic!("Expected query status: Canceled, but got {query_result_str}"),
-        },
-        _ => panic!("Expected outer QueryExecution error, but got {query_result_str}"),
-    }
+        .expect("Failed to cancel query");
+    assert_eq!(query_status, QueryStatus::Canceled);
 
     let query_record = history_store
         .get_query(query_id)

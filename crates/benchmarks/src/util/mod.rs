@@ -91,8 +91,7 @@ pub async fn make_test_execution_svc() -> Arc<CoreExecutionService> {
     //         .await
     //         .expect("Failed to start Slate DB"),
     // ));
-    let db = Db::memory().await;
-    let metastore = Arc::new(SlateDBMetastore::new(db.clone()));
+    let metastore = Arc::new(SlateDBMetastore::new_in_memory().await);
     let history_store = Arc::new(SlateDBHistoryStore::new_in_memory().await);
     Arc::new(
         CoreExecutionService::new(metastore, history_store, Arc::new(Config::default()))

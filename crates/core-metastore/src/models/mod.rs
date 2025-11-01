@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub mod database;
@@ -14,6 +14,8 @@ pub use table::*;
 
 pub use volumes::*;
 
+use uuid::Uuid;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RwObject<T>
 where
@@ -21,18 +23,21 @@ where
 {
     #[serde(flatten)]
     pub data: T,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
+    // TODO: make it Optional after migrating to sqlite finished
+	pub id: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl<T> RwObject<T>
 where
     T: Eq + PartialEq,
 {
-    pub fn new(data: T) -> Self {
-        let now = chrono::Utc::now().naive_utc();
+    pub fn new(data: T, id: Option<i64>) -> RwObject<T> {
+        let now = chrono::Utc::now();
         Self {
             data,
+			id: id.unwrap_or_default(),
             created_at: now,
             updated_at: now,
         }
@@ -41,12 +46,12 @@ where
     pub fn update(&mut self, data: T) {
         if data != self.data {
             self.data = data;
-            self.updated_at = chrono::Utc::now().naive_utc();
+            self.updated_at = chrono::Utc::now();
         }
     }
 
     pub fn touch(&mut self) {
-        self.updated_at = chrono::Utc::now().naive_utc();
+        self.updated_at = chrono::Utc::now();
     }
 }
 
@@ -56,7 +61,7 @@ where
 {
     type Target = T;
 
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &T {
         &self.data
     }
 }

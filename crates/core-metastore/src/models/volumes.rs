@@ -11,6 +11,12 @@ use snafu::ResultExt;
 use std::fmt::Display;
 use std::sync::Arc;
 use validator::{Validate, ValidationError, ValidationErrors};
+use diesel::prelude::*;
+use diesel::sql_types::{Text};
+use diesel::serialize::{ToSql, Output, IsNull};
+use diesel::deserialize::FromSql;
+use diesel::backend::{self, Backend};
+use diesel::sqlite::Sqlite;
 
 // Enum for supported cloud providers
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
@@ -44,7 +50,7 @@ fn s3tables_arn_regex_func() -> Regex {
 }
 
 // AWS Access Key Credentials
-#[derive(Validate, Serialize, Deserialize, PartialEq, Eq, Clone, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct AwsAccessKeyCredentials {
     #[validate(regex(path = aws_access_key_id_regex_func(), message="AWS Access key ID is expected to be 20 chars alphanumeric string.\n"))]
@@ -72,7 +78,7 @@ impl std::fmt::Debug for AwsAccessKeyCredentials {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(tag = "credential_type", rename_all = "kebab-case")]
 pub enum AwsCredentials {
     #[serde(rename = "access_key")]
@@ -97,7 +103,7 @@ impl Validate for AwsCredentials {
     }
 }
 
-#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct S3Volume {
     #[validate(length(min = 1))]
@@ -142,7 +148,7 @@ impl S3Volume {
     }
 }
 
-#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct S3TablesVolume {
     #[validate(regex(path = s3_endpoint_regex_func(), message="Endpoint must start with https:// or http:// .\n"))]
@@ -209,20 +215,39 @@ fn validate_bucket_name(bucket_name: &str) -> std::result::Result<(), Validation
     Ok(())
 }
 
-#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct FileVolume {
     #[validate(length(min = 1))]
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum VolumeType {
     S3(S3Volume),
     S3Tables(S3TablesVolume),
     File(FileVolume),
     Memory,
+}
+
+impl ToSql<Text, Sqlite> for VolumeType {
+    fn to_sql<'b>(&self, out: &mut Output<'b, '_, Sqlite>) -> diesel::serialize::Result {
+        let s = serde_json::to_string(self)?;
+        out.set_value(s);
+        Ok(IsNull::No)
+    }
+}
+
+impl<DB, ST> FromSql<ST, DB> for VolumeType
+where
+    DB: Backend,
+    String: FromSql<ST, DB>,
+{
+    fn from_sql(bytes: DB::RawValue<'_>) -> diesel::deserialize::Result<Self> {
+        serde_json::from_str::<VolumeType>( &String::from_sql(bytes)? )
+            .map_err(Into::into)
+    }
 }
 
 impl Display for VolumeType {
@@ -247,7 +272,7 @@ impl Validate for VolumeType {
     }
 }
 
-#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Volume {
     pub ident: VolumeIdent,
@@ -261,7 +286,8 @@ pub type VolumeIdent = String;
 #[allow(clippy::as_conversions)]
 impl Volume {
     #[must_use]
-    pub const fn new(ident: VolumeIdent, volume: VolumeType) -> Self {
+    pub fn new(ident: VolumeIdent, volume: VolumeType) -> Self {
+        // Uuid::new_v4()
         Self { ident, volume }
     }
 

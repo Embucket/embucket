@@ -1,5 +1,5 @@
 use core_history::HistoryStore;
-use core_metastore::metastore::Metastore;
+use core_metastore::Metastore;
 use std::sync::Arc;
 
 // Define a State struct that contains shared services or repositories

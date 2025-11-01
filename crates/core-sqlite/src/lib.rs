@@ -7,12 +7,16 @@ pub mod vfs;
 pub use error::*;
 
 use cfg_if::cfg_if;
-use deadpool_sqlite::{Config, Object, Pool, Runtime};
+use deadpool_sqlite::{Config, Object, Pool, Runtime, BuildError, Manager};
 use error::{self as sqlite_error};
 use rusqlite::Result as SqlResult;
 use slatedb::Db;
 use snafu::ResultExt;
 use std::sync::Arc;
+
+// TODO:
+// Transform (mostly rename) SqliteDb just to connection pool
+// Supporting feature="vfs" and setting pragmas when created
 
 #[derive(Clone)]
 pub struct SqliteDb {
@@ -23,10 +27,9 @@ pub struct SqliteDb {
 
 #[tracing::instrument(level = "debug", name = "SqliteDb::create_pool", fields(conn_str), err)]
 fn create_pool(db_name: &str) -> Result<Pool> {
-    let pool = Config::new(db_name)
+    Ok(Config::new(db_name)
         .create_pool(Runtime::Tokio1)
-        .context(sqlite_error::CreatePoolSnafu)?;
-    Ok(pool)
+        .context(sqlite_error::CreatePoolSnafu)?)
 }
 
 impl SqliteDb {
