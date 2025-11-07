@@ -1,0 +1,82 @@
+use crate::SqlState;
+use crate::models::{JsonResponse, ResponseData};
+use crate::server::error::{self as api_snowflake_rest_error, Error, Result};
+use axum::Json;
+use base64;
+use base64::engine::general_purpose::STANDARD as engine_base64;
+use base64::prelude::*;
+use core_executor::models::QueryResult;
+use core_executor::utils::{DataSerializationFormat, convert_record_batches};
+use datafusion::arrow::ipc::MetadataVersion;
+use datafusion::arrow::ipc::writer::{IpcWriteOptions, StreamWriter};
+use datafusion::arrow::record_batch::RecordBatch;
+use snafu::ResultExt;
+use uuid::Uuid;
+
+// https://arrow.apache.org/docs/format/Columnar.html#buffer-alignment-and-padding
+// Buffer Alignment and Padding: Implementations are recommended to allocate memory
+// on aligned addresses (multiple of 8- or 64-bytes) and pad (overallocate) to a
+// length that is a multiple of 8 or 64 bytes. When serializing Arrow data for interprocess
+// communication, these alignment and padding requirements are enforced.
+// For more info see issue #115
+const ARROW_IPC_ALIGNMENT: usize = 8;
+
+fn records_to_arrow_string(recs: &Vec<RecordBatch>) -> std::result::Result<String, Error> {
+    let mut buf = Vec::new();
+    let options = IpcWriteOptions::try_new(ARROW_IPC_ALIGNMENT, false, MetadataVersion::V5)
+        .context(api_snowflake_rest_error::ArrowSnafu)?;
+    if !recs.is_empty() {
+        let mut writer =
+            StreamWriter::try_new_with_options(&mut buf, recs[0].schema_ref(), options)
+                .context(api_snowflake_rest_error::ArrowSnafu)?;
+        for rec in recs {
+            writer
+                .write(rec)
+                .context(api_snowflake_rest_error::ArrowSnafu)?;
+        }
+        writer
+            .finish()
+            .context(api_snowflake_rest_error::ArrowSnafu)?;
+        drop(writer);
+    }
+    Ok(engine_base64.encode(buf))
+}
+
+#[tracing::instrument(name = "handle_query_ok_result", level = "debug", err, ret(level = tracing::Level::TRACE))]
+pub fn handle_query_ok_result(
+    sql_text: &str,
+    query_result: QueryResult,
+    ser_fmt: DataSerializationFormat,
+) -> Result<Json<JsonResponse>> {
+    let query_uuid: Uuid = query_result.query_id.as_uuid();
+
+    let json_resp = Json(JsonResponse {
+        data: Option::from(ResponseData {
+            row_type: query_result
+                .column_info()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            query_result_format: Some(ser_fmt.to_string().to_lowercase()),
+            row_set: if ser_fmt == DataSerializationFormat::Json {
+                Option::from(query_result.as_row_set(ser_fmt)?)
+            } else {
+                None
+            },
+            row_set_base_64: if ser_fmt == DataSerializationFormat::Arrow {
+                let records = &convert_record_batches(&query_result, ser_fmt)?;
+                Option::from(records_to_arrow_string(records)?)
+            } else {
+                None
+            },
+            total: Some(1),
+            query_id: Some(query_uuid.to_string()),
+            error_code: None,
+            sql_state: Some(SqlState::Success.to_string()),
+        }),
+        success: true,
+        message: Option::from("successfully executed".to_string()),
+        code: None,
+    });
+    Ok(json_resp)
+}

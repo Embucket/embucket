@@ -1,0 +1,109 @@
+services:
+  spark-iceberg:
+    image: tabulario/spark-iceberg
+    container_name: spark-iceberg
+    build: spark/
+    networks:
+      iceberg_net:
+    depends_on:
+      - embucket
+      - minio
+    volumes:
+      - ./warehouse:/home/iceberg/warehouse
+      - ./notebooks:/home/iceberg/notebooks/notebooks
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-2
+      - SPARK_DRIVER_MEMORY=16g
+      - SPARK_EXECUTOR_MEMORY=16g
+    ports:
+      - 8888:8888
+      # - 8080:8080
+      # - 10000:10000
+      # - 10001:10001
+    entrypoint: /bin/sh
+    command: >
+      -c "
+      echo \"
+        spark.sql.extensions                   org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \\n
+        spark.sql.catalog.demo                 org.apache.iceberg.spark.SparkCatalog \\n
+        spark.sql.catalog.demo.catalog-impl    org.apache.iceberg.rest.RESTCatalog \\n
+        spark.sql.catalog.demo.uri             http://embucket:3000/catalog \\n
+        spark.sql.catalog.demo.io-impl         org.apache.iceberg.aws.s3.S3FileIO \\n
+        spark.sql.catalog.demo.warehouse       demo \\n
+        spark.sql.catalog.demo.cache-enabled   false \\n
+        spark.sql.catalog.demo.rest.access-key-id  minioadmin \\n
+        spark.sql.catalog.demo.rest.secret-access-key minioadmin \\n
+        spark.sql.catalog.demo.rest.signing-region us-east-2 \\n
+        spark.sql.catalog.demo.rest.sigv4-enabled  true \\n
+        spark.sql.catalog.demo.s3.endpoint     http://warehouse.minio:9000 \\n
+        spark.sql.defaultCatalog               demo \\n
+        spark.eventLog.enabled                 true \\n 
+        spark.eventLog.dir                     /home/iceberg/spark-events \\n
+        spark.history.fs.logDirectory          /home/iceberg/spark-events \\n
+        spark.sql.catalog.demo.s3.path-style-access  true \\n
+      \" > /opt/spark/conf/spark-defaults.conf && ./entrypoint.sh notebook
+      "
+  embucket:
+    image: embucket/embucket
+    container_name: embucket
+    depends_on:
+      - mc
+    networks:
+      iceberg_net:
+    ports:
+      - 3000:3000
+      - 8080:8080
+    environment:
+      - API_URL=http://localhost:3000
+      - OBJECT_STORE_BACKEND=s3
+      - SLATEDB_PREFIX=data/
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-2
+      - S3_BUCKET=mybucket
+      - S3_ENDPOINT=http://warehouse.minio:9000
+      - S3_ALLOW_HTTP=true
+      - CATALOG_URL=http://embucket:3000/catalog
+    volumes:
+      - ./tmp:/tmp
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - ./warehouse:/warehouse
+    networks:
+      iceberg_net:
+        aliases:
+          - warehouse.minio
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/warehouse", "--console-address", ":9001"]
+  mc:
+    depends_on:
+      - minio
+    image: minio/mc
+    container_name: mc
+    networks:
+      iceberg_net:
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-2
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set minio http://warehouse.minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc mb -p minio/mybucket;
+      "
+    healthcheck:
+      test: [ "CMD", "/usr/bin/mc", "ls", "minio/mybucket" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+networks:
+  iceberg_net:
