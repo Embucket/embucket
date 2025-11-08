@@ -1,6 +1,6 @@
 use super::server_models::Config;
-use core_executor::ExecutionAppState;
-use core_executor::service::ExecutionService;
+use executor::ExecutionAppState;
+use executor::service::ExecutionService;
 use std::sync::Arc;
 
 #[derive(Clone)]

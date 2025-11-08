@@ -17,9 +17,9 @@ use axum::{
     routing::{get, post},
 };
 use clap::Parser;
-use core_executor::service::CoreExecutionService;
-use core_executor::utils::Config as ExecutionConfig;
-use core_metastore::InMemoryMetastore;
+use executor::service::CoreExecutionService;
+use executor::utils::Config as ExecutionConfig;
+use catalog_metastore::InMemoryMetastore;
 use dotenv::dotenv;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
@@ -62,9 +62,9 @@ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 const TARGETS: [&str; 10] = [
     "embucketd",
     "api_snowflake_rest",
-    "core_executor",
-    "core_metastore",
-    "df_catalog",
+    "executor",
+    "catalog_metastore",
+    "catalog",
     "datafusion",
     "iceberg_rust",
     "datafusion_iceberg",
@@ -99,7 +99,10 @@ fn main() {
     rt.block_on(async move {
         let tracing_provider = setup_tracing(&opts);
 
-        let _ = async_main(opts, tracing_provider).await;
+        if let Err(e) = async_main(opts, tracing_provider).await {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
     });
 }
 

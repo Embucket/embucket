@@ -1,0 +1,68 @@
+[package]
+name = "executor"
+version = "0.1.0"
+edition = "2024"
+license-file.workspace = true
+
+[dependencies]
+catalog-metastore = { path = "../catalog-metastore" }
+catalog = { path = "../catalog" }
+functions = { path = "../functions" } # features = ["geospatial"] 
+arrow-schema = { version = "56.1.0", features = ["serde"] }
+async-trait = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
+async-stream = { version = "0.3.6"}
+datafusion = { workspace = true }
+datafusion-common = { workspace = true }
+datafusion-doc = { workspace = true }
+datafusion-expr = { workspace = true }
+datafusion-functions-json = { workspace = true }
+datafusion-physical-plan = { workspace = true }
+datafusion_iceberg = { workspace = true }
+futures = { workspace = true }
+sqlparser = { git = "https://github.com/Embucket/datafusion-sqlparser-rs.git", rev = "28012078c09714542c95ddbad8203a282fa37cb2", features = [
+  "visitor",
+] }
+iceberg-rust = { workspace = true }
+iceberg-rust-spec = { workspace = true }
+iceberg-s3tables-catalog = { workspace = true }
+error-stack-trace = { path = "../error-stack-trace" }
+error-stack = { path = "../error-stack" }
+
+clap = {  workspace = true }
+object_store = { workspace = true }
+regex = { workspace = true }
+snafu = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+strum = { workspace = true }
+strum_macros = { workspace = true }
+tracing = { workspace = true }
+tracing-attributes = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = "0.1.17"
+tokio-util = { workspace = true }
+
+url = { workspace = true }
+uuid = { workspace = true }
+indexmap = { workspace = true }
+time = { workspace = true }
+pin-project-lite = "0.2.16"
+lru = "0.15.0"
+
+cfg-if = { workspace = true }
+
+[dev-dependencies]
+bytes = { workspace = true }
+reqwest = { workspace = true }
+insta = { version = "1.42.0", features = ["yaml", "filters"] }
+paste = "1"
+dotenv = "0.15.0"
+
+[lints]
+workspace = true

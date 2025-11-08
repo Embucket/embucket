@@ -1,5 +1,5 @@
 use super::{error, state::AppState};
-use api_sessions::session::extract_token_from_auth;
+use api_snowflake_rest_sessions::session::extract_token_from_auth;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::IntoResponse;

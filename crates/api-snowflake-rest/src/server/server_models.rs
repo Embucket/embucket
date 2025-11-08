@@ -1,5 +1,5 @@
 use crate::models::Auth;
-use core_executor::utils::DataSerializationFormat;
+use executor::utils::DataSerializationFormat;
 
 #[derive(Clone, Default)]
 pub struct Config {

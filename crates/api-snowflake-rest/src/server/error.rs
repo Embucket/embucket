@@ -2,10 +2,10 @@ use crate::SqlState;
 use crate::models::JsonResponse;
 use crate::models::ResponseData;
 use axum::{Json, http, response::IntoResponse};
-use core_executor::QueryRecordId;
-use core_executor::error::OperationOn;
-use core_executor::error_code::ErrorCode;
-use core_executor::snowflake_error::Entity;
+use executor::QueryRecordId;
+use executor::error::OperationOn;
+use executor::error_code::ErrorCode;
+use executor::snowflake_error::Entity;
 use datafusion::arrow::error::ArrowError;
 use error_stack::ErrorChainExt;
 use error_stack::ErrorExt;
@@ -107,7 +107,7 @@ pub enum Error {
     },
 
     #[snafu(transparent)]
-    Execution { source: core_executor::Error },
+    Execution { source: executor::Error },
 }
 
 impl IntoResponse for Error {

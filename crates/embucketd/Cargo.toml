@@ -5,8 +5,8 @@ edition = "2024"
 license-file.workspace = true
 
 [dependencies]
-core-executor = { path = "../core-executor" }
-core-metastore = { path = "../core-metastore" }
+executor = { path = "../executor" }
+catalog-metastore = { path = "../catalog-metastore" }
 api-snowflake-rest = { path = "../api-snowflake-rest" }
 axum = { workspace = true }
 clap = {  workspace = true }

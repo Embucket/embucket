@@ -8,9 +8,9 @@ license-file.workspace = true
 default = ["default-server"]
 external-server = []
 default-server = [
-    "dep:api-sessions", 
-    "dep:core-executor", 
-    "dep:core-metastore", 
+    "dep:api-snowflake-rest-sessions", 
+    "dep:executor", 
+    "dep:catalog-metastore", 
     "dep:tower-sessions",
     "dep:tower-http",
     "dep:axum",
@@ -24,9 +24,9 @@ default-server = [
 ]
 
 [dependencies]
-api-sessions = { path = "../api-sessions", optional = true }
-core-executor = { path = "../core-executor", optional = true }
-core-metastore = { path = "../core-metastore", optional = true }
+api-snowflake-rest-sessions = { path = "../api-snowflake-rest-sessions", optional = true }
+executor = { path = "../executor", optional = true }
+catalog-metastore = { path = "../catalog-metastore", optional = true }
 
 error-stack-trace = { path = "../error-stack-trace" }
 error-stack = { path = "../error-stack" }

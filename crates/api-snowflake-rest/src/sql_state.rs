@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 // See also ErrorCode, which is also returned by this transport
-// crates/core-executor/src/error_code.rs
+// crates/executor/src/error_code.rs
 
 // Kept fo reference from ANSI standard:
 // SQLSTATE - consists of 5 bytes. They are divided into two parts: the first and second bytes contain a class

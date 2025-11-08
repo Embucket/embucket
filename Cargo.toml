@@ -3,11 +3,11 @@ default-members = ["crates/embucketd"]
 members = [
   "crates/embucketd",
   "crates/api-snowflake-rest",
-  "crates/api-sessions",
-  "crates/core-executor",
-  "crates/core-metastore",
-  "crates/df-catalog",
-  "crates/embucket-functions",
+  "crates/api-snowflake-rest-sessions",
+  "crates/executor",
+  "crates/catalog-metastore",
+  "crates/catalog",
+  "crates/functions",
   "crates/error-stack",
   "crates/error-stack-trace"
 ]

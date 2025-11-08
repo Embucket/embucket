@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use core_executor::utils::{DEFAULT_QUERY_HISTORY_ROWS_LIMIT, MemPoolType};
+use executor::utils::{DEFAULT_QUERY_HISTORY_ROWS_LIMIT, MemPoolType};
 use std::path::PathBuf;
 use tracing_subscriber::filter::LevelFilter;
 

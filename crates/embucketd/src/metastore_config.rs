@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use core_metastore::{Database, Metastore, Schema, SchemaIdent, Volume, VolumeIdent};
+use catalog_metastore::{Database, Metastore, Schema, SchemaIdent, Volume, VolumeIdent};
 use serde::Deserialize;
 use snafu::prelude::*;
 use tokio::fs;
@@ -52,7 +52,7 @@ pub enum ConfigError {
     },
     #[snafu(display("Metastore bootstrap error: {source}"))]
     Metastore {
-        source: core_metastore::error::Error,
+        source: catalog_metastore::error::Error,
     },
 }
 

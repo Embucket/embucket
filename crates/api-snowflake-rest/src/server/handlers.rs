@@ -5,11 +5,11 @@ use crate::models::{
 };
 use crate::server::error::{self as api_snowflake_rest_error, Result};
 use crate::server::helpers::handle_query_ok_result;
-use api_sessions::DFSessionId;
+use api_snowflake_rest_sessions::DFSessionId;
 use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
-use core_executor::RunningQueryId;
-use core_executor::models::QueryContext;
+use executor::RunningQueryId;
+use executor::models::QueryContext;
 use std::net::SocketAddr;
 use uuid::Uuid;
 
