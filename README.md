@@ -3,8 +3,6 @@
 **Run Snowflake SQL dialect on your data lake in 30 seconds. Zero dependencies.**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![SQL Logic Test Coverage](https://raw.githubusercontent.com/Embucket/embucket/assets/assets/badge.svg)](test/README.md)
-[![dbt Gitlab run results](https://raw.githubusercontent.com/Embucket/embucket/assets_dbt/assets_dbt/dbt_success_badge.svg)](test/dbt_integration_tests/dbt-gitlab/README.md)
 
 ## Quick start
 
@@ -17,26 +15,50 @@ docker run --name embucket --rm -p 3000:3000 embucket/embucket
 Run the Snowflake CLI against the local endpoint:
 
 ```bash
+pip install snowflake-cli
 snow sql -c local -a local -u embucket -p embucket -q "select 1;"
 ```
 
 **Done.** You just ran Snowflake SQL dialect against the local Embucket instance with zero configuration.
 
-### Bootstrap external volumes via config
+### Create external volumes via config
 
-You can pre-create volumes, databases, and schemas by pointing `embucketd` at a YAML config file. This
-is handy when you want to mount an S3 Tables bucket at startup without sending API calls after the
-process is online.
+**Important**: External volumes must be created via YAML configuration at startup. REST API-based volume creation is not supported.
+
+Pre-create volumes, databases, and schemas by pointing `embucketd` at a YAML config file:
 
 ```bash
 cargo run -p embucketd -- \
   --no-bootstrap \
-  --metastore-config config/metastore.s3tables.demo.yaml
+  --metastore-config config/metastore.yaml
 ```
 
-The sample config under `config/metastore.s3tables.demo.yaml` provisions a `demo` database backed by an
-S3 Tables bucket using the credentials provided in the file. Update the file with your own secrets
-for real deployments.
+**Sample configuration** (`config/metastore.yaml`):
+
+```yaml
+volumes:
+  # S3 Tables volume - connects to AWS S3 Table Bucket
+  - ident: demo
+    type: s3-tables
+    database: demo
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+
+  # S3 volume - connects to standard S3 bucket
+  # - ident: s3_volume
+  #   type: s3
+  #   bucket: my-data-bucket
+  #   endpoint: https://s3.amazonaws.com
+  #   credentials:
+  #     credential_type: access_key
+  #     aws-access-key-id: YOUR_ACCESS_KEY
+  #     aws-secret-access-key: YOUR_SECRET_KEY
+```
+
+Update the credentials and ARN/bucket details with your own values for real deployments.
 
 ## What just happened?
 
@@ -58,7 +80,6 @@ Perfect for teams who want Snowflake's simplicity with bring-your-own-cloud cont
 Built on proven open source:
 - [Apache DataFusion](https://datafusion.apache.org/) for SQL execution
 - [Apache Iceberg](https://iceberg.apache.org/) for ACID table metadata  
-- A lightweight in-memory metastore purpose-built for Embucket
 
 ## Why Embucket?
 
@@ -70,16 +91,8 @@ Built on proven open source:
 - **Horizontal scaling** - Add nodes for more throughput  
 - **Zero operations** - No external dependencies to manage
 
-## Next steps
+## Build from source
 
-**Ready for more?** Check out the comprehensive documentation:
-
-[Quick start](https://docs.embucket.com/essentials/quick-start/) - Detailed setup and first queries  
-[Architecture](https://docs.embucket.com/essentials/architecture/) - How the zero-disk lakehouse works  
-[Configuration](https://docs.embucket.com/essentials/configuration/) - Production deployment options  
-[dbt Integration](https://docs.embucket.com/guides/dbt-snowplow/) - Run existing dbt projects  
-
-**From source:**
 ```bash
 git clone https://github.com/Embucket/embucket.git
 cd embucket && cargo build

@@ -50,8 +50,10 @@ impl SchemaProvider for EmbucketSchema {
             metastore
                 .list_tables(&SchemaIdent::new(database, schema))
                 .await
-                .map(|tables| tables.into_iter().map(|s| s.ident.table.clone()).collect())
-                .unwrap_or_else(|_| vec![])
+                .map_or_else(
+                    |_| vec![],
+                    |tables| tables.into_iter().map(|s| s.ident.table.clone()).collect(),
+                )
         })
         .unwrap_or_else(|_| vec![]);
 

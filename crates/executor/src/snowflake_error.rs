@@ -2,13 +2,13 @@
 #![allow(clippy::match_same_arms)]
 use crate::error::{Error, OperationOn, OperationType};
 use crate::error_code::ErrorCode;
+use catalog::df_error::DFExternalError as DFCatalogExternalDFError;
+use catalog::error::Error as CatalogError;
 use catalog_metastore::error::Error as MetastoreError;
 use datafusion::arrow::error::ArrowError;
 use datafusion_common::Diagnostic;
 use datafusion_common::diagnostic::DiagnosticKind;
 use datafusion_common::error::DataFusionError;
-use catalog::df_error::DFExternalError as DFCatalogExternalDFError;
-use catalog::error::Error as CatalogError;
 use functions::df_error::DFExternalError as EmubucketFunctionsExternalDFError;
 use iceberg_rust::error::Error as IcebergError;
 use snafu::GenerateImplicitData;

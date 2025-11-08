@@ -51,16 +51,15 @@ impl CatalogProvider for EmbucketCatalog {
         let database = self.database.clone();
 
         block_in_new_runtime(async move {
-            metastore
-                .list_schemas(&database)
-                .await
-                .map(|schemas| {
+            metastore.list_schemas(&database).await.map_or_else(
+                |_| vec![],
+                |schemas| {
                     schemas
                         .into_iter()
                         .map(|s| s.ident.schema.clone())
                         .collect()
-                })
-                .unwrap_or_else(|_| vec![])
+                },
+            )
         })
         .unwrap_or_else(|_| vec![])
     }

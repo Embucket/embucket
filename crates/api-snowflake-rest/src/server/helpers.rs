@@ -5,11 +5,11 @@ use axum::Json;
 use base64;
 use base64::engine::general_purpose::STANDARD as engine_base64;
 use base64::prelude::*;
-use executor::models::QueryResult;
-use executor::utils::{DataSerializationFormat, convert_record_batches};
 use datafusion::arrow::ipc::MetadataVersion;
 use datafusion::arrow::ipc::writer::{IpcWriteOptions, StreamWriter};
 use datafusion::arrow::record_batch::RecordBatch;
+use executor::models::QueryResult;
+use executor::utils::{DataSerializationFormat, convert_record_batches};
 use snafu::ResultExt;
 use uuid::Uuid;
 
