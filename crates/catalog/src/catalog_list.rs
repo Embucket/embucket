@@ -21,6 +21,7 @@ use datafusion::{
     execution::object_store::ObjectStoreRegistry,
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
+use futures::future::join_all;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use iceberg_s3tables_catalog::S3TablesCatalog;
 use object_store::ObjectStore;
@@ -30,7 +31,6 @@ use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
-use futures::future::join_all;
 use tokio::time::interval;
 use url::Url;
 
