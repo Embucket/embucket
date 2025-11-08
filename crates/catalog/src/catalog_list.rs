@@ -30,6 +30,7 @@ use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::Duration;
+use futures::future::join_all;
 use tokio::time::interval;
 use url::Url;
 
@@ -387,22 +388,33 @@ impl EmbucketCatalogList {
                             name: schema.clone(),
                         };
                         let tables = schema.schema.table_names();
-                        for table in tables {
-                            if let Some(table_provider) = schema
-                                .schema
-                                .table(&table)
-                                .await
-                                .context(catalog_error::DataFusionSnafu)?
-                            {
-                                schema.tables_cache.insert(
-                                    table.clone(),
-                                    Arc::new(CachingTable::new_with_schema(
-                                        table,
-                                        table_provider.schema(),
-                                        Arc::clone(&table_provider),
-                                    )),
-                                );
-                            }
+
+                        let futs = tables
+                            .iter()
+                            .map(|table_name| async {
+                                let tp = schema
+                                    .schema
+                                    .table(table_name)
+                                    .await
+                                    .context(catalog_error::DataFusionSnafu)
+                                    .ok()?
+                                    .map(Arc::new)?;
+
+                                Some((table_name.clone(), tp))
+                            })
+                            .collect::<Vec<_>>();
+
+                        let results = join_all(futs).await;
+                        for res in results.into_iter().flatten() {
+                            let (table_name, table_provider) = res;
+                            schema.tables_cache.insert(
+                                table_name.clone(),
+                                Arc::new(CachingTable::new_with_schema(
+                                    table_name,
+                                    table_provider.schema(),
+                                    Arc::clone(&table_provider),
+                                )),
+                            );
                         }
                         catalog
                             .schemas_cache
