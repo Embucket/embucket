@@ -10,4 +10,4 @@ pub mod query_planner;
 pub mod rewriters;
 pub mod type_planner;
 
-pub use functions as functions;
+pub use functions;

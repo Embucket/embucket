@@ -83,6 +83,7 @@ pub struct ResultSet {
 
 impl ResultSet {
     #[must_use]
+    #[allow(clippy::as_conversions)] // Safe: usize to i128 conversion is always safe as i128 can hold any usize value
     pub const fn calc_hard_rows_limit(&self) -> Option<usize> {
         if self.batch_size_bytes > QUERY_HISTORY_HARD_LIMIT_BYTES {
             let batch_size_bytes: i128 = self.batch_size_bytes as i128;

@@ -51,7 +51,12 @@ impl SessionContextExprRewriter {
         let queries = self
             .recent_queries
             .read()
-            .map(|guard| guard.iter().map(|q| q.to_string()).collect::<Vec<_>>())
+            .map(|guard| {
+                guard
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
         let query_id = get_query_by_index(&queries, index).unwrap_or_default();
         Ok(utf8_val(&query_id))

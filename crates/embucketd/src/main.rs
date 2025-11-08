@@ -16,11 +16,11 @@ use axum::{
     Json, Router,
     routing::{get, post},
 };
+use catalog_metastore::InMemoryMetastore;
 use clap::Parser;
+use dotenv::dotenv;
 use executor::service::CoreExecutionService;
 use executor::utils::Config as ExecutionConfig;
-use catalog_metastore::InMemoryMetastore;
-use dotenv::dotenv;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::runtime::TokioCurrentThread;

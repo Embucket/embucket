@@ -53,9 +53,11 @@ impl FromStr for QueryRecordId {
 
 impl From<Uuid> for QueryRecordId {
     fn from(value: Uuid) -> Self {
-        Self(i64::from_be_bytes(
-            value.as_bytes()[8..16].try_into().unwrap(),
-        ))
+        let bytes = value.as_bytes();
+        // Safety: UUID is 16 bytes, we take the last 8 bytes [8..16]
+        Self(i64::from_be_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ]))
     }
 }
 

@@ -1,7 +1,7 @@
 use super::snowflake_error::SnowflakeError;
 use crate::query_types::{QueryRecordId, QueryStatus};
-use datafusion_common::DataFusionError;
 use catalog::error::Error as CatalogError;
+use datafusion_common::DataFusionError;
 use error_stack_trace;
 use iceberg_rust::error::Error as IcebergError;
 use iceberg_s3tables_catalog::error::Error as S3tablesError;
@@ -155,7 +155,9 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("DataFusion error when building logical plan for join of merge target and source: {error}"))]
+    #[snafu(display(
+        "DataFusion error when building logical plan for join of merge target and source: {error}"
+    ))]
     DataFusionLogicalPlanMergeJoin {
         #[snafu(source(from(DataFusionError, Box::new)))]
         error: Box<DataFusionError>,
