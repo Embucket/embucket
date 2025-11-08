@@ -11,7 +11,9 @@ use crate::table::CachingTable;
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
-use catalog_metastore::{AwsCredentials, Database, Metastore, RwObject, S3TablesVolume, VolumeType};
+use catalog_metastore::{
+    AwsCredentials, Database, Metastore, RwObject, S3TablesVolume, VolumeType,
+};
 use catalog_metastore::{SchemaIdent, TableIdent};
 use dashmap::DashMap;
 use datafusion::{

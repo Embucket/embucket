@@ -1,7 +1,7 @@
 use super::server_models::Config;
 use crate::server::router::make_app;
-use executor::utils::Config as UtilsConfig;
 use catalog_metastore::{InMemoryMetastore, Metastore};
+use executor::utils::Config as UtilsConfig;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing_subscriber::fmt::format::FmtSpan;

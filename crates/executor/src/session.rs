@@ -14,6 +14,7 @@ use crate::query::UserQuery;
 use crate::query_types::QueryRecordId;
 use crate::running_queries::RunningQueries;
 use crate::utils::Config;
+use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
 use catalog_metastore::Metastore;
 use datafusion::config::ConfigOptions;
 use datafusion::execution::runtime_env::RuntimeEnv;
@@ -21,7 +22,6 @@ use datafusion::execution::{SessionStateBuilder, SessionStateDefaults};
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datafusion::sql::planner::IdentNormalizer;
 use datafusion_functions_json::register_all as register_json_udfs;
-use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
 use functions::expr_planner::CustomExprPlanner;
 use functions::register_udafs;
 use functions::session_params::{SessionParams, SessionProperty};
@@ -214,9 +214,9 @@ impl UserSession {
     }
 
     pub fn record_query_id(&self, query_id: QueryRecordId) {
+        const MAX_QUERIES: usize = 64;
         if let Ok(mut guard) = self.recent_queries.write() {
             guard.push_front(query_id);
-            const MAX_QUERIES: usize = 64;
             while guard.len() > MAX_QUERIES {
                 guard.pop_back();
             }

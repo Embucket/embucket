@@ -1,9 +1,9 @@
 use super::models::QueryResult;
 use crate::error::{ArrowSnafu, CantCastToSnafu, Result};
-use chrono::{DateTime, FixedOffset, Offset, TimeZone};
-use clap::ValueEnum;
 use catalog_metastore::SchemaIdent as MetastoreSchemaIdent;
 use catalog_metastore::TableIdent as MetastoreTableIdent;
+use chrono::{DateTime, FixedOffset, Offset, TimeZone};
+use clap::ValueEnum;
 use datafusion::arrow::array::timezone::Tz;
 use datafusion::arrow::array::{
     Array, Decimal128Array, Int16Array, Int32Array, Int64Array, StringArray, StringBuilder,

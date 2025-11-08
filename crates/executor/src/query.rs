@@ -20,6 +20,9 @@ use crate::datafusion::physical_plan::merge::{
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
 use crate::models::{QueryContext, QueryResult};
+use catalog::catalog::CachingCatalog;
+use catalog::catalog_list::CachedEntity;
+use catalog::table::CachingTable;
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
     SchemaIdent as MetastoreSchemaIdent, TableCreateRequest as MetastoreTableCreateRequest,
@@ -74,9 +77,6 @@ use datafusion_iceberg::catalog::mirror::Mirror;
 use datafusion_iceberg::catalog::schema::IcebergSchema;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
 use datafusion_physical_plan::collect;
-use catalog::catalog::CachingCatalog;
-use catalog::catalog_list::CachedEntity;
-use catalog::table::CachingTable;
 use functions::semi_structured::variant::visitors::visit_all;
 use functions::session_params::SessionProperty;
 use functions::visitors::{
@@ -3543,13 +3543,16 @@ fn normalize_resolved_ref(table_ref: &ResolvedTableReference) -> ResolvedTableRe
     }
 }
 
-fn is_missing_catalog_entity(err: &IcebergError) -> bool {
-    matches!(err, IcebergError::NotFound(_) | IcebergError::CatalogNotFound)
+const fn is_missing_catalog_entity(err: &IcebergError) -> bool {
+    matches!(
+        err,
+        IcebergError::NotFound(_) | IcebergError::CatalogNotFound
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_missing_catalog_entity, IcebergError};
+    use super::{IcebergError, is_missing_catalog_entity};
 
     #[test]
     fn detects_catalog_not_found_as_missing_tabular() {
