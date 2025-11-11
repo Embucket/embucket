@@ -23,9 +23,20 @@ snow sql -c local -a local -u embucket -p embucket -q "select 1;"
 
 ### Create external volumes via config
 
-**Important**: External volumes must be created via YAML configuration at startup. REST API-based volume creation is not supported.
+**Important**: External volumes must be created via YAML configuration at startup. 
 
-Pre-create volumes, databases, and schemas by pointing `embucketd` at a YAML config file:
+Define volumes and databases by pointing `embucketd` at a YAML config file.
+
+**Using Docker:**
+
+```bash
+docker run --name embucket --rm -p 3000:3000 \
+  -v $PWD/config:/app/config \
+  embucket/embucket \
+  ./embucketd --metastore-config config/metastore.yaml
+```
+
+**Using cargo:**
 
 ```bash
 cargo run -p embucketd -- \
@@ -48,10 +59,9 @@ volumes:
     arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
 
   # S3 volume - connects to standard S3 bucket
-  # - ident: s3_volume
+  # - ident: volume
   #   type: s3
   #   bucket: my-data-bucket
-  #   endpoint: https://s3.amazonaws.com
   #   credentials:
   #     credential_type: access_key
   #     aws-access-key-id: YOUR_ACCESS_KEY
