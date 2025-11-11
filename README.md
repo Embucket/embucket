@@ -79,15 +79,8 @@ Embucket provides a **single binary** that gives you a **wire-compatible Snowfla
 - **Zero dependencies**: No databases, no clusters, no configuration files
 - **Query-per-node**: Each instance handles complete queries independently
 
-Perfect for teams who want Snowflake's simplicity with bring-your-own-cloud control.
+Perfect for teams who want Snowflake's simplicity with bring-your-own-cloud control. Built on proven open source:
 
-## Architecture
-
-![Embucket Architecture](architecture.png)
-
-**Zero-disk lakehouse**: an architectural approach where all data and metadata live in object storage rather than on compute nodes. Nodes stay stateless and replaceable.
-
-Built on proven open source:
 - [Apache DataFusion](https://datafusion.apache.org/) for SQL execution
 - [Apache Iceberg](https://iceberg.apache.org/) for ACID table metadata  
 
