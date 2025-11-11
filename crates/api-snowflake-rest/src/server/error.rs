@@ -20,30 +20,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[snafu(visibility(pub(crate)))]
 #[error_stack_trace::debug]
 pub enum Error {
-    #[snafu(display("Failed to decompress GZip body"))]
-    GZipDecompress {
-        #[snafu(source)]
-        error: std::io::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Failed to parse login request"))]
-    LoginRequestParse {
-        #[snafu(source)]
-        error: serde_json::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Failed to parse query body"))]
-    QueryBodyParse {
-        #[snafu(source)]
-        error: serde_json::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("Missing auth token"))]
     MissingAuthToken {
         #[snafu(implicit)]
@@ -56,20 +32,6 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Invalid uuid format"))]
-    InvalidUuidFormat {
-        #[snafu(source)]
-        error: uuid::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Missing DBT session"))]
-    MissingDbtSession {
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("Invalid auth data"))]
     InvalidAuthData {
         #[snafu(implicit)]
@@ -78,14 +40,6 @@ pub enum Error {
 
     #[snafu(display("Feature not implemented"))]
     NotImplemented {
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Failed to parse row JSON"))]
-    RowParse {
-        #[snafu(source)]
-        error: serde_json::Error,
         #[snafu(implicit)]
         location: Location,
     },
@@ -211,29 +165,14 @@ impl Error {
                     _ => (http::StatusCode::OK, SqlState::Success, error_code),
                 }
             }
-            Self::GZipDecompress { .. }
-            | Self::LoginRequestParse { .. }
-            | Self::QueryBodyParse { .. }
-            | Self::InvalidUuidFormat { .. } => {
-                // TODO: Is this need a fix? Bad request return retriable http code
-                (
-                    http::StatusCode::BAD_REQUEST,
-                    SqlState::Success,
-                    ErrorCode::Other,
-                )
-            }
             Self::MissingAuthToken { .. }
-            | Self::MissingDbtSession { .. }
             | Self::InvalidAuthData { .. }
             | Self::InvalidAuthToken { .. } => (
                 http::StatusCode::UNAUTHORIZED,
                 SqlState::Success,
                 ErrorCode::Other,
             ),
-            Self::RowParse { .. }
-            | Self::Utf8 { .. }
-            | Self::Arrow { .. }
-            | Self::NotImplemented { .. } => {
+            Self::Utf8 { .. } | Self::Arrow { .. } | Self::NotImplemented { .. } => {
                 (http::StatusCode::OK, SqlState::Success, ErrorCode::Other)
             }
         };

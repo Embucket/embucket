@@ -25,26 +25,6 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Volume: Validation failed. Reason: {reason}"))]
-    VolumeValidationFailed {
-        reason: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Volume: Missing credentials"))]
-    VolumeMissingCredentials {
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Cloud provider not implemented"))]
-    CloudProviderNotImplemented {
-        provider: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("ObjectStore: {error}"))]
     ObjectStore {
         #[snafu(source)]
@@ -53,35 +33,10 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("ObjectStore path: {error}"))]
-    ObjectStorePath {
-        #[snafu(source)]
-        error: object_store::path::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display(
-        "Unable to create directory for File ObjectStore path {path}, error: {error}"
-    ))]
-    CreateDirectory {
-        path: String,
-        #[snafu(source)]
-        error: std::io::Error,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("Metastore object of type {type_name} with name {name} already exists"))]
     ObjectAlreadyExists {
         type_name: String,
         name: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Metastore object not found"))]
-    ObjectNotFound {
         #[snafu(implicit)]
         location: Location,
     },
