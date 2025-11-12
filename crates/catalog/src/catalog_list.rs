@@ -249,7 +249,7 @@ impl EmbucketCatalogList {
             .await
             .context(catalog_error::DataFusionSnafu)?;
         Ok(CachingCatalog::new(Arc::new(catalog), name.to_string())
-            .with_refresh(false)
+            .with_refresh(true)
             .with_catalog_type(CatalogType::S3tables))
     }
 

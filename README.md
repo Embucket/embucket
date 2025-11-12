@@ -57,7 +57,9 @@ volumes:
       aws-access-key-id: YOUR_ACCESS_KEY
       aws-secret-access-key: YOUR_SECRET_KEY
     arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
-
+databases:
+  - ident: my_db
+    volume: demo
   # S3 volume - connects to standard S3 bucket
   # - ident: volume
   #   type: s3
