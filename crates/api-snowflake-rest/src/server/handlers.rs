@@ -62,7 +62,6 @@ pub async fn query(
     let serialization_format = state.config.dbt_serialization_format;
     let query_context = QueryContext::default()
         .with_ip_address(addr.ip().to_string())
-        .with_async_query(async_exec)
         .with_request_id(query.request_id);
 
     if async_exec {

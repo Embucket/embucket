@@ -33,9 +33,6 @@ pub struct QueryContext {
     pub query_id: QueryRecordId,
     pub request_id: Option<Uuid>,
     pub ip_address: Option<String>,
-    // async_query flag is not used
-    // TODO: remove or use it
-    pub async_query: bool,
 }
 
 impl QueryContext {
@@ -52,7 +49,6 @@ impl QueryContext {
             query_id: QueryRecordId::default(),
             request_id: None,
             ip_address: None,
-            async_query: false,
         }
     }
 
@@ -71,12 +67,6 @@ impl QueryContext {
     #[must_use]
     pub fn with_ip_address(mut self, ip_address: String) -> Self {
         self.ip_address = Some(ip_address);
-        self
-    }
-
-    #[must_use]
-    pub const fn with_async_query(mut self, async_query: bool) -> Self {
-        self.async_query = async_query;
         self
     }
 }
