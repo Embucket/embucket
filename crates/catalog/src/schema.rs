@@ -50,14 +50,11 @@ impl SchemaProvider for CachingSchema {
         // of SQL (e.g., via direct catalog API calls). In such cases, our cache could contain
         // stale metadata and ignore the latest snapshot updates.
         //
-        // However, views are registered and stored only in the local cache, so we must
-        // check the cache first and return the view if present.
-
+        // However, since we assume that users will interact with the Iceberg catalog
+        // exclusively through Embucket, we can safely enable caching — in this case,
+        // the data will remain consistent across all queries.
         if let Some(table) = self.tables_cache.get(name) {
-            let table = table.value();
-            if table.table_type() == TableType::View {
-                return Ok(Some(Arc::clone(table) as Arc<dyn TableProvider>));
-            }
+            return Ok(Some(Arc::clone(table.value()) as Arc<dyn TableProvider>));
         }
 
         if let Some(table) = self.schema.table(name).await? {
