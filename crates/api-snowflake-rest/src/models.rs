@@ -1,10 +1,6 @@
 cfg_if::cfg_if! {
     if #[cfg(feature = "default-server")] {
         use executor::models::ColumnInfo as ColumnInfoModel;
-    } else {
-        // Define simple representation for Row
-        // As with external-server we won't have any dependences (especially trivial)
-        type Row = Vec<serde_json::Value>;
     }
 }
 
