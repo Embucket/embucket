@@ -1,21 +1,16 @@
 use crate::query_types::{QueryRecordId, QueryStatus};
-use crate::result_set::{Column, ResultSet, Row};
+use crate::result_set::Row;
 use crate::utils::{DataSerializationFormat, convert_record_batches, convert_struct_to_timestamp};
 use crate::{Result, error as ex_error};
-use arrow_schema::SchemaRef;
-use datafusion::arrow;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
-use datafusion::arrow::json::StructMode;
 use datafusion::arrow::json::WriterBuilder;
-use datafusion::arrow::json::reader::ReaderBuilder;
 use datafusion::arrow::json::writer::JsonArray;
 use datafusion_common::arrow::datatypes::Schema;
 use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -113,78 +108,6 @@ impl QueryResult {
             serde_json::from_str::<Vec<Row>>(&json_str).context(ex_error::SerdeParseSnafu)?;
 
         Ok(rows)
-    }
-
-    pub fn as_result_set(&self, query_history_rows_limit: Option<usize>) -> Result<ResultSet> {
-        // Extract column metadata from the original QueryResult
-        let columns = self
-            .column_info()
-            .iter()
-            .map(|ci| Column {
-                name: ci.name.clone(),
-                r#type: ci.r#type.clone(),
-            })
-            .collect();
-
-        // Serialize original Schema into a JSON string
-        let schema = serde_json::to_string(&self.schema).context(ex_error::SerdeParseSnafu)?;
-        let data_format = DataSerializationFormat::Json;
-        Ok(ResultSet {
-            // just for refrence
-            id: self.query_id,
-            columns,
-            rows: self.as_row_set(data_format)?,
-            batch_size_bytes: self
-                .records
-                .iter()
-                .map(RecordBatch::get_array_memory_size)
-                .sum(),
-            // move here value of data_format we  hardcoded earlier
-            data_format: data_format.to_string(),
-            schema,
-            configured_rows_limit: query_history_rows_limit,
-        })
-    }
-}
-
-fn convert_resultset_to_arrow_json_lines(
-    result_set: &ResultSet,
-) -> std::result::Result<String, serde_json::Error> {
-    let mut lines = String::new();
-    for row in &result_set.rows {
-        let json_value = serde_json::Value::Array(row.0.clone());
-        lines.push_str(&serde_json::to_string(&json_value)?);
-        lines.push('\n');
-    }
-    Ok(lines)
-}
-
-/// Convert historical query record to `QueryResult`
-impl TryFrom<ResultSet> for QueryResult {
-    type Error = crate::Error;
-    fn try_from(result_set: ResultSet) -> std::result::Result<Self, Self::Error> {
-        let arrow_json = convert_resultset_to_arrow_json_lines(&result_set)
-            .context(ex_error::SerdeParseSnafu)?;
-
-        // Parse schema from serialized JSON
-        let schema_value =
-            serde_json::from_str(&result_set.schema).context(ex_error::SerdeParseSnafu)?;
-
-        let schema_ref: SchemaRef = schema_value;
-        let json_reader = ReaderBuilder::new(schema_ref.clone())
-            .with_struct_mode(StructMode::ListOnly)
-            .build(Cursor::new(&arrow_json))
-            .context(ex_error::ArrowSnafu)?;
-
-        let batches = json_reader
-            .collect::<arrow::error::Result<Vec<RecordBatch>>>()
-            .context(ex_error::ArrowSnafu)?;
-
-        Ok(Self {
-            records: batches,
-            schema: schema_ref,
-            query_id: result_set.id,
-        })
     }
 }
 
