@@ -1,5 +1,5 @@
+use crate::Row;
 use crate::query_types::{QueryRecordId, QueryStatus};
-use crate::result_set::Row;
 use crate::utils::{DataSerializationFormat, convert_record_batches, convert_struct_to_timestamp};
 use crate::{Result, error as ex_error};
 use datafusion::arrow::array::RecordBatch;

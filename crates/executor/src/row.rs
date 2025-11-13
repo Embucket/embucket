@@ -3,12 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Column {
-    pub name: String,
-    pub r#type: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Row(pub Vec<Value>);
 
