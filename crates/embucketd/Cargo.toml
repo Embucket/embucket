@@ -8,6 +8,7 @@ license-file.workspace = true
 executor = { path = "../executor" }
 catalog-metastore = { path = "../catalog-metastore" }
 api-snowflake-rest = { path = "../api-snowflake-rest" }
+api-snowflake-rest-sessions = { path = "../api-snowflake-rest-sessions" }
 axum = { workspace = true }
 clap = {  workspace = true }
 console-subscriber = { version = "0.4.1" } 

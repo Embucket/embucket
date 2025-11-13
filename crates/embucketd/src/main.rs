@@ -6,11 +6,13 @@ pub(crate) mod helpers;
 pub(crate) mod layers;
 pub(crate) mod metastore_config;
 
+use crate::metastore_config::MetastoreBootstrapConfig;
 use api_snowflake_rest::server::layer::require_auth as snowflake_require_auth;
 use api_snowflake_rest::server::router::create_auth_router as create_snowflake_auth_router;
 use api_snowflake_rest::server::router::create_router as create_snowflake_router;
 use api_snowflake_rest::server::server_models::Config;
 use api_snowflake_rest::server::state::AppState as SnowflakeAppState;
+use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
 use axum::middleware;
 use axum::{
     Json, Router,
@@ -19,7 +21,7 @@ use axum::{
 use catalog_metastore::InMemoryMetastore;
 use clap::Parser;
 use dotenv::dotenv;
-use executor::service::CoreExecutionService;
+use executor::service::{CoreExecutionService, ExecutionService, TIMEOUT_SIGNAL_INTERVAL_SECONDS};
 use executor::utils::Config as ExecutionConfig;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
@@ -41,8 +43,6 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-
-use crate::metastore_config::MetastoreBootstrapConfig;
 // use core_sqlite::SqliteDb;
 
 #[cfg(feature = "alloc-tracing")]
@@ -166,6 +166,19 @@ async fn async_main(
     );
     tracing::info!("Execution service created");
 
+    let session_store = SessionStore::new(execution_svc.clone());
+
+    tokio::task::spawn({
+        let session_store = session_store.clone();
+        async move {
+            session_store
+                .continuously_delete_expired(tokio::time::Duration::from_secs(
+                    SESSION_EXPIRATION_SECONDS,
+                ))
+                .await;
+        }
+    });
+
     let snowflake_state = SnowflakeAppState {
         execution_svc: execution_svc.clone(),
         config: snowflake_rest_cfg,
@@ -205,8 +218,9 @@ async fn async_main(
         .expect("Failed to bind to address");
     let addr = listener.local_addr().expect("Failed to get local address");
     tracing::info!(%addr, "Listening on http");
+    let timeout = opts.timeout.unwrap();
     axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal(execution_svc.clone(), timeout))
         .await
         .expect("Failed to start server");
 
@@ -324,7 +338,7 @@ fn setup_tracing(opts: &cli::CliOpts) -> SdkTracerProvider {
     clippy::redundant_pub_crate,
     clippy::cognitive_complexity
 )]
-async fn shutdown_signal() {
+async fn shutdown_signal(execution_svc: Arc<dyn ExecutionService>, timeout: u64) {
     let ctrl_c = async {
         signal::ctrl_c()
             .await
@@ -342,6 +356,11 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 
+    let timeout = execution_svc.timeout_signal(
+        tokio::time::Duration::from_secs(TIMEOUT_SIGNAL_INTERVAL_SECONDS),
+        tokio::time::Duration::from_secs(timeout),
+    );
+
     tokio::select! {
         () = ctrl_c => {
             tracing::warn!("Ctrl+C received, starting graceful shutdown");
@@ -349,6 +368,9 @@ async fn shutdown_signal() {
         () = terminate => {
             tracing::warn!("SIGTERM received, starting graceful shutdown");
         },
+        () = timeout => {
+            tracing::warn!("No sessions in use & no running queries - timeout, starting graceful shutdown");
+        }
     }
 
     tracing::warn!("signal received, starting graceful shutdown");
@@ -358,3 +380,54 @@ async fn shutdown_signal() {
 #[derive(OpenApi)]
 #[openapi()]
 pub struct ApiDoc;
+
+#[cfg(test)]
+mod tests {
+    use api_snowflake_rest_sessions::session::SessionStore;
+    use executor::models::QueryContext;
+    use executor::service::ExecutionService;
+    use executor::service::make_test_execution_svc;
+    use executor::session::to_unix;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+    use time::OffsetDateTime;
+
+    #[tokio::test]
+    #[allow(clippy::expect_used, clippy::too_many_lines)]
+    async fn test_timeout_signal() {
+        let execution_svc = make_test_execution_svc().await;
+
+        let df_session_id = "fasfsafsfasafsass".to_string();
+        let user_session = execution_svc
+            .create_session(&df_session_id)
+            .await
+            .expect("Failed to create a session");
+
+        execution_svc
+            .query(&df_session_id, "SELECT SLEEP(5)", QueryContext::default())
+            .await
+            .expect("Failed to execute query (session deleted)");
+
+        user_session
+            .expiry
+            .store(to_unix(OffsetDateTime::now_utc()), Ordering::Relaxed);
+
+        let session_store = SessionStore::new(execution_svc.clone());
+
+        tokio::task::spawn({
+            let session_store = session_store.clone();
+            async move {
+                session_store
+                    .continuously_delete_expired(Duration::from_secs(1))
+                    .await;
+            }
+        });
+
+        let timeout = execution_svc.timeout_signal(Duration::from_secs(1), Duration::from_secs(3));
+        tokio::select! {
+            () = timeout => {
+                tracing::warn!("No sessions in use & no running queries - timeout, starting graceful shutdown");
+            }
+        }
+    }
+}
