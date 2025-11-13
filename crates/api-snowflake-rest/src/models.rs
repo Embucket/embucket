@@ -1,7 +1,6 @@
 cfg_if::cfg_if! {
     if #[cfg(feature = "default-server")] {
         use executor::models::ColumnInfo as ColumnInfoModel;
-        use executor::Row;
     } else {
         // Define simple representation for Row
         // As with external-server we won't have any dependences (especially trivial)
@@ -10,6 +9,7 @@ cfg_if::cfg_if! {
 }
 
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -98,7 +98,7 @@ pub struct ResponseData {
     #[serde(rename = "rowsetBase64")]
     pub row_set_base_64: Option<String>,
     #[serde(rename = "rowset")]
-    pub row_set: Option<Vec<Row>>,
+    pub row_set: Option<Box<RawValue>>,
     pub total: Option<u32>,
     #[serde(rename = "queryResultFormat")]
     pub query_result_format: Option<String>,

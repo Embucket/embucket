@@ -1,15 +1,9 @@
-use crate::Row;
 use crate::query_types::{QueryRecordId, QueryStatus};
-use crate::utils::{DataSerializationFormat, convert_record_batches, convert_struct_to_timestamp};
-use crate::{Result, error as ex_error};
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
-use datafusion::arrow::json::WriterBuilder;
-use datafusion::arrow::json::writer::JsonArray;
 use datafusion_common::arrow::datatypes::Schema;
 use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::oneshot;
@@ -72,43 +66,6 @@ pub struct QueryResult {
     /// The schema associated with the result.
     /// This is required to construct a valid response even when `records` are empty
     pub schema: Arc<ArrowSchema>,
-    // pub query_id: QueryRecordId,
-}
-
-impl QueryResult {
-    pub fn as_row_set(&self, data_format: DataSerializationFormat) -> Result<Vec<Row>> {
-        // Do conversions every time, as currently all the history records had conversions
-        // for arrow format though were saved as json
-
-        // Convert the QueryResult to RecordBatches using the specified serialization format
-        // Add columns dbt metadata to each field
-        // Since we have to store already converted data to history
-        let record_batches = convert_record_batches(self, data_format)?;
-        // Convert struct timestamp columns to string representation
-        let record_batches = &convert_struct_to_timestamp(&record_batches)?;
-
-        let record_batches = record_batches.iter().collect::<Vec<_>>();
-
-        // Serialize the RecordBatches into a JSON string using Arrow's Writer
-        let buffer = Vec::new();
-        let mut writer = WriterBuilder::new()
-            .with_explicit_nulls(true)
-            .build::<_, JsonArray>(buffer);
-
-        writer
-            .write_batches(&record_batches)
-            .context(ex_error::ArrowSnafu)?;
-        writer.finish().context(ex_error::ArrowSnafu)?;
-
-        let json_bytes = writer.into_inner();
-        let json_str = String::from_utf8(json_bytes).context(ex_error::Utf8Snafu)?;
-
-        // Deserialize the JSON string into rows of values
-        let rows =
-            serde_json::from_str::<Vec<Row>>(&json_str).context(ex_error::SerdeParseSnafu)?;
-
-        Ok(rows)
-    }
 }
 
 impl QueryResult {

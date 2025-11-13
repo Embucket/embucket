@@ -56,7 +56,7 @@ cfg-if = { workspace = true }
 insta = { workspace = true }
 reqwest = { workspace = true }
 http = { workspace = true }
-arrow = "56.2.0"
+arrow = "57.0.0"
 
 [lints]
 workspace = true

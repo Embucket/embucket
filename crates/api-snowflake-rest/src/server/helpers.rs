@@ -7,9 +7,13 @@ use base64::engine::general_purpose::STANDARD as engine_base64;
 use base64::prelude::*;
 use datafusion::arrow::ipc::MetadataVersion;
 use datafusion::arrow::ipc::writer::{IpcWriteOptions, StreamWriter};
+use datafusion::arrow::json::{StructMode, WriterBuilder, writer::JsonArray};
 use datafusion::arrow::record_batch::RecordBatch;
 use executor::models::QueryResult;
-use executor::utils::{DataSerializationFormat, convert_record_batches};
+use executor::utils::{
+    DataSerializationFormat, convert_record_batches, convert_struct_to_timestamp,
+};
+use serde_json::value::RawValue;
 use snafu::ResultExt;
 use uuid::Uuid;
 
@@ -21,7 +25,7 @@ use uuid::Uuid;
 // For more info see issue #115
 const ARROW_IPC_ALIGNMENT: usize = 8;
 
-fn records_to_arrow_string(recs: &Vec<RecordBatch>) -> std::result::Result<String, Error> {
+fn records_to_arrow_string(recs: &[RecordBatch]) -> std::result::Result<String, Error> {
     let mut buf = Vec::new();
     let options = IpcWriteOptions::try_new(ARROW_IPC_ALIGNMENT, false, MetadataVersion::V5)
         .context(api_snowflake_rest_error::ArrowSnafu)?;
@@ -42,6 +46,26 @@ fn records_to_arrow_string(recs: &Vec<RecordBatch>) -> std::result::Result<Strin
     Ok(engine_base64.encode(buf))
 }
 
+fn records_to_json_string(recs: &[RecordBatch]) -> std::result::Result<String, Error> {
+    let recs = recs.iter().collect::<Vec<_>>();
+
+    let buf = Vec::new();
+    let mut writer = WriterBuilder::new()
+        .with_struct_mode(StructMode::ListOnly)
+        .with_explicit_nulls(true)
+        .build::<_, JsonArray>(buf);
+
+    writer
+        .write_batches(&recs)
+        .context(api_snowflake_rest_error::ArrowSnafu)?;
+    writer
+        .finish()
+        .context(api_snowflake_rest_error::ArrowSnafu)?;
+    let buf = writer.into_inner();
+    // it is expected to be cheap, as no allocations just reuses underlying buffer
+    String::from_utf8(buf).context(api_snowflake_rest_error::Utf8Snafu)
+}
+
 #[tracing::instrument(name = "handle_query_ok_result", level = "debug", err, ret(level = tracing::Level::TRACE))]
 pub fn handle_query_ok_result(
     sql_text: &str,
@@ -49,6 +73,17 @@ pub fn handle_query_ok_result(
     query_result: QueryResult,
     ser_fmt: DataSerializationFormat,
 ) -> Result<Json<JsonResponse>> {
+    // Convert the QueryResult to RecordBatches using the specified serialization format
+    // Add columns dbt metadata to each field
+    // Since we have to store already converted data to history
+    let records = convert_record_batches(&query_result, ser_fmt)?;
+    let records = if ser_fmt == DataSerializationFormat::Json {
+        // Convert struct timestamp columns to string representation
+        convert_struct_to_timestamp(&records)?
+    } else {
+        records
+    };
+
     let json_resp = Json(JsonResponse {
         data: Option::from(ResponseData {
             row_type: query_result
@@ -58,13 +93,15 @@ pub fn handle_query_ok_result(
                 .collect(),
             query_result_format: Some(ser_fmt.to_string().to_lowercase()),
             row_set: if ser_fmt == DataSerializationFormat::Json {
-                Option::from(query_result.as_row_set(ser_fmt)?)
+                let serialized_rowset = records_to_json_string(&records)?;
+                let raw_value = RawValue::from_string(serialized_rowset)
+                    .context(api_snowflake_rest_error::SerdeJsonSnafu)?;
+                Option::from(raw_value)
             } else {
                 None
             },
             row_set_base_64: if ser_fmt == DataSerializationFormat::Arrow {
-                let records = &convert_record_batches(&query_result, ser_fmt)?;
-                Option::from(records_to_arrow_string(records)?)
+                Option::from(records_to_arrow_string(&records)?)
             } else {
                 None
             },
