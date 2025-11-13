@@ -2855,6 +2855,7 @@ name = "embucketd"
 version = "0.1.0"
 dependencies = [
  "api-snowflake-rest",
+ "api-snowflake-rest-sessions",
  "axum 0.8.6",
  "catalog-metastore",
  "clap",
