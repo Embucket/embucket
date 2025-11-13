@@ -2225,7 +2225,6 @@ impl UserQuery {
 
     async fn execute_sql(&self, query: &str) -> Result<QueryResult> {
         let session = self.session.clone();
-        let query_id = self.query_context.query_id;
         let query = query.to_string();
         let stream = self
             .session
@@ -2241,7 +2240,7 @@ impl UserQuery {
                 if !records.is_empty() {
                     schema = records[0].schema().as_ref().clone();
                 }
-                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema), query_id))
+                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
             })
             .await
             .context(ex_error::JobSnafu)??;
@@ -2250,7 +2249,6 @@ impl UserQuery {
 
     async fn execute_logical_plan(&self, plan: LogicalPlan) -> Result<QueryResult> {
         let session = self.session.clone();
-        let query_id = self.query_context.query_id;
 
         let span = tracing::debug_span!("UserQuery::execute_logical_plan");
 
@@ -2271,7 +2269,7 @@ impl UserQuery {
                 if !records.is_empty() {
                     schema = records[0].schema().as_ref().clone();
                 }
-                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema), query_id))
+                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
             })
             .await
             .context(ex_error::JobSnafu)??;
@@ -2284,7 +2282,6 @@ impl UserQuery {
         rules: Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>>,
     ) -> Result<QueryResult> {
         let session = self.session.clone();
-        let query_id = self.query_context.query_id;
         let stream = self
             .session
             .executor
@@ -2311,7 +2308,7 @@ impl UserQuery {
                 if !records.is_empty() {
                     schema = records[0].schema().as_ref().clone();
                 }
-                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema), query_id))
+                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
             })
             .await
             .context(ex_error::JobSnafu)??;
@@ -2755,7 +2752,6 @@ impl UserQuery {
                     .context(ex_error::ArrowSnafu)?,
             ],
             schema,
-            self.query_context.query_id,
         ))
     }
 
@@ -2776,7 +2772,6 @@ impl UserQuery {
                 .context(ex_error::ArrowSnafu)?,
             ],
             schema,
-            self.query_context.query_id,
         ))
     }
 

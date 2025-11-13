@@ -68,11 +68,12 @@ pub async fn query(
         return api_snowflake_rest_error::NotImplementedSnafu.fail();
     }
 
+    let query_uuid = query_context.query_id.as_uuid();
     let result = state
         .execution_svc
         .query(&session_id, &sql_text, query_context)
         .await?;
-    handle_query_ok_result(&sql_text, result, serialization_format)
+    handle_query_ok_result(&sql_text, query_uuid, result, serialization_format)
 }
 
 #[tracing::instrument(name = "api_snowflake_rest::abort", level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]

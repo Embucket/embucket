@@ -72,7 +72,7 @@ pub struct QueryResult {
     /// The schema associated with the result.
     /// This is required to construct a valid response even when `records` are empty
     pub schema: Arc<ArrowSchema>,
-    pub query_id: QueryRecordId,
+    // pub query_id: QueryRecordId,
 }
 
 impl QueryResult {
@@ -113,21 +113,8 @@ impl QueryResult {
 
 impl QueryResult {
     #[must_use]
-    pub const fn new(
-        records: Vec<RecordBatch>,
-        schema: Arc<ArrowSchema>,
-        query_id: QueryRecordId,
-    ) -> Self {
-        Self {
-            records,
-            schema,
-            query_id,
-        }
-    }
-    #[must_use]
-    pub const fn with_query_id(mut self, new_id: QueryRecordId) -> Self {
-        self.query_id = new_id;
-        self
+    pub const fn new(records: Vec<RecordBatch>, schema: Arc<ArrowSchema>) -> Self {
+        Self { records, schema }
     }
 
     #[must_use]

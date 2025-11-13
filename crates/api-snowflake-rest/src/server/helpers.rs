@@ -45,11 +45,10 @@ fn records_to_arrow_string(recs: &Vec<RecordBatch>) -> std::result::Result<Strin
 #[tracing::instrument(name = "handle_query_ok_result", level = "debug", err, ret(level = tracing::Level::TRACE))]
 pub fn handle_query_ok_result(
     sql_text: &str,
+    query_uuid: Uuid,
     query_result: QueryResult,
     ser_fmt: DataSerializationFormat,
 ) -> Result<Json<JsonResponse>> {
-    let query_uuid: Uuid = query_result.query_id.as_uuid();
-
     let json_resp = Json(JsonResponse {
         data: Option::from(ResponseData {
             row_type: query_result
