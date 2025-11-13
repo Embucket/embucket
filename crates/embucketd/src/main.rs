@@ -6,11 +6,13 @@ pub(crate) mod helpers;
 pub(crate) mod layers;
 pub(crate) mod metastore_config;
 
+use crate::metastore_config::MetastoreBootstrapConfig;
 use api_snowflake_rest::server::layer::require_auth as snowflake_require_auth;
 use api_snowflake_rest::server::router::create_auth_router as create_snowflake_auth_router;
 use api_snowflake_rest::server::router::create_router as create_snowflake_router;
 use api_snowflake_rest::server::server_models::Config;
 use api_snowflake_rest::server::state::AppState as SnowflakeAppState;
+use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
 use axum::middleware;
 use axum::{
     Json, Router,
@@ -41,8 +43,6 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-
-use crate::metastore_config::MetastoreBootstrapConfig;
 // use core_sqlite::SqliteDb;
 
 #[cfg(feature = "alloc-tracing")]
@@ -165,6 +165,19 @@ async fn async_main(
             .expect("Failed to create execution service"),
     );
     tracing::info!("Execution service created");
+
+    let session_store = SessionStore::new(execution_svc.clone());
+
+    tokio::task::spawn({
+        let session_store = session_store.clone();
+        async move {
+            session_store
+                .continuously_delete_expired(tokio::time::Duration::from_secs(
+                    SESSION_EXPIRATION_SECONDS,
+                ))
+                .await;
+        }
+    });
 
     let snowflake_state = SnowflakeAppState {
         execution_svc: execution_svc.clone(),
