@@ -281,8 +281,10 @@ impl Volume {
                     .map(|s3| Arc::new(s3) as Arc<dyn ObjectStore>)
                     .context(metastore_error::ObjectStoreSnafu)
             }
-            VolumeType::File(_) => Ok(Arc::new(
-                object_store::local::LocalFileSystem::new().with_automatic_cleanup(true),
+            VolumeType::File(file) => Ok(Arc::new(
+                LocalFileSystem::new_with_prefix(file.path.clone())
+                    .context(metastore_error::ObjectStoreSnafu)?
+                    .with_automatic_cleanup(true),
             ) as Arc<dyn ObjectStore>),
             VolumeType::Memory => {
                 Ok(Arc::new(object_store::memory::InMemory::new()) as Arc<dyn ObjectStore>)

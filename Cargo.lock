@@ -3124,6 +3124,7 @@ dependencies = [
  "geozero",
  "hex",
  "indexmap 2.12.0",
+ "insta",
  "ipnet",
  "jsonpath_lib",
  "lazy_static",

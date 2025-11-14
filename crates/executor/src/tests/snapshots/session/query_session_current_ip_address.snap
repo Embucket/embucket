@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/query.rs
+description: "\"SELECT CURRENT_IP_ADDRESS()\""
+---
+Ok(
+    [
+        "+--------------------+",
+        "| current_ip_address |",
+        "+--------------------+",
+        "| test_ip            |",
+        "+--------------------+",
+    ],
+)

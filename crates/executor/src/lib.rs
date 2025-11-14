@@ -14,6 +14,9 @@ pub mod snowflake_error;
 pub mod tracing;
 pub mod utils;
 
+#[cfg(test)]
+pub mod tests;
+
 pub use error::{Error, Result};
 pub use query_types::{QueryRecordId, QueryStatus};
 pub use result_set::{Column, ResultSet, Row};

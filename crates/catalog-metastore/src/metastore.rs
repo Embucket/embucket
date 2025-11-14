@@ -125,6 +125,10 @@ impl InMemoryMetastore {
         )
     }
 
+    fn database_key(ident: &TableIdent) -> DatabaseIdent {
+        ident.database.to_ascii_lowercase()
+    }
+
     fn ensure_volume(state: &MetastoreState, name: &VolumeIdent) -> Result<RwObject<Volume>> {
         state.volumes.get(name).cloned().ok_or_else(|| {
             metastore_error::VolumeNotFoundSnafu {
@@ -359,12 +363,18 @@ impl Metastore for InMemoryMetastore {
 
     async fn list_schemas(&self, database: &DatabaseIdent) -> Result<Vec<RwObject<Schema>>> {
         let state = self.state.read().await;
-        Ok(state
+
+        let mut items: Vec<RwObject<Schema>> = state
             .schemas
             .iter()
             .filter(|((db, _), _)| db == database)
             .map(|(_, schema)| schema.clone())
-            .collect())
+            .collect();
+
+        // Sort by schema name
+        items.sort_by(|a, b| b.ident.schema.cmp(&a.ident.schema));
+
+        Ok(items)
     }
 
     async fn create_schema(&self, ident: &SchemaIdent, schema: Schema) -> Result<RwObject<Schema>> {
@@ -465,6 +475,16 @@ impl Metastore for InMemoryMetastore {
                 db: ident.database.clone(),
             }
             .fail();
+        }
+
+        if table.volume_ident.is_none() {
+            let database = state.databases.get(&ident.database).ok_or_else(|| {
+                metastore_error::DatabaseNotFoundSnafu {
+                    db: ident.database.clone(),
+                }
+                .build()
+            })?;
+            table.volume_ident = Some(database.volume.clone());
         }
 
         let schema_id = *table.schema.schema_id();
@@ -592,14 +612,8 @@ impl Metastore for InMemoryMetastore {
     }
 
     async fn table_object_store(&self, ident: &TableIdent) -> Result<Option<Arc<dyn ObjectStore>>> {
-        let state = self.state.read().await;
-        let volume_ident = state
-            .tables
-            .get(&Self::table_key(ident))
-            .and_then(|table| table.volume_ident.clone());
-        drop(state);
-        if let Some(volume_ident) = volume_ident {
-            self.volume_object_store(&volume_ident).await
+        if let Some(volume) = self.volume_for_table(ident).await? {
+            self.volume_object_store(&volume.ident).await
         } else {
             Ok(None)
         }
@@ -633,6 +647,12 @@ impl Metastore for InMemoryMetastore {
             .tables
             .get(&Self::table_key(ident))
             .and_then(|table| table.volume_ident.as_ref())
+        {
+            Ok(state.volumes.get(volume_ident).cloned())
+        } else if let Some(volume_ident) = state
+            .databases
+            .get(&Self::database_key(ident))
+            .map(|database| &database.volume)
         {
             Ok(state.volumes.get(volume_ident).cloned())
         } else {

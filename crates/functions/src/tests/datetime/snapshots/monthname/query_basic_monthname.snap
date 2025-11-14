@@ -1,0 +1,13 @@
+---
+source: crates/functions/src/tests/datetime/monthname.rs
+description: "\"SELECT monthname('2025-06-08T23:39:20.123-07:00'::date) AS value;\""
+---
+Ok(
+    [
+        "+-------+",
+        "| value |",
+        "+-------+",
+        "| Jun   |",
+        "+-------+",
+    ],
+)
