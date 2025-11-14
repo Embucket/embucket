@@ -597,7 +597,7 @@ impl Metastore for InMemoryMetastore {
 
         convert_add_schema_update_to_lowercase(&mut update.updates)?;
 
-        let mut metadata = table_entry.metadata.clone();
+        let mut metadata = table_entry.data.metadata.clone();
         apply_table_updates(&mut metadata, update.updates.clone())
             .context(metastore_error::IcebergSnafu)?;
 
