@@ -1,3 +1,3 @@
-mod explain;
 mod alter;
+mod explain;
 mod set;

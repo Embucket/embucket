@@ -1,5 +1,5 @@
 ---
-source: crates/executor/src/tests/query.rs
+source: crates/executor/src/tests/sql/dml/select.rs
 description: "\"SELECT * EXCLUDE department_id FROM employee_table;\""
 ---
 Ok(

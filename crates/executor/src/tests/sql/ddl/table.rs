@@ -250,7 +250,6 @@ test_query!(
     snapshot_path = "table"
 );
 
-
 // TRUNCATE TABLE
 test_query!(
     truncate_table,

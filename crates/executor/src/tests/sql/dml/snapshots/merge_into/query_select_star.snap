@@ -1,5 +1,5 @@
 ---
-source: crates/executor/src/tests/query.rs
+source: crates/executor/src/tests/sql/dml/select.rs
 description: "\"SELECT * FROM employee_table\""
 ---
 Ok(

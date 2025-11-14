@@ -1,6 +1,5 @@
 use crate::test_query;
 
-
 test_query!(
     merge_into_only_update,
     "SELECT count(CASE WHEN description = 'updated row' THEN 1 ELSE NULL END) updated, count(CASE WHEN description = 'existing row' THEN 1 ELSE NULL END) existing FROM embucket.public.merge_target",
@@ -172,8 +171,6 @@ test_query!(
     ],
     snapshot_path = "merge_into"
 );
-
-
 
 test_query!(
     merge_into_column_only_optimization,
