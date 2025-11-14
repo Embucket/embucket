@@ -593,7 +593,7 @@ impl Metastore for InMemoryMetastore {
             .requirements
             .into_iter()
             .map(TableRequirementExt::new)
-            .try_for_each(|req| req.assert(&table_entry.metadata))?;
+            .try_for_each(|req| req.assert(&table_entry.data.metadata))?;
 
         convert_add_schema_update_to_lowercase(&mut update.updates)?;
 
