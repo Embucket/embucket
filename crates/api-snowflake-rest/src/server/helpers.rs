@@ -75,14 +75,7 @@ pub fn handle_query_ok_result(
 ) -> Result<Json<JsonResponse>> {
     // Convert the QueryResult to RecordBatches using the specified serialization format
     // Add columns dbt metadata to each field
-    // Since we have to store already converted data to history
     let records = convert_record_batches(&query_result, ser_fmt)?;
-    let records = if ser_fmt == DataSerializationFormat::Json {
-        // Convert struct timestamp columns to string representation
-        convert_struct_to_timestamp(&records)?
-    } else {
-        records
-    };
 
     let json_resp = Json(JsonResponse {
         data: Option::from(ResponseData {
@@ -93,6 +86,8 @@ pub fn handle_query_ok_result(
                 .collect(),
             query_result_format: Some(ser_fmt.to_string().to_lowercase()),
             row_set: if ser_fmt == DataSerializationFormat::Json {
+                // Convert struct timestamp columns to string representation
+                let records = convert_struct_to_timestamp(&records)?;
                 let serialized_rowset = records_to_json_string(&records)?;
                 let raw_value = RawValue::from_string(serialized_rowset)
                     .context(api_snowflake_rest_error::SerdeJsonSnafu)?;
