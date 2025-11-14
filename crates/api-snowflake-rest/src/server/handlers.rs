@@ -1,44 +1,22 @@
 use super::state::AppState;
 use crate::models::{
-    AbortRequestBody, JsonResponse, LoginRequestBody, LoginRequestData, LoginResponse,
-    LoginResponseData, QueryRequest, QueryRequestBody,
+    AbortRequestBody, JsonResponse, LoginRequestBody, LoginResponse, QueryRequest, QueryRequestBody,
 };
-use crate::server::error::{self as api_snowflake_rest_error, Result};
-use crate::server::helpers::handle_query_ok_result;
+use crate::server::error::Result;
+use crate::server::logic::{handle_login_request, handle_query_request};
 use api_snowflake_rest_sessions::DFSessionId;
 use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
 use executor::RunningQueryId;
-use executor::models::QueryContext;
 use std::net::SocketAddr;
-use uuid::Uuid;
 
 #[tracing::instrument(name = "api_snowflake_rest::login", level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn login(
     State(state): State<AppState>,
-    // Query(_query_params): Query<LoginRequestQueryParams>,
-    Json(LoginRequestBody {
-        data:
-            LoginRequestData {
-                login_name,
-                password,
-                ..
-            },
-    }): Json<LoginRequestBody>,
+    Json(login_request): Json<LoginRequestBody>,
 ) -> Result<Json<LoginResponse>> {
-    if login_name != *state.config.auth.demo_user || password != *state.config.auth.demo_password {
-        return api_snowflake_rest_error::InvalidAuthDataSnafu.fail()?;
-    }
-
-    let session_id = Uuid::new_v4().to_string();
-
-    let _ = state.execution_svc.create_session(&session_id).await?;
-
-    Ok(Json(LoginResponse {
-        data: Option::from(LoginResponseData { token: session_id }),
-        success: true,
-        message: Option::from("successfully executed".to_string()),
-    }))
+    let response = handle_login_request(&state, login_request.data).await?;
+    Ok(Json(response))
 }
 
 #[tracing::instrument(
@@ -54,26 +32,18 @@ pub async fn query(
     DFSessionId(session_id): DFSessionId,
     State(state): State<AppState>,
     Query(query): Query<QueryRequest>,
-    Json(QueryRequestBody {
-        sql_text,
-        async_exec,
-    }): Json<QueryRequestBody>,
+    Json(query_body): Json<QueryRequestBody>,
 ) -> Result<Json<JsonResponse>> {
-    let serialization_format = state.config.dbt_serialization_format;
-    let query_context = QueryContext::default()
-        .with_ip_address(addr.ip().to_string())
-        .with_request_id(query.request_id);
+    let response = handle_query_request(
+        &state,
+        &session_id,
+        query,
+        query_body,
+        Option::from(addr.ip().to_string()),
+    )
+    .await?;
 
-    if async_exec {
-        return api_snowflake_rest_error::NotImplementedSnafu.fail();
-    }
-
-    let query_uuid = query_context.query_id.as_uuid();
-    let result = state
-        .execution_svc
-        .query(&session_id, &sql_text, query_context)
-        .await?;
-    handle_query_ok_result(&sql_text, query_uuid, result, serialization_format)
+    Ok(Json(response))
 }
 
 #[tracing::instrument(name = "api_snowflake_rest::abort", level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]

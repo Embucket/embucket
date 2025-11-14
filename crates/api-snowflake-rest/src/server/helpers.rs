@@ -1,7 +1,6 @@
 use crate::SqlState;
 use crate::models::{JsonResponse, ResponseData};
 use crate::server::error::{self as api_snowflake_rest_error, Error, Result};
-use axum::Json;
 use base64;
 use base64::engine::general_purpose::STANDARD as engine_base64;
 use base64::prelude::*;
@@ -66,18 +65,23 @@ fn records_to_json_string(recs: &[RecordBatch]) -> std::result::Result<String, E
     String::from_utf8(buf).context(api_snowflake_rest_error::Utf8Snafu)
 }
 
-#[tracing::instrument(name = "handle_query_ok_result", level = "debug", err, ret(level = tracing::Level::TRACE))]
+#[tracing::instrument(
+    name = "handle_query_ok_result",
+    level = "debug",
+    err,
+    ret(level = tracing::Level::TRACE)
+)]
 pub fn handle_query_ok_result(
     sql_text: &str,
-    query_uuid: Uuid,
     query_result: QueryResult,
     ser_fmt: DataSerializationFormat,
-) -> Result<Json<JsonResponse>> {
+) -> Result<JsonResponse> {
+    let query_uuid: Uuid = query_result.query_id.as_uuid();
     // Convert the QueryResult to RecordBatches using the specified serialization format
     // Add columns dbt metadata to each field
     let records = convert_record_batches(&query_result, ser_fmt)?;
 
-    let json_resp = Json(JsonResponse {
+    let json_resp = JsonResponse {
         data: Option::from(ResponseData {
             row_type: query_result
                 .column_info()
@@ -108,6 +112,6 @@ pub fn handle_query_ok_result(
         success: true,
         message: Option::from("successfully executed".to_string()),
         code: None,
-    });
+    };
     Ok(json_resp)
 }

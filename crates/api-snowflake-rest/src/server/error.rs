@@ -94,6 +94,21 @@ impl IntoResponse for Error {
 }
 
 impl Error {
+    #[must_use]
+    pub fn missing_auth_token() -> Self {
+        MissingAuthTokenSnafu.build()
+    }
+
+    #[must_use]
+    pub fn invalid_auth_token() -> Self {
+        InvalidAuthTokenSnafu.build()
+    }
+
+    #[must_use]
+    pub fn invalid_auth_data() -> Self {
+        InvalidAuthDataSnafu.build()
+    }
+
     pub fn query_id(&self) -> QueryRecordId {
         if let Self::Execution { source, .. } = self {
             source.query_id()

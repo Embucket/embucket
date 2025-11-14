@@ -11,7 +11,7 @@ members = [
   "crates/queries",
   "crates/error-stack",
   "crates/error-stack-trace"
-]
+, "crates/embucket-lambda"]
 resolver = "2"
 package.license-file = "LICENSE"
 
