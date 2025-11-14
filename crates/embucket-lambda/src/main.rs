@@ -20,6 +20,7 @@ use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderMap, HeaderValue};
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, run, service_fn};
+use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::time::Duration;
@@ -222,9 +223,11 @@ fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
 
 fn init_tracing() {
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let emit_ansi = std::io::stdout().is_terminal();
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(true)
+        .with_ansi(emit_ansi)
         .compact()
         .try_init();
 }
