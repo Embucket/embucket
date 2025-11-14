@@ -60,6 +60,14 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("SerdeJson error: {error}"))]
+    SerdeJson {
+        #[snafu(source)]
+        error: serde_json::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(transparent)]
     Execution { source: executor::Error },
 }
@@ -172,7 +180,10 @@ impl Error {
                 SqlState::Success,
                 ErrorCode::Other,
             ),
-            Self::Utf8 { .. } | Self::Arrow { .. } | Self::NotImplemented { .. } => {
+            Self::Utf8 { .. }
+            | Self::Arrow { .. }
+            | Self::SerdeJson { .. }
+            | Self::NotImplemented { .. } => {
                 (http::StatusCode::OK, SqlState::Success, ErrorCode::Other)
             }
         };

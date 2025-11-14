@@ -1,21 +1,10 @@
 use crate::query_types::{QueryRecordId, QueryStatus};
-use crate::result_set::{Column, ResultSet, Row};
-use crate::utils::{DataSerializationFormat, convert_record_batches, convert_struct_to_timestamp};
-use crate::{Result, error as ex_error};
-use arrow_schema::SchemaRef;
-use datafusion::arrow;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
-use datafusion::arrow::json::StructMode;
-use datafusion::arrow::json::WriterBuilder;
-use datafusion::arrow::json::reader::ReaderBuilder;
-use datafusion::arrow::json::writer::JsonArray;
 use datafusion_common::arrow::datatypes::Schema;
 use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -33,9 +22,6 @@ pub struct QueryContext {
     pub query_id: QueryRecordId,
     pub request_id: Option<Uuid>,
     pub ip_address: Option<String>,
-    // async_query flag is not used
-    // TODO: remove or use it
-    pub async_query: bool,
 }
 
 impl QueryContext {
@@ -52,7 +38,6 @@ impl QueryContext {
             query_id: QueryRecordId::default(),
             request_id: None,
             ip_address: None,
-            async_query: false,
         }
     }
 
@@ -73,12 +58,6 @@ impl QueryContext {
         self.ip_address = Some(ip_address);
         self
     }
-
-    #[must_use]
-    pub const fn with_async_query(mut self, async_query: bool) -> Self {
-        self.async_query = async_query;
-        self
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,134 +66,12 @@ pub struct QueryResult {
     /// The schema associated with the result.
     /// This is required to construct a valid response even when `records` are empty
     pub schema: Arc<ArrowSchema>,
-    pub query_id: QueryRecordId,
-}
-
-impl QueryResult {
-    pub fn as_row_set(&self, data_format: DataSerializationFormat) -> Result<Vec<Row>> {
-        // Do conversions every time, as currently all the history records had conversions
-        // for arrow format though were saved as json
-
-        // Convert the QueryResult to RecordBatches using the specified serialization format
-        // Add columns dbt metadata to each field
-        // Since we have to store already converted data to history
-        let record_batches = convert_record_batches(self, data_format)?;
-        // Convert struct timestamp columns to string representation
-        let record_batches = &convert_struct_to_timestamp(&record_batches)?;
-
-        let record_batches = record_batches.iter().collect::<Vec<_>>();
-
-        // Serialize the RecordBatches into a JSON string using Arrow's Writer
-        let buffer = Vec::new();
-        let mut writer = WriterBuilder::new()
-            .with_explicit_nulls(true)
-            .build::<_, JsonArray>(buffer);
-
-        writer
-            .write_batches(&record_batches)
-            .context(ex_error::ArrowSnafu)?;
-        writer.finish().context(ex_error::ArrowSnafu)?;
-
-        let json_bytes = writer.into_inner();
-        let json_str = String::from_utf8(json_bytes).context(ex_error::Utf8Snafu)?;
-
-        // Deserialize the JSON string into rows of values
-        let rows =
-            serde_json::from_str::<Vec<Row>>(&json_str).context(ex_error::SerdeParseSnafu)?;
-
-        Ok(rows)
-    }
-
-    pub fn as_result_set(&self, query_history_rows_limit: Option<usize>) -> Result<ResultSet> {
-        // Extract column metadata from the original QueryResult
-        let columns = self
-            .column_info()
-            .iter()
-            .map(|ci| Column {
-                name: ci.name.clone(),
-                r#type: ci.r#type.clone(),
-            })
-            .collect();
-
-        // Serialize original Schema into a JSON string
-        let schema = serde_json::to_string(&self.schema).context(ex_error::SerdeParseSnafu)?;
-        let data_format = DataSerializationFormat::Json;
-        Ok(ResultSet {
-            // just for refrence
-            id: self.query_id,
-            columns,
-            rows: self.as_row_set(data_format)?,
-            batch_size_bytes: self
-                .records
-                .iter()
-                .map(RecordBatch::get_array_memory_size)
-                .sum(),
-            // move here value of data_format we  hardcoded earlier
-            data_format: data_format.to_string(),
-            schema,
-            configured_rows_limit: query_history_rows_limit,
-        })
-    }
-}
-
-fn convert_resultset_to_arrow_json_lines(
-    result_set: &ResultSet,
-) -> std::result::Result<String, serde_json::Error> {
-    let mut lines = String::new();
-    for row in &result_set.rows {
-        let json_value = serde_json::Value::Array(row.0.clone());
-        lines.push_str(&serde_json::to_string(&json_value)?);
-        lines.push('\n');
-    }
-    Ok(lines)
-}
-
-/// Convert historical query record to `QueryResult`
-impl TryFrom<ResultSet> for QueryResult {
-    type Error = crate::Error;
-    fn try_from(result_set: ResultSet) -> std::result::Result<Self, Self::Error> {
-        let arrow_json = convert_resultset_to_arrow_json_lines(&result_set)
-            .context(ex_error::SerdeParseSnafu)?;
-
-        // Parse schema from serialized JSON
-        let schema_value =
-            serde_json::from_str(&result_set.schema).context(ex_error::SerdeParseSnafu)?;
-
-        let schema_ref: SchemaRef = schema_value;
-        let json_reader = ReaderBuilder::new(schema_ref.clone())
-            .with_struct_mode(StructMode::ListOnly)
-            .build(Cursor::new(&arrow_json))
-            .context(ex_error::ArrowSnafu)?;
-
-        let batches = json_reader
-            .collect::<arrow::error::Result<Vec<RecordBatch>>>()
-            .context(ex_error::ArrowSnafu)?;
-
-        Ok(Self {
-            records: batches,
-            schema: schema_ref,
-            query_id: result_set.id,
-        })
-    }
 }
 
 impl QueryResult {
     #[must_use]
-    pub const fn new(
-        records: Vec<RecordBatch>,
-        schema: Arc<ArrowSchema>,
-        query_id: QueryRecordId,
-    ) -> Self {
-        Self {
-            records,
-            schema,
-            query_id,
-        }
-    }
-    #[must_use]
-    pub const fn with_query_id(mut self, new_id: QueryRecordId) -> Self {
-        self.query_id = new_id;
-        self
+    pub const fn new(records: Vec<RecordBatch>, schema: Arc<ArrowSchema>) -> Self {
+        Self { records, schema }
     }
 
     #[must_use]

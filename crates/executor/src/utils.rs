@@ -864,7 +864,6 @@ impl std::fmt::Display for NormalizedIdent {
 mod tests {
     use super::*;
     use crate::models::ColumnInfo;
-    use crate::query_types::QueryRecordId;
     use datafusion::arrow::array::{
         ArrayRef, BooleanArray, Float64Array, Int32Array, TimestampSecondArray, UInt64Array,
         UnionArray,
@@ -1120,7 +1119,7 @@ mod tests {
             ],
         )
         .unwrap();
-        let result = QueryResult::new(vec![batch], schema, QueryRecordId(0));
+        let result = QueryResult::new(vec![batch], schema);
         let column_infos = result.column_info();
 
         // === JSON conversion ===
@@ -1303,7 +1302,7 @@ mod tests {
             )
             .unwrap(),
         ];
-        let query_result = QueryResult::new(record_batches.clone(), schema, QueryRecordId(0));
+        let query_result = QueryResult::new(record_batches.clone(), schema);
         let column_infos = query_result.column_info();
         let converted_batches =
             convert_record_batches(&query_result, DataSerializationFormat::Arrow).unwrap();
@@ -1328,7 +1327,7 @@ mod tests {
 
         let record_batch =
             RecordBatch::try_new(schema.clone(), vec![date32_array, date64_array]).unwrap();
-        let query_result = QueryResult::new(vec![record_batch], schema, QueryRecordId(0));
+        let query_result = QueryResult::new(vec![record_batch], schema);
         let converted_batches =
             convert_record_batches(&query_result, DataSerializationFormat::Json).unwrap();
         let converted_batch = &converted_batches[0];
@@ -1355,57 +1354,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_bug_1662_duplicate_columns_names() {
-        // Check if following result is converted to ResultSet correctly:
-        // +-----+-----+
-        // | COL | COL |
-        // +-----+-----+
-        // |   1 |   2 |
-        // +-----+-----+
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("col", DataType::Int64, true),
-            Field::new("col", DataType::Int64, true),
-        ]));
-
-        let record_batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(Int64Array::from(vec![Some(1)])),
-                Arc::new(Int64Array::from(vec![Some(2)])),
-            ],
-        )
-        .unwrap();
-
-        // Create QueryResult
-        let query_result = QueryResult::new(vec![record_batch], schema, QueryRecordId(0));
-
-        // Create ResultSet from QueryResult
-        let result_set = query_result
-            .as_result_set(Some(1000))
-            .expect("Failed to convert query result to result set");
-
-        eprintln!("Result set: {result_set:?}");
-        // check if ResultSet is correct
-        assert_eq!(result_set.columns.len(), 2);
-        let columns_names = result_set
-            .columns
-            .iter()
-            .map(|col| col.name.clone())
-            .collect::<Vec<_>>();
-        assert_eq!(columns_names, ["col", "col"]);
-        assert_eq!(result_set.rows.len(), 1);
-        let rows = result_set
-            .rows
-            .iter()
-            .map(|row| row.0.clone())
-            .collect::<Vec<_>>();
-        let row = rows[0]
-            .iter()
-            .map(|col| col.as_i64().unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(row, [1, 2]);
     }
 }
