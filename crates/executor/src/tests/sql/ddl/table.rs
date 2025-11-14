@@ -249,3 +249,26 @@ test_query!(
     ],
     snapshot_path = "table"
 );
+
+
+// TRUNCATE TABLE
+test_query!(
+    truncate_table,
+    "TRUNCATE TABLE employee_table",
+    snapshot_path = "table"
+);
+test_query!(
+    truncate_table_full,
+    "TRUNCATE TABLE embucket.public.employee_table",
+    snapshot_path = "table"
+);
+test_query!(
+    truncate_table_full_quotes,
+    "TRUNCATE TABLE 'EMBUCKET'.'PUBLIC'.'EMPLOYEE_TABLE'",
+    snapshot_path = "table"
+);
+test_query!(
+    truncate_missing,
+    "TRUNCATE TABLE missing_table",
+    snapshot_path = "table"
+);

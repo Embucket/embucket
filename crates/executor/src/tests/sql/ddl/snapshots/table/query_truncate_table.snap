@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/sql/ddl/table.rs
+description: "\"TRUNCATE TABLE employee_table\""
+---
+Ok(
+    [
+        "+-------+",
+        "| count |",
+        "+-------+",
+        "| 0     |",
+        "+-------+",
+    ],
+)

@@ -1,0 +1,14 @@
+---
+source: crates/executor/src/tests/sql/session/set.rs
+description: "\"SELECT $v1\""
+info: "Setup queries: SET v1 = 'test';"
+---
+Ok(
+    [
+        "+------+",
+        "| $v1  |",
+        "+------+",
+        "| test |",
+        "+------+",
+    ],
+)

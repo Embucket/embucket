@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/sql/functions/session/funcs.rs
+description: "\"SELECT CURRENT_IP_ADDRESS()\""
+---
+Ok(
+    [
+        "+--------------------+",
+        "| current_ip_address |",
+        "+--------------------+",
+        "| test_ip            |",
+        "+--------------------+",
+    ],
+)
