@@ -20,7 +20,6 @@ use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use http::{HeaderMap, HeaderValue};
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, run, service_fn};
-use serde_json;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::time::Duration;
@@ -82,27 +81,24 @@ impl LambdaApp {
             );
             let bootstrap_cfg = MetastoreBootstrapConfig::load(config_path.as_path())
                 .await
-                .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
             bootstrap_cfg
                 .apply(metastore.clone())
                 .await
-                .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
         }
 
         let execution_svc = Arc::new(
             CoreExecutionService::new(metastore, Arc::new(execution_cfg))
                 .await
-                .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)?,
+                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?,
         );
 
         let session_store = SessionStore::new(execution_svc.clone());
-        tokio::spawn({
-            let session_store = session_store.clone();
-            async move {
-                session_store
-                    .continuously_delete_expired(Duration::from_secs(SESSION_EXPIRATION_SECONDS))
-                    .await;
-            }
+        tokio::spawn(async move {
+            session_store
+                .continuously_delete_expired(Duration::from_secs(SESSION_EXPIRATION_SECONDS))
+                .await;
         });
 
         info!("Initialized Lambda Snowflake REST services");
@@ -132,7 +128,7 @@ impl LambdaApp {
         let (mut parts, body) = request.into_parts();
 
         if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
-            return Ok(snowflake_error_response(err));
+            return Ok(snowflake_error_response(&err));
         }
 
         let mut axum_request = to_axum_request(parts, body);
@@ -167,13 +163,11 @@ async fn from_axum_response(
     let bytes = body
         .collect()
         .await
-        .expect("Axum response body collection should not fail")
+        .map_err(|err| -> LambdaError { Box::new(err) })?
         .to_bytes();
 
-    let mut lambda_response = Response::builder()
-        .status(parts.status)
-        .body(LambdaBody::Binary(bytes.to_vec()))
-        .expect("Failed to build Lambda response");
+    let mut lambda_response = Response::new(LambdaBody::Binary(bytes.to_vec()));
+    *lambda_response.status_mut() = parts.status;
     *lambda_response.headers_mut() = parts.headers;
     Ok(lambda_response)
 }
@@ -214,15 +208,16 @@ async fn ensure_session(state: &AppState, session_id: &str) -> Result<(), Snowfl
     Ok(())
 }
 
-fn snowflake_error_response(err: SnowflakeError) -> Response<LambdaBody> {
+fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
     let (status, axum::Json(body)) = err.prepare_response();
     let payload =
         serde_json::to_string(&body).unwrap_or_else(|_| "{\"success\":false}".to_string());
-    Response::builder()
-        .status(status)
-        .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
-        .body(LambdaBody::Text(payload))
-        .expect("Failed to build error response")
+    let mut response = Response::new(LambdaBody::Text(payload));
+    *response.status_mut() = status;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
 }
 
 fn init_tracing() {
