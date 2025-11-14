@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use dashmap::DashMap;
-use iceberg_rust::catalog::commit::apply_table_updates;
+use iceberg_rust::catalog::commit::{TableUpdate as IcebergTableUpdate, apply_table_updates};
 use iceberg_rust_spec::{
     schema::Schema as IcebergSchema,
     table_metadata::{FormatVersion, TableMetadataBuilder},
@@ -566,7 +566,7 @@ impl Metastore for InMemoryMetastore {
     async fn update_table(
         &self,
         ident: &TableIdent,
-        update: TableUpdate,
+        mut update: TableUpdate,
     ) -> Result<RwObject<Table>> {
         let object_store = self.table_object_store(ident).await?.ok_or_else(|| {
             metastore_error::TableNotFoundSnafu {
@@ -589,10 +589,13 @@ impl Metastore for InMemoryMetastore {
                 }
                 .build()
             })?;
+        update
+            .requirements
+            .into_iter()
+            .map(TableRequirementExt::new)
+            .try_for_each(|req| req.assert(&table_entry.metadata))?;
 
-        for requirement in &update.requirements {
-            TableRequirementExt::new(requirement.clone()).assert(&table_entry.metadata)?;
-        }
+        convert_add_schema_update_to_lowercase(&mut update.updates)?;
 
         let mut metadata = table_entry.metadata.clone();
         apply_table_updates(&mut metadata, update.updates.clone())
@@ -705,4 +708,46 @@ fn max_field_id(schema: &IcebergSchema) -> i32 {
     }
 
     schema.fields().iter().map(recurse).max().unwrap_or(0)
+}
+
+fn convert_add_schema_update_to_lowercase(updates: &mut Vec<IcebergTableUpdate>) -> Result<()> {
+    for update in updates {
+        if let IcebergTableUpdate::AddSchema {
+            schema,
+            last_column_id,
+        } = update
+        {
+            let schema = convert_schema_fields_to_lowercase(schema)?;
+            *update = IcebergTableUpdate::AddSchema {
+                schema,
+                last_column_id: *last_column_id,
+            }
+        }
+    }
+    Ok(())
+}
+
+fn convert_schema_fields_to_lowercase(schema: &IcebergSchema) -> Result<IcebergSchema> {
+    let converted_fields: Vec<StructField> = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            StructField::new(
+                field.id,
+                &field.name.to_lowercase(),
+                field.required,
+                field.field_type.clone(),
+                field.doc.clone(),
+            )
+        })
+        .collect();
+
+    let mut builder = IcebergSchema::builder();
+    builder.with_schema_id(*schema.schema_id());
+
+    for field in converted_fields {
+        builder.with_struct_field(field);
+    }
+
+    builder.build().context(metastore_error::IcebergSpecSnafu)
 }
