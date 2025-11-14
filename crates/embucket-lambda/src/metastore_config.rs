@@ -56,10 +56,18 @@ impl std::fmt::Display for BootstrapError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ReadConfig { path, source } => {
-                write!(f, "Failed to read metastore config {path:?}: {source}")
+                write!(
+                    f,
+                    "Failed to read metastore config {}: {source}",
+                    path.display()
+                )
             }
             Self::ParseConfig { path, source } => {
-                write!(f, "Failed to parse metastore config {path:?}: {source}")
+                write!(
+                    f,
+                    "Failed to parse metastore config {}: {source}",
+                    path.display()
+                )
             }
             Self::Metastore { source } => write!(f, "Metastore bootstrap error: {source}"),
         }
