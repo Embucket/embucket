@@ -72,6 +72,6 @@ pub enum QueryStatus {
     Running,
     Successful,
     Failed,
-    Canceled,
+    Cancelled,
     TimedOut,
 }

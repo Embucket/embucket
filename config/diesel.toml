@@ -1,0 +1,5 @@
+[migrations_directory]
+dir = "../crates/queries/migrations" 
+
+[print_schema]
+file = "../crates/queries/src/models/diesel_schema.rs"
