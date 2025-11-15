@@ -14,6 +14,7 @@ use executor::utils::{
 };
 use serde_json::value::RawValue;
 use snafu::ResultExt;
+use tracing;
 use uuid::Uuid;
 
 // https://arrow.apache.org/docs/format/Columnar.html#buffer-alignment-and-padding

@@ -19,6 +19,8 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 regex = { workspace = true }
+jsonwebtoken = { workspace = true }
+chrono = { workspace = true }
 
 [lints]
 workspace = true
