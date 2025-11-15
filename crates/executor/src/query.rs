@@ -702,128 +702,125 @@ impl UserQuery {
             .fail();
         }
 
-        let plan = self.sql_statement_to_plan(statement).await?;
-        let table_ref = match plan {
+        let mut plan = self.sql_statement_to_plan(statement).await?;
+        match &mut plan {
             LogicalPlan::Ddl(ref ddl) => match ddl {
-                DdlStatement::DropTable(t) => self.resolve_table_ref(t.name.clone()),
-                DdlStatement::DropView(v) => self.resolve_table_ref(v.name.clone()),
-                DdlStatement::DropCatalogSchema(s) => self.resolve_schema_ref(s.name.clone()),
+                DdlStatement::DropTable(t) => {
+                    *t.name = self.resolve_table_ref(t.name.clone()).into();
+                }
+                DdlStatement::DropView(v) => {
+                    *v.name = self.resolve_table_ref(v.name.clone()).into();
+                }
+                DdlStatement::DropCatalogSchema(s) => {
+                    *s.name = self.resolve_schema_ref(s.name.clone())
+                }
                 _ => return ex_error::OnlyDropStatementsSnafu.fail(),
             },
             _ => return ex_error::OnlyDropStatementsSnafu.fail(),
         };
+        self.execute_logical_plan(plan).await
 
-        let catalog_name = table_ref.catalog.as_ref();
-        let schema_name = table_ref.schema.to_string();
-        let ident = Identifier::new(std::slice::from_ref(&schema_name), table_ref.table.as_ref());
-
-        // Inject more information to to the error
-        let catalog = self.get_catalog(catalog_name).map_err(|_| {
-            ex_error::CatalogNotFoundSnafu {
-                operation_on: match object_type {
-                    ObjectType::Table | ObjectType::View => OperationOn::Table(OperationType::Drop),
-                    ObjectType::Schema => OperationOn::Schema(OperationType::Drop),
-                    ObjectType::Database => OperationOn::Database(OperationType::Drop),
-                    _ => OperationOn::Unknown,
-                },
-                catalog: catalog_name,
-            }
-            .build()
-        })?;
-        let iceberg_catalog = match self
-            .resolve_iceberg_catalog_or_execute(catalog.clone(), catalog_name.to_string(), plan)
-            .await
-        {
-            IcebergCatalogResult::Catalog(catalog) => catalog,
-            IcebergCatalogResult::Result(result) => {
-                return result.map(|_| self.status_response())?;
-            }
-        };
-
-        match object_type {
-            ObjectType::Table | ObjectType::View => {
-                let table_resp = iceberg_catalog.clone().load_tabular(&ident).await;
-                let namespace_exists = match iceberg_catalog
-                    .clone()
-                    .namespace_exists(ident.namespace())
-                    .await
-                {
-                    Ok(exists) => exists,
-                    Err(err) => {
-                        if is_missing_catalog_entity(&err) {
-                            false
-                        } else {
-                            return Err(err).context(ex_error::IcebergSnafu);
-                        }
-                    }
-                };
-                match table_resp {
-                    Ok(_) => {
-                        iceberg_catalog
-                            .drop_table(&ident)
-                            .await
-                            .context(ex_error::IcebergSnafu)?;
-                        self.refresh_catalog_partially(CachedEntity::Table(MetastoreTableIdent {
-                            database: catalog_name.to_string(),
-                            schema: schema_name,
-                            table: ident.name().to_string(),
-                        }))
-                        .await?;
-                    }
-                    Err(ref err) if is_missing_catalog_entity(err) => {
-                        if namespace_exists {
-                            if !if_exists {
-                                ex_error::TableNotFoundInSchemaInDatabaseSnafu {
-                                    operation_on: OperationOn::Table(OperationType::Drop),
-                                    table: ident.name().to_string(),
-                                    schema: schema_name,
-                                    db: catalog_name.to_string(),
-                                }
-                                .fail()?;
-                            }
-                        } else if !if_exists {
-                            ex_error::SchemaNotFoundInDatabaseSnafu {
-                                operation_on: OperationOn::Table(OperationType::Drop),
-                                schema: schema_name,
-                                db: catalog_name.to_string(),
-                            }
-                            .fail()?;
-                        }
-                    }
-                    Err(err) => {
-                        // return original error, since schema exists or another iceberg failure
-                        return Err(err).context(ex_error::IcebergSnafu);
-                    }
-                }
-                self.status_response()
-            }
-            ObjectType::Schema => {
-                let namespace = ident.namespace();
-                if iceberg_catalog
-                    .clone()
-                    .namespace_exists(namespace)
-                    .await
-                    .is_ok()
-                {
-                    iceberg_catalog
-                        .drop_namespace(namespace)
-                        .await
-                        .context(ex_error::IcebergSnafu)?;
-                    if Self::get_iceberg_mirror(&catalog).is_some() {
-                        catalog
-                            .deregister_schema(&schema_name.clone(), cascade)
-                            .context(ex_error::DataFusionSnafu)?;
-                    }
-                    self.refresh_catalog_partially(CachedEntity::Schema(MetastoreSchemaIdent {
-                        database: catalog_name.to_string(),
-                        schema: schema_name,
-                    }))
-                    .await?;
-                }
-                self.status_response()
-            }
-            _ => ex_error::OnlyDropStatementsSnafu.fail(),
-        }
+        // let catalog_name = table_ref.catalog.as_ref();
+        // let schema_name = table_ref.schema.to_string();
+        // let ident = Identifier::new(std::slice::from_ref(&schema_name), table_ref.table.as_ref());
+        //
+        // // Inject more information to the error
+        // let catalog = self.get_catalog(catalog_name).map_err(|_| {
+        //     ex_error::CatalogNotFoundSnafu {
+        //         operation_on: match object_type {
+        //             ObjectType::Table | ObjectType::View => OperationOn::Table(OperationType::Drop),
+        //             ObjectType::Schema => OperationOn::Schema(OperationType::Drop),
+        //             ObjectType::Database => OperationOn::Database(OperationType::Drop),
+        //             _ => OperationOn::Unknown,
+        //         },
+        //         catalog: catalog_name,
+        //     }
+        //     .build()
+        // })?;
+        //
+        // let iceberg_catalog = match self
+        //     .resolve_iceberg_catalog_or_execute(catalog.clone(), catalog_name.to_string(), plan)
+        //     .await
+        // {
+        //     IcebergCatalogResult::Catalog(catalog) => catalog,
+        //     IcebergCatalogResult::Result(result) => {
+        //         return result.map(|_| self.status_response())?;
+        //     }
+        // };
+        //
+        // match object_type {
+        //     ObjectType::Table | ObjectType::View => {
+        //         let table_resp = iceberg_catalog.clone().load_tabular(&ident).await;
+        //         let namespace_exists = match iceberg_catalog
+        //             .clone()
+        //             .namespace_exists(ident.namespace())
+        //             .await
+        //         {
+        //             Ok(exists) => exists,
+        //             Err(err) => {
+        //                 if is_missing_catalog_entity(&err) {
+        //                     false
+        //                 } else {
+        //                     return Err(err).context(ex_error::IcebergSnafu);
+        //                 }
+        //             }
+        //         };
+        //         match table_resp {
+        //             Ok(_) => {
+        //                 iceberg_catalog
+        //                     .drop_table(&ident)
+        //                     .await
+        //                     .context(ex_error::IcebergSnafu)?;
+        //                 self.refresh_catalog_partially(CachedEntity::Table(MetastoreTableIdent {
+        //                     database: catalog_name.to_string(),
+        //                     schema: schema_name,
+        //                     table: ident.name().to_string(),
+        //                 }))
+        //                 .await?;
+        //             }
+        //             Err(ref err) if is_missing_catalog_entity(err) => {
+        //                 if namespace_exists {
+        //                     if !if_exists {
+        //                         ex_error::TableNotFoundInSchemaInDatabaseSnafu {
+        //                             operation_on: OperationOn::Table(OperationType::Drop),
+        //                             table: ident.name().to_string(),
+        //                             schema: schema_name,
+        //                             db: catalog_name.to_string(),
+        //                         }
+        //                         .fail()?;
+        //                     }
+        //                 } else if !if_exists {
+        //                     ex_error::SchemaNotFoundInDatabaseSnafu {
+        //                         operation_on: OperationOn::Table(OperationType::Drop),
+        //                         schema: schema_name,
+        //                         db: catalog_name.to_string(),
+        //                     }
+        //                     .fail()?;
+        //                 }
+        //             }
+        //             Err(err) => {
+        //                 // return original error, since schema exists or another iceberg failure
+        //                 return Err(err).context(ex_error::IcebergSnafu);
+        //             }
+        //         }
+        //         self.status_response()
+        //     }
+        //     ObjectType::Schema => {
+        //         if catalog.schema(&schema_name).is_some()
+        //         {
+        //             catalog
+        //                 .deregister_schema(&schema_name.clone(), cascade)
+        //                 .context(ex_error::DataFusionSnafu)?;
+        //             self.refresh_catalog_partially(CachedEntity::Schema(MetastoreSchemaIdent {
+        //                 database: catalog_name.to_string(),
+        //                 schema: schema_name,
+        //             }))
+        //             .await?;
+        //         }
+        //         self.status_response()
+        //     }
+        //     _ => ex_error::OnlyDropStatementsSnafu.fail(),
+        // }
     }
 
     #[allow(clippy::redundant_else, clippy::too_many_lines)]
@@ -2406,20 +2403,14 @@ impl UserQuery {
     }
 
     #[must_use]
-    pub fn resolve_schema_ref(&self, schema: SchemaReference) -> ResolvedTableReference {
-        let schema_ref = match schema {
-            SchemaReference::Bare { schema } => ResolvedTableReference {
+    pub fn resolve_schema_ref(&self, schema: SchemaReference) -> SchemaReference {
+        match schema {
+            SchemaReference::Bare { schema } => SchemaReference::Full {
                 catalog: Arc::from(self.current_database()),
                 schema,
-                table: Arc::from(""),
             },
-            SchemaReference::Full { catalog, schema } => ResolvedTableReference {
-                catalog,
-                schema,
-                table: Arc::from(""),
-            },
-        };
-        normalize_resolved_ref(&schema_ref)
+            _ => schema,
+        }
     }
 
     pub fn schema_for_ref(
