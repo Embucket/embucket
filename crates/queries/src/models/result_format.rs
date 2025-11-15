@@ -1,16 +1,15 @@
+use super::diesel_schema::sql_types::ResultFormatType;
+use diesel::AsExpression;
+use diesel::FromSqlRow;
 use diesel::deserialize;
 use diesel::deserialize::FromSql;
-use diesel::serialize::{IsNull, Output, ToSql};
-use diesel::FromSqlRow;
-use diesel::AsExpression;
-use diesel::serialize;
-use std::io::Write;
 use diesel::pg::{Pg, PgValue};
-use super::diesel_schema::sql_types::ResultFormatType;
+use diesel::serialize;
+use diesel::serialize::{IsNull, Output, ToSql};
+use std::io::Write;
 
-// Used reference following implementation: 
+// Used reference following implementation:
 // https://github.com/diesel-rs/diesel/blob/main/diesel_tests/tests/custom_types.rs
-
 
 #[derive(AsExpression, Debug, Clone, Copy, FromSqlRow, Eq, PartialEq)]
 #[diesel(sql_type = ResultFormatType)]

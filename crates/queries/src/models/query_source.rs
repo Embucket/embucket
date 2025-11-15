@@ -1,12 +1,12 @@
+use diesel::AsExpression;
+use diesel::FromSqlRow;
+use diesel::backend::Backend;
 use diesel::deserialize;
 use diesel::deserialize::FromSql;
-use diesel::FromSqlRow;
-use diesel::AsExpression;
-use diesel::serialize::ToSql;
-use diesel::sql_types::{SmallInt, VarChar};
-use diesel::backend::Backend;
-use diesel::serialize::Output;
 use diesel::serialize;
+use diesel::serialize::Output;
+use diesel::serialize::ToSql;
+use diesel::sql_types::SmallInt;
 
 #[repr(i16)]
 #[derive(AsExpression, Debug, Clone, Copy, FromSqlRow, Eq, PartialEq)]
@@ -16,8 +16,8 @@ pub enum QuerySource {
     UiRestApi = 2,
 }
 
-impl<DB> FromSql<SmallInt, DB> for QuerySource 
-where 
+impl<DB> FromSql<SmallInt, DB> for QuerySource
+where
     DB: Backend,
     i16: FromSql<SmallInt, DB>,
 {
@@ -25,7 +25,7 @@ where
         match i16::from_sql(bytes)? {
             1 => Ok(QuerySource::SnowflakeRestApi),
             2 => Ok(QuerySource::UiRestApi),
-            x => Err(format!("Unrecognized variant {}", x).into())
+            x => Err(format!("Unrecognized variant {}", x).into()),
         }
     }
 }

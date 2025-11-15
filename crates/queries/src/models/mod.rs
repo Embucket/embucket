@@ -5,7 +5,7 @@ pub mod query_status;
 pub mod result_format;
 
 pub use diesel_schema::*;
+pub use query::Query;
 pub use query_source::QuerySource;
 pub use query_status::QueryStatus;
-pub use query::Query;
 pub use result_format::ResultFormat;

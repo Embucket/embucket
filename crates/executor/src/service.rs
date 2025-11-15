@@ -616,7 +616,7 @@ impl ExecutionService for CoreExecutionService {
                         query_result: ex_error::QueryCancelledSnafu { query_id }.fail().context(ex_error::QueryExecutionSnafu {
                             query_id,
                         }),
-                        status: QueryStatus::Canceled,
+                        status: QueryStatus::Cancelled,
                     }
                 }
             };

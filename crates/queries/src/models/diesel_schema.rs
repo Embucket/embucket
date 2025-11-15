@@ -12,16 +12,19 @@ pub mod sql_types {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use super::sql_types::ResultFormatType;
     use super::sql_types::QueryStatusType;
+    use super::sql_types::ResultFormatType;
 
     queries (id) {
         id -> Uuid,
-        request_id -> Uuid,
-        request_metadata -> Jsonb,
         sql -> Text,
+        status -> QueryStatusType,
         source -> Int2,
-        created_at -> Nullable<Timestamptz>,
+        result_format -> ResultFormatType,
+        request_id -> Nullable<Uuid>,
+        request_metadata -> Jsonb,
+        created_at -> Timestamptz,
+        limit_exceeded_at -> Nullable<Timestamptz>,
         queued_at -> Nullable<Timestamptz>,
         running_at -> Nullable<Timestamptz>,
         successful_at -> Nullable<Timestamptz>,
@@ -30,8 +33,6 @@ diesel::table! {
         timedout_at -> Nullable<Timestamptz>,
         duration_ms -> Int8,
         rows_count -> Int8,
-        result_format -> ResultFormatType,
-        status -> QueryStatusType,
         error -> Nullable<Text>,
     }
 }
