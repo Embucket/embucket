@@ -397,7 +397,8 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
             .await
             .map_err(|e| IcebergError::External(Box::new(e)))?;
         let res = match table {
-            Some(table) => {
+            Some(t) => {
+                let table = t.read().await;
                 let iceberg_table = IcebergTable::new(
                     identifier.clone(),
                     self.clone(),

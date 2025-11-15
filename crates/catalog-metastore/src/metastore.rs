@@ -60,7 +60,7 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
         ident: &TableIdent,
         table: TableCreateRequest,
     ) -> Result<RwObject<Table>>;
-    async fn get_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Table>>>;
+    async fn get_table(&self, ident: &TableIdent) -> Result<Option<Arc<RwLock<RwObject<Table>>>>>;
     async fn update_table(
         &self,
         ident: &TableIdent,
@@ -75,11 +75,12 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
 }
 
 #[derive(Debug, Default)]
+#[allow(clippy::type_complexity)]
 struct MetastoreState {
     volumes: HashMap<VolumeIdent, RwObject<Volume>>,
     databases: HashMap<DatabaseIdent, RwObject<Database>>,
     schemas: HashMap<(DatabaseIdent, String), RwObject<Schema>>,
-    tables: HashMap<(DatabaseIdent, String, String), RwObject<Table>>,
+    tables: HashMap<(DatabaseIdent, String, String), Arc<RwLock<RwObject<Table>>>>,
 }
 
 #[derive(Debug, Default)]
@@ -442,12 +443,21 @@ impl Metastore for InMemoryMetastore {
 
     async fn list_tables(&self, schema: &SchemaIdent) -> Result<Vec<RwObject<Table>>> {
         let state = self.state.read().await;
-        Ok(state
+
+        let table_refs: Vec<_> = state
             .tables
             .iter()
             .filter(|((db, sch, _), _)| db == &schema.database && sch == &schema.schema)
             .map(|(_, table)| table.clone())
-            .collect())
+            .collect();
+
+        let mut result = Vec::with_capacity(table_refs.len());
+        for table_lock in table_refs {
+            let table = table_lock.read().await;
+            result.push(table.clone());
+        }
+
+        Ok(result)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -554,11 +564,13 @@ impl Metastore for InMemoryMetastore {
         };
 
         let row = RwObject::new(stored_table);
-        state.tables.insert(Self::table_key(ident), row.clone());
+        state
+            .tables
+            .insert(Self::table_key(ident), Arc::new(RwLock::new(row.clone())));
         Ok(row)
     }
 
-    async fn get_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Table>>> {
+    async fn get_table(&self, ident: &TableIdent) -> Result<Option<Arc<RwLock<RwObject<Table>>>>> {
         let state = self.state.read().await;
         Ok(state.tables.get(&Self::table_key(ident)).cloned())
     }
@@ -578,7 +590,7 @@ impl Metastore for InMemoryMetastore {
         })?;
 
         let mut state = self.state.write().await;
-        let table_entry = state
+        let table = state
             .tables
             .get_mut(&Self::table_key(ident))
             .ok_or_else(|| {
@@ -589,6 +601,7 @@ impl Metastore for InMemoryMetastore {
                 }
                 .build()
             })?;
+        let mut table_entry = table.write().await;
         update
             .requirements
             .into_iter()
@@ -605,10 +618,7 @@ impl Metastore for InMemoryMetastore {
         table_entry.data.metadata = metadata;
         table_entry.data.metadata_location = metadata_location;
         table_entry.touch();
-
-        let updated = table_entry.clone();
-        state.tables.insert(Self::table_key(ident), updated.clone());
-        Ok(updated)
+        Ok(table_entry.clone())
     }
 
     async fn delete_table(&self, ident: &TableIdent, _cascade: bool) -> Result<()> {
@@ -634,6 +644,8 @@ impl Metastore for InMemoryMetastore {
         let state = self.state.read().await;
         if let Some(table) = state.tables.get(&Self::table_key(ident)) {
             Ok(table
+                .write()
+                .await
                 .volume_location
                 .clone()
                 .unwrap_or_else(|| format!("memory://{}", ident.table)))
@@ -649,21 +661,19 @@ impl Metastore for InMemoryMetastore {
 
     async fn volume_for_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Volume>>> {
         let state = self.state.read().await;
-        if let Some(volume_ident) = state
-            .tables
-            .get(&Self::table_key(ident))
-            .and_then(|table| table.volume_ident.as_ref())
-        {
-            Ok(state.volumes.get(volume_ident).cloned())
-        } else if let Some(volume_ident) = state
-            .databases
-            .get(&Self::database_key(ident))
-            .map(|database| &database.volume)
-        {
-            Ok(state.volumes.get(volume_ident).cloned())
-        } else {
-            Ok(None)
+        if let Some(table_lock) = state.tables.get(&Self::table_key(ident)) {
+            let table = table_lock.read().await;
+
+            if let Some(volume_ident) = &table.data.volume_ident {
+                return Ok(state.volumes.get(volume_ident).cloned());
+            }
         }
+
+        if let Some(database) = state.databases.get(&Self::database_key(ident)) {
+            let volume_ident = &database.volume;
+            return Ok(state.volumes.get(volume_ident).cloned());
+        }
+        Ok(None)
     }
 }
 

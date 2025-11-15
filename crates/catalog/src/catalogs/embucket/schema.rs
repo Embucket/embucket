@@ -82,7 +82,8 @@ impl SchemaProvider for EmbucketSchema {
                 ))
             })?;
         match self.metastore.get_table(ident).await {
-            Ok(Some(table)) => {
+            Ok(Some(t)) => {
+                let table = t.read().await;
                 let iceberg_table = IcebergTable::new(
                     ident.to_iceberg_ident(),
                     self.iceberg_catalog.clone(),
