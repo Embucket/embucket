@@ -6,7 +6,6 @@ use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use datafusion_common::DataFusionError;
 use futures::executor::block_on;
 use iceberg_rust::catalog::Catalog;
-use iceberg_rust_spec::identifier::Identifier;
 use iceberg_rust_spec::namespace::Namespace;
 use snafu::futures::TryFutureExt;
 use std::fmt::{Display, Formatter};
@@ -206,7 +205,7 @@ impl CatalogProvider for CachingCatalog {
         name: &str,
         cascade: bool,
     ) -> datafusion_common::Result<Option<Arc<dyn SchemaProvider>>> {
-        self.schemas_cache.remove(name);
+        let schema = self.schemas_cache.remove(name);
 
         if let Some(catalog) = &self.iceberg_catalog {
             let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
@@ -216,7 +215,12 @@ impl CatalogProvider for CachingCatalog {
                     .drop_namespace(&namespace)
                     .context(df_error::IcebergSnafu),
             )?;
+        } else {
+            return self.catalog.deregister_schema(name, cascade);
         }
-        self.catalog.deregister_schema(name, cascade)
+        if let Some((_, caching_schema)) = schema {
+            return Ok(Some(caching_schema));
+        }
+        Ok(None)
     }
 }
