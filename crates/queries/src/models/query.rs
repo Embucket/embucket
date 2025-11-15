@@ -32,6 +32,7 @@ pub struct Query {
 }
 
 impl Query {
+    #[must_use]
     pub fn new(sql: String, source: QuerySource, format: ResultFormat) -> Self {
         let mut query = Self {
             id: Uuid::new_v4(),
@@ -57,6 +58,7 @@ impl Query {
         query
     }
 
+    #[must_use]
     pub fn with_request_id(self, request_id: Uuid) -> Self {
         Self {
             request_id: Some(request_id),
@@ -64,6 +66,7 @@ impl Query {
         }
     }
 
+    #[must_use]
     pub fn with_request_metadata(self, request_metadata: Value) -> Self {
         Self {
             request_metadata,
@@ -71,10 +74,12 @@ impl Query {
         }
     }
 
+    #[must_use]
     pub fn with_source(self, source: QuerySource) -> Self {
         Self { source, ..self }
     }
 
+    #[must_use]
     pub fn with_result_format(self, result_format: ResultFormat) -> Self {
         Self {
             result_format,
@@ -82,24 +87,22 @@ impl Query {
         }
     }
 
-    #[allow(clippy::unwrap_used)]
     pub fn set_status(&mut self, status: QueryStatus) {
         self.status = status;
-        let now = Some(Utc::now());
+        let now = Utc::now();
         match status {
             QueryStatus::Created => {}, // created_at is set in constructor once
-            QueryStatus::LimitExceeded => self.limit_exceeded_at = now,
-            QueryStatus::Queued => self.queued_at = now,
-            QueryStatus::Running => self.running_at = now,
+            QueryStatus::LimitExceeded => self.limit_exceeded_at = Some(now),
+            QueryStatus::Queued => self.queued_at = Some(now),
+            QueryStatus::Running => self.running_at = Some(now),
             QueryStatus::Successful => {
-                self.successful_at = now;
-                self.duration_ms = now.unwrap()
-                    .signed_duration_since(self.created_at)
+                self.successful_at = Some(now);
+                self.duration_ms = now.signed_duration_since(self.created_at)
                     .num_milliseconds();
             },
-            QueryStatus::Failed => self.failed_at = now,
-            QueryStatus::Cancelled => self.cancelled_at = now,
-            QueryStatus::TimedOut => self.timedout_at = now,
+            QueryStatus::Failed => self.failed_at = Some(now),
+            QueryStatus::Cancelled => self.cancelled_at = Some(now),
+            QueryStatus::TimedOut => self.timedout_at = Some(now),
         }
     }
 

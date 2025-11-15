@@ -27,30 +27,30 @@ pub enum QueryStatus {
 impl FromSql<QueryStatusType, Pg> for QueryStatus {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
         match bytes.as_bytes() {
-            b"created" => Ok(QueryStatus::Created),
-            b"limit_exceeded" => Ok(QueryStatus::LimitExceeded),
-            b"queued" => Ok(QueryStatus::Queued),
-            b"running" => Ok(QueryStatus::Running),
-            b"successful" => Ok(QueryStatus::Successful),
-            b"failed" => Ok(QueryStatus::Failed),
-            b"canceled" => Ok(QueryStatus::Cancelled),
-            b"timed_out" => Ok(QueryStatus::TimedOut),
+            b"created" => Ok(Self::Created),
+            b"limit_exceeded" => Ok(Self::LimitExceeded),
+            b"queued" => Ok(Self::Queued),
+            b"running" => Ok(Self::Running),
+            b"successful" => Ok(Self::Successful),
+            b"failed" => Ok(Self::Failed),
+            b"canceled" => Ok(Self::Cancelled),
+            b"timed_out" => Ok(Self::TimedOut),
             _ => Err("Unrecognized enum variant".into()),
         }
     }
 }
 
 impl ToSql<QueryStatusType, Pg> for QueryStatus {
-    fn to_sql<'b>(&self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+    fn to_sql(&self, out: &mut Output<'_, '_, Pg>) -> serialize::Result {
         match *self {
-            QueryStatus::Created => out.write_all(b"created")?,
-            QueryStatus::LimitExceeded => out.write_all(b"limit_exceeded")?,
-            QueryStatus::Queued => out.write_all(b"queued")?,
-            QueryStatus::Running => out.write_all(b"running")?,
-            QueryStatus::Successful => out.write_all(b"successful")?,
-            QueryStatus::Failed => out.write_all(b"failed")?,
-            QueryStatus::Cancelled => out.write_all(b"canceled")?,
-            QueryStatus::TimedOut => out.write_all(b"timed_out")?,
+            Self::Created => out.write_all(b"created")?,
+            Self::LimitExceeded => out.write_all(b"limit_exceeded")?,
+            Self::Queued => out.write_all(b"queued")?,
+            Self::Running => out.write_all(b"running")?,
+            Self::Successful => out.write_all(b"successful")?,
+            Self::Failed => out.write_all(b"failed")?,
+            Self::Cancelled => out.write_all(b"canceled")?,
+            Self::TimedOut => out.write_all(b"timed_out")?,
         }
         Ok(IsNull::No)
     }

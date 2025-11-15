@@ -1,4 +1,4 @@
-pub mod crud;
+pub mod operations;
 pub mod error;
 pub mod models;
 
@@ -8,6 +8,7 @@ pub mod tests;
 pub use models::QuerySource;
 pub use models::QueryStatus;
 pub use models::ResultFormat;
+pub use models::list_params::*;
 
 pub type Connection = Object<AsyncDieselConnectionManager<AsyncPgConnection>>;
 
@@ -39,6 +40,10 @@ pub trait Queries: Send + Sync {
     /// Delete query by id
     /// Returns number of deleted rows
     async fn delete(&self, id: Uuid) -> Result<usize>;
+
+    /// List queries
+    /// Returns list of queries
+    async fn list(&self, params: ListParams) -> Result<Vec<Query>>;
 }
 
 pub struct QueriesDb {
@@ -82,18 +87,24 @@ impl Queries for QueriesDb {
     #[instrument(name = "Queries::add", level = "debug", skip(self), err)]
     async fn add(&self, item: Query) -> Result<Query> {
         let mut conn = self.connection().await?;
-        crud::create_query(&mut conn, item).await
+        operations::create_query(&mut conn, item).await
     }
 
     #[instrument(name = "Queries::update", level = "debug", skip(self), err)]
     async fn update(&self, item: Query) -> Result<Query> {
         let mut conn = self.connection().await?;
-        crud::update_query(&mut conn, item).await
+        operations::update_query(&mut conn, item).await
     }
 
     #[instrument(name = "Queries::delete", level = "debug", skip(self), err)]
     async fn delete(&self, id: Uuid) -> Result<usize> {
         let mut conn = self.connection().await?;
-        crud::delete_query(&mut conn, id).await
+        operations::delete_query(&mut conn, id).await
+    }
+
+    #[instrument(name = "Queries::list", level = "debug", skip(self), err)]
+    async fn list(&self, params: ListParams) -> Result<Vec<Query>> {
+        let mut conn = self.connection().await?;
+        operations::list_queries(&mut conn, params).await
     }
 }

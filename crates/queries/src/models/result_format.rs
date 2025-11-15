@@ -21,18 +21,18 @@ pub enum ResultFormat {
 impl FromSql<ResultFormatType, Pg> for ResultFormat {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
         match bytes.as_bytes() {
-            b"json" => Ok(ResultFormat::Json),
-            b"arrow" => Ok(ResultFormat::Arrow),
+            b"json" => Ok(Self::Json),
+            b"arrow" => Ok(Self::Arrow),
             _ => Err("Unrecognized enum variant".into()),
         }
     }
 }
 
 impl ToSql<ResultFormatType, Pg> for ResultFormat {
-    fn to_sql<'b>(&self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+    fn to_sql(&self, out: &mut Output<'_, '_, Pg>) -> serialize::Result {
         match *self {
-            ResultFormat::Json => out.write_all(b"json")?,
-            ResultFormat::Arrow => out.write_all(b"arrow")?,
+            Self::Json => out.write_all(b"json")?,
+            Self::Arrow => out.write_all(b"arrow")?,
         }
         Ok(IsNull::No)
     }

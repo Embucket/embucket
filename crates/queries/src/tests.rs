@@ -1,8 +1,9 @@
+#![allow(clippy::unwrap_used)]
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::Connection;
-use crate::{Queries, QueriesDb, Query, QuerySource, ResultFormat};
+use crate::{Queries, QueriesDb, Query, QuerySource, ResultFormat, ListParams, FilterBy, OrderBy, OrderDirection, QueryStatus};
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::deadpool::Pool;
 use diesel_async::{AsyncPgConnection, SimpleAsyncConnection};
@@ -80,6 +81,22 @@ async fn test_queries_db() {
     assert!(updated_query.failed_at.is_none());
     assert!(updated_query.duration_ms > 0);
 
+    let list_params = ListParams::new()
+        .with_filter_by(vec![FilterBy::Status(QueryStatus::Successful)])
+        .with_order_by(vec![OrderBy::Timestamp(OrderDirection::Desc, QueryStatus::Created)]);
+    let list = queries.list(list_params).await.expect("Failed to list queries");
+    assert_eq!(list.len(), 1);
+
+    let list_params = ListParams::new()
+        .with_filter_by(vec![FilterBy::Status(QueryStatus::Failed)]);
+    let list = queries.list(list_params).await.expect("Failed to list queries");
+    assert_eq!(list.len(), 0);
+
     let deleted = queries.delete(item.id).await.expect("Failed to delete query");
     assert_eq!(deleted, 1);
+
+    let list_params = ListParams::new()
+        .with_filter_by(vec![FilterBy::Status(QueryStatus::Successful)]);
+    let list = queries.list(list_params).await.expect("Failed to list queries");
+    assert_eq!(list.len(), 0);
 }

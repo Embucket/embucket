@@ -23,9 +23,9 @@ where
 {
     fn from_sql(bytes: DB::RawValue<'_>) -> deserialize::Result<Self> {
         match i16::from_sql(bytes)? {
-            1 => Ok(QuerySource::SnowflakeRestApi),
-            2 => Ok(QuerySource::UiRestApi),
-            x => Err(format!("Unrecognized variant {}", x).into()),
+            1 => Ok(Self::SnowflakeRestApi),
+            2 => Ok(Self::UiRestApi),
+            x => Err(format!("Unrecognized variant {x}").into()),
         }
     }
 }
@@ -35,10 +35,10 @@ where
     DB: Backend,
     i16: ToSql<SmallInt, DB>,
 {
-    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, DB>) -> serialize::Result {
+    fn to_sql(&self, out: &mut Output<'_, '_, DB>) -> serialize::Result {
         match self {
-            QuerySource::SnowflakeRestApi => 1.to_sql(out),
-            QuerySource::UiRestApi => 2.to_sql(out),
+            Self::SnowflakeRestApi => 1.to_sql(out),
+            Self::UiRestApi => 2.to_sql(out),
         }
     }
 }
