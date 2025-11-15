@@ -1,0 +1,40 @@
+use diesel::deserialize;
+use diesel::deserialize::FromSql;
+use diesel::serialize::{IsNull, Output, ToSql};
+use diesel::FromSqlRow;
+use diesel::AsExpression;
+use diesel::serialize;
+use std::io::Write;
+use diesel::pg::{Pg, PgValue};
+use super::diesel_schema::sql_types::ResultFormatType;
+
+// Used reference following implementation: 
+// https://github.com/diesel-rs/diesel/blob/main/diesel_tests/tests/custom_types.rs
+
+
+#[derive(AsExpression, Debug, Clone, Copy, FromSqlRow, Eq, PartialEq)]
+#[diesel(sql_type = ResultFormatType)]
+pub enum ResultFormat {
+    Json,
+    Arrow,
+}
+
+impl FromSql<ResultFormatType, Pg> for ResultFormat {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        match bytes.as_bytes() {
+            b"json" => Ok(ResultFormat::Json),
+            b"arrow" => Ok(ResultFormat::Arrow),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<ResultFormatType, Pg> for ResultFormat {
+    fn to_sql<'b>(&self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            ResultFormat::Json => out.write_all(b"json")?,
+            ResultFormat::Arrow => out.write_all(b"arrow")?,
+        }
+        Ok(IsNull::No)
+    }
+}
