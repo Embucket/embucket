@@ -1,0 +1,15 @@
+---
+source: crates/executor/src/tests/sql/dml/select.rs
+description: "\"SELECT * EXCLUDE (department_id, employee_id) FROM employee_table;\""
+---
+Ok(
+    [
+        "+------------+------------+",
+        "| last_name  | first_name |",
+        "+------------+------------+",
+        "| Montgomery | Pat        |",
+        "| Levine     | Terry      |",
+        "| Comstock   | Dana       |",
+        "+------------+------------+",
+    ],
+)

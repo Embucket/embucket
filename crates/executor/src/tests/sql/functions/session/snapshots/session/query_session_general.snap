@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/sql/functions/session/funcs.rs
+description: "\"SELECT CURRENT_VERSION(), CURRENT_CLIENT()\""
+---
+Ok(
+    [
+        "+-----------------+----------------+",
+        "| current_version | current_client |",
+        "+-----------------+----------------+",
+        "| 0.1.0           | Embucket 0.1.0 |",
+        "+-----------------+----------------+",
+    ],
+)

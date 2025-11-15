@@ -3,6 +3,7 @@ debug/
 target/
 
 .env
+metastore.yaml
 
 styles/
 !styles/config

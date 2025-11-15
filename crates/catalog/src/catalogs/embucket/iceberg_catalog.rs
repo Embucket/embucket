@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use crate::error;
 use async_trait::async_trait;
 use catalog_metastore::error::{self as metastore_error, Result as MetastoreResult};
 use catalog_metastore::{
@@ -28,6 +29,7 @@ use iceberg_rust_spec::{
     identifier::FullIdentifier as IcebergFullIdentifier, namespace::Namespace as IcebergNamespace,
 };
 use object_store::ObjectStore;
+use snafu::ResultExt;
 
 #[derive(Debug)]
 pub struct EmbucketIcebergCatalog {
@@ -442,12 +444,11 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
             properties: None,
         };
 
-        // TODO: restore .context
         let table = self
             .metastore
             .create_table(&ident, table_create_request)
             .await
-            // .context(crate::execution::error::MetastoreSnafu)
+            .context(error::MetastoreSnafu)
             .map_err(|e| IcebergError::External(Box::new(e)))?;
         Ok(IcebergTable::new(
             identifier.clone(),

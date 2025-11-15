@@ -1028,11 +1028,7 @@ mod tests {
     async fn panic_on_executor_str() {
         let exec = exec();
         let dedicated_task = exec.spawn(async move {
-            if true {
-                panic!("At the disco, on the dedicated task scheduler");
-            } else {
-                42
-            }
+            panic!("At the disco, on the dedicated task scheduler");
         });
 
         // should not be able to get the result
@@ -1049,11 +1045,7 @@ mod tests {
     async fn panic_on_executor_string() {
         let exec = exec();
         let dedicated_task = exec.spawn(async move {
-            if true {
-                panic!("{} {}", 1, 2);
-            } else {
-                42
-            }
+            panic!("{} {}", 1, 2);
         });
 
         // should not be able to get the result
@@ -1066,7 +1058,7 @@ mod tests {
     #[tokio::test]
     async fn panic_on_executor_other() {
         let exec = exec();
-        let dedicated_task = exec.spawn(async move { if true { panic_any(1) } else { 42 } });
+        let dedicated_task = exec.spawn(async move { panic_any(1) });
 
         // should not be able to get the result
         let err = dedicated_task.await.unwrap_err();

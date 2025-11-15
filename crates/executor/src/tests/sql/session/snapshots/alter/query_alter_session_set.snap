@@ -1,0 +1,14 @@
+---
+source: crates/executor/src/tests/sql/session/alter.rs
+description: "\"SHOW VARIABLES\""
+info: "Setup queries: ALTER SESSION SET v1 = 'test'"
+---
+Ok(
+    [
+        "+------+-------+------+---------+",
+        "| name | value | type | comment |",
+        "+------+-------+------+---------+",
+        "| v1   | test  | text |         |",
+        "+------+-------+------+---------+",
+    ],
+)

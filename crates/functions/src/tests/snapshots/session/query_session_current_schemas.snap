@@ -1,0 +1,13 @@
+---
+source: crates/functions/src/tests/query.rs
+description: "\"SELECT CURRENT_SCHEMAS()\""
+---
+Ok(
+    [
+        "+-------------------+",
+        "| current_schemas() |",
+        "+-------------------+",
+        "|                   |",
+        "+-------------------+",
+    ],
+)

@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use dashmap::DashMap;
-use iceberg_rust::catalog::commit::apply_table_updates;
+use iceberg_rust::catalog::commit::{TableUpdate as IcebergTableUpdate, apply_table_updates};
 use iceberg_rust_spec::{
     schema::Schema as IcebergSchema,
     table_metadata::{FormatVersion, TableMetadataBuilder},
@@ -123,6 +123,10 @@ impl InMemoryMetastore {
             ident.database.to_ascii_lowercase(),
             ident.schema.to_ascii_lowercase(),
         )
+    }
+
+    fn database_key(ident: &TableIdent) -> DatabaseIdent {
+        ident.database.to_ascii_lowercase()
     }
 
     fn ensure_volume(state: &MetastoreState, name: &VolumeIdent) -> Result<RwObject<Volume>> {
@@ -359,12 +363,18 @@ impl Metastore for InMemoryMetastore {
 
     async fn list_schemas(&self, database: &DatabaseIdent) -> Result<Vec<RwObject<Schema>>> {
         let state = self.state.read().await;
-        Ok(state
+
+        let mut items: Vec<RwObject<Schema>> = state
             .schemas
             .iter()
             .filter(|((db, _), _)| db == database)
             .map(|(_, schema)| schema.clone())
-            .collect())
+            .collect();
+
+        // Sort by schema name
+        items.sort_by(|a, b| b.ident.schema.cmp(&a.ident.schema));
+
+        Ok(items)
     }
 
     async fn create_schema(&self, ident: &SchemaIdent, schema: Schema) -> Result<RwObject<Schema>> {
@@ -467,6 +477,16 @@ impl Metastore for InMemoryMetastore {
             .fail();
         }
 
+        if table.volume_ident.is_none() {
+            let database = state.databases.get(&ident.database).ok_or_else(|| {
+                metastore_error::DatabaseNotFoundSnafu {
+                    db: ident.database.clone(),
+                }
+                .build()
+            })?;
+            table.volume_ident = Some(database.volume.clone());
+        }
+
         let schema_id = *table.schema.schema_id();
         let mut schemas = HashMap::new();
         schemas.insert(schema_id, table.schema.clone());
@@ -546,7 +566,7 @@ impl Metastore for InMemoryMetastore {
     async fn update_table(
         &self,
         ident: &TableIdent,
-        update: TableUpdate,
+        mut update: TableUpdate,
     ) -> Result<RwObject<Table>> {
         let object_store = self.table_object_store(ident).await?.ok_or_else(|| {
             metastore_error::TableNotFoundSnafu {
@@ -569,10 +589,13 @@ impl Metastore for InMemoryMetastore {
                 }
                 .build()
             })?;
+        update
+            .requirements
+            .into_iter()
+            .map(TableRequirementExt::new)
+            .try_for_each(|req| req.assert(&table_entry.metadata))?;
 
-        for requirement in &update.requirements {
-            TableRequirementExt::new(requirement.clone()).assert(&table_entry.metadata)?;
-        }
+        convert_add_schema_update_to_lowercase(&mut update.updates)?;
 
         let mut metadata = table_entry.metadata.clone();
         apply_table_updates(&mut metadata, update.updates.clone())
@@ -592,14 +615,8 @@ impl Metastore for InMemoryMetastore {
     }
 
     async fn table_object_store(&self, ident: &TableIdent) -> Result<Option<Arc<dyn ObjectStore>>> {
-        let state = self.state.read().await;
-        let volume_ident = state
-            .tables
-            .get(&Self::table_key(ident))
-            .and_then(|table| table.volume_ident.clone());
-        drop(state);
-        if let Some(volume_ident) = volume_ident {
-            self.volume_object_store(&volume_ident).await
+        if let Some(volume) = self.volume_for_table(ident).await? {
+            self.volume_object_store(&volume.ident).await
         } else {
             Ok(None)
         }
@@ -633,6 +650,12 @@ impl Metastore for InMemoryMetastore {
             .tables
             .get(&Self::table_key(ident))
             .and_then(|table| table.volume_ident.as_ref())
+        {
+            Ok(state.volumes.get(volume_ident).cloned())
+        } else if let Some(volume_ident) = state
+            .databases
+            .get(&Self::database_key(ident))
+            .map(|database| &database.volume)
         {
             Ok(state.volumes.get(volume_ident).cloned())
         } else {
@@ -685,4 +708,46 @@ fn max_field_id(schema: &IcebergSchema) -> i32 {
     }
 
     schema.fields().iter().map(recurse).max().unwrap_or(0)
+}
+
+fn convert_add_schema_update_to_lowercase(updates: &mut Vec<IcebergTableUpdate>) -> Result<()> {
+    for update in updates {
+        if let IcebergTableUpdate::AddSchema {
+            schema,
+            last_column_id,
+        } = update
+        {
+            let schema = convert_schema_fields_to_lowercase(schema)?;
+            *update = IcebergTableUpdate::AddSchema {
+                schema,
+                last_column_id: *last_column_id,
+            }
+        }
+    }
+    Ok(())
+}
+
+fn convert_schema_fields_to_lowercase(schema: &IcebergSchema) -> Result<IcebergSchema> {
+    let converted_fields: Vec<StructField> = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            StructField::new(
+                field.id,
+                &field.name.to_lowercase(),
+                field.required,
+                field.field_type.clone(),
+                field.doc.clone(),
+            )
+        })
+        .collect();
+
+    let mut builder = IcebergSchema::builder();
+    builder.with_schema_id(*schema.schema_id());
+
+    for field in converted_fields {
+        builder.with_struct_field(field);
+    }
+
+    builder.build().context(metastore_error::IcebergSpecSnafu)
 }
