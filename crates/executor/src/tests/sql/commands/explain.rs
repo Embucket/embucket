@@ -27,6 +27,7 @@ test_query!(
     explain_references_basic,
     "EXPLAIN SELECT name FROM testing;",
     setup_queries = [SETUP_QUERY],
+    sort_all = true,
     snapshot_path = "explain"
 );
 
