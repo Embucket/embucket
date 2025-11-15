@@ -8,10 +8,10 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(data_format: &str) -> std::result::Result<Self, strum::ParseError> {
+    pub fn new(data_format: &str, jwt_secret: String) -> Result<Self, strum::ParseError> {
         Ok(Self {
             dbt_serialization_format: DataSerializationFormat::try_from(data_format)?,
-            ..Self::default()
+            auth: Auth::new(jwt_secret),
         })
     }
     #[must_use]
@@ -19,6 +19,7 @@ impl Config {
         self.auth = Auth {
             demo_user,
             demo_password,
+            ..self.auth
         };
         self
     }

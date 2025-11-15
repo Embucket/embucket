@@ -10,6 +10,7 @@ use datafusion::arrow::record_batch::RecordBatch;
 use executor::models::QueryResult;
 use executor::utils::{DataSerializationFormat, convert_record_batches};
 use snafu::ResultExt;
+use tracing;
 use uuid::Uuid;
 
 // https://arrow.apache.org/docs/format/Columnar.html#buffer-alignment-and-padding

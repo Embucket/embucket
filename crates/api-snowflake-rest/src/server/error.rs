@@ -10,6 +10,7 @@ use executor::QueryRecordId;
 use executor::error::OperationOn;
 use executor::error_code::ErrorCode;
 use executor::snowflake_error::Entity;
+use jsonwebtoken::errors::Error as JwtError;
 use snafu::Location;
 use snafu::prelude::*;
 
@@ -62,6 +63,28 @@ pub enum Error {
 
     #[snafu(transparent)]
     Execution { source: executor::Error },
+
+    #[snafu(display("No JWT secret set"))]
+    NoJwtSecret {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("JWT create error: {error}"))]
+    CreateJwt {
+        #[snafu(source)]
+        error: JwtError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Bad authentication token. {error}"))]
+    BadAuthToken {
+        #[snafu(source)]
+        error: JwtError,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 impl IntoResponse for Error {
@@ -182,7 +205,10 @@ impl Error {
             }
             Self::MissingAuthToken { .. }
             | Self::InvalidAuthData { .. }
-            | Self::InvalidAuthToken { .. } => (
+            | Self::InvalidAuthToken { .. }
+            | Self::NoJwtSecret { .. }
+            | Self::CreateJwt { .. }
+            | Self::BadAuthToken { .. } => (
                 http::StatusCode::UNAUTHORIZED,
                 SqlState::Success,
                 ErrorCode::Other,

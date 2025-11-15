@@ -17,6 +17,7 @@ pub struct EnvConfig {
     pub bootstrap_default_entities: bool,
     pub embucket_version: String,
     pub metastore_config: Option<PathBuf>,
+    pub jwt_secret: Option<String>,
 }
 
 impl EnvConfig {
@@ -38,6 +39,7 @@ impl EnvConfig {
             bootstrap_default_entities: !env_bool("NO_BOOTSTRAP"),
             embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
+            jwt_secret: env::var("JWT_SECRET").ok(),
         }
     }
 

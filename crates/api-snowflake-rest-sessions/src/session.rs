@@ -1,4 +1,6 @@
 use crate::error as session_error;
+use crate::error::BadAuthTokenSnafu;
+use crate::helpers::get_claims_validate_jwt_token;
 use axum::extract::FromRequestParts;
 use executor::ExecutionAppState;
 use executor::service::ExecutionService;
@@ -32,12 +34,16 @@ impl SessionStore {
     }
 }
 
+pub trait JwtSecret {
+    fn jwt_secret(&self) -> &str;
+}
+
 #[derive(Debug, Clone)]
 pub struct DFSessionId(pub String);
 
 impl<S> FromRequestParts<S> for DFSessionId
 where
-    S: Send + Sync + ExecutionAppState,
+    S: Send + Sync + ExecutionAppState + JwtSecret,
 {
     type Rejection = session_error::Error;
 
@@ -47,7 +53,11 @@ where
         let execution_svc = state.get_execution_svc();
 
         let (session_id, located_at) = if let Some(token) = extract_token_from_auth(&req.headers) {
-            (token, "auth header")
+            let jwt_secret = state.jwt_secret();
+            let jwt_claims =
+                get_claims_validate_jwt_token(&token, jwt_secret).context(BadAuthTokenSnafu)?;
+
+            (jwt_claims.session_id, "auth header")
         } else {
             //This is guaranteed by the `propagate_session_cookie`, so we can unwrap
             let Self(token) = req.extensions.get::<Self>().unwrap();
@@ -97,7 +107,9 @@ pub fn extract_token_from_auth(headers: &HeaderMap) -> Option<String> {
     headers.get("authorization").and_then(|value| {
         value.to_str().ok().and_then(|auth| {
             #[allow(clippy::unwrap_used)]
-            let re = Regex::new(r#"Snowflake Token="([a-f0-9\-]+)""#).unwrap();
+            let re = Regex::new(
+                r#"Snowflake Token="([A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})""#
+            ).unwrap();
             re.captures(auth)
                 .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
         })

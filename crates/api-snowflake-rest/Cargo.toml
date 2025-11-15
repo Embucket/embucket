@@ -51,6 +51,7 @@ time = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }
 cfg-if = { workspace = true }
+jsonwebtoken = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

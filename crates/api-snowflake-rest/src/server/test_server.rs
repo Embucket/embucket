@@ -8,7 +8,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 
 #[allow(clippy::expect_used)]
 pub async fn run_test_rest_api_server(data_format: &str) -> SocketAddr {
-    let app_cfg = Config::new(data_format)
+    let app_cfg = Config::new(data_format, "embucket".to_string())
         .expect("Failed to create server config")
         .with_demo_credentials("embucket".to_string(), "embucket".to_string());
 
