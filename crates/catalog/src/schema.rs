@@ -99,7 +99,7 @@ impl SchemaProvider for CachingSchema {
         if let Some((_, caching_table)) = table {
             if caching_table.table_type() != TableType::View {
                 if let Some(catalog) = &self.iceberg_catalog {
-                    let ident = Identifier::new(std::slice::from_ref(&self.name), &name);
+                    let ident = Identifier::new(std::slice::from_ref(&self.name), name);
                     block_on(catalog.drop_table(&ident).context(df_error::IcebergSnafu))?;
                 } else {
                     return self.schema.deregister_table(name);

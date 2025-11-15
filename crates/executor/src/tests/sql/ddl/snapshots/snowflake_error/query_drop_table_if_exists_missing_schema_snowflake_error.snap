@@ -3,12 +3,6 @@ source: crates/executor/src/tests/sql/ddl/table.rs
 description: "\"DROP TABLE IF EXISTS embucket.missing_schema.some_table\""
 info: Tests Snowflake Error
 ---
-Ok(
-    [
-        "+----------------------------------+",
-        "| status                           |",
-        "+----------------------------------+",
-        "| Statement executed successfully. |",
-        "+----------------------------------+",
-    ],
+Err(
+    "Snowflake Error: SQL compilation error: Schema 'embucket.missing_schema' does not exist or not authorized",
 )
