@@ -1,5 +1,5 @@
-use super::query_status::QueryStatus;
 use super::query_source::QuerySource;
+use super::query_status::QueryStatus;
 use super::result_format::ResultFormat;
 
 #[derive(Debug, Clone)]
@@ -14,7 +14,7 @@ pub enum OrderBy {
     Source(OrderDirection),
     Format(OrderDirection),
     // we reuse QueryStatus just to point timestamp we want to sort by
-    // as every status is directly linked to corresponding timestamp 
+    // as every status is directly linked to corresponding timestamp
     Timestamp(OrderDirection, QueryStatus),
     Duration(OrderDirection),
     RowsCount(OrderDirection),
@@ -44,12 +44,10 @@ impl Default for ListParams {
             offset: None,
             limit: None,
             filter_by: vec![],
-            order_by: vec![
-                OrderBy::Timestamp(
-                    OrderDirection::Desc,
-                    QueryStatus::Created,
-                )
-            ],
+            order_by: vec![OrderBy::Timestamp(
+                OrderDirection::Desc,
+                QueryStatus::Created,
+            )],
         }
     }
 }

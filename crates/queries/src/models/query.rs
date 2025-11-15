@@ -91,15 +91,16 @@ impl Query {
         self.status = status;
         let now = Utc::now();
         match status {
-            QueryStatus::Created => {}, // created_at is set in constructor once
+            QueryStatus::Created => {} // created_at is set in constructor once
             QueryStatus::LimitExceeded => self.limit_exceeded_at = Some(now),
             QueryStatus::Queued => self.queued_at = Some(now),
             QueryStatus::Running => self.running_at = Some(now),
             QueryStatus::Successful => {
                 self.successful_at = Some(now);
-                self.duration_ms = now.signed_duration_since(self.created_at)
+                self.duration_ms = now
+                    .signed_duration_since(self.created_at)
                     .num_milliseconds();
-            },
+            }
             QueryStatus::Failed => self.failed_at = Some(now),
             QueryStatus::Cancelled => self.cancelled_at = Some(now),
             QueryStatus::TimedOut => self.timedout_at = Some(now),

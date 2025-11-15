@@ -5,7 +5,7 @@ edition = "2024"
 license-file.workspace = true
 
 [dependencies]
-queries = { workspace = true }
+queries = { workspace = true, optional = true }
 executor = { path = "../executor" }
 catalog-metastore = { path = "../catalog-metastore" }
 api-snowflake-rest = { path = "../api-snowflake-rest" }
@@ -42,5 +42,6 @@ snafu = { workspace = true }
 workspace = true
 
 [features]
-default = []
+default = ["queries"]
 alloc-tracing = ["dep:tracing-allocations"]
+queries = ["dep:queries"]

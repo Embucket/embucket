@@ -1,6 +1,6 @@
-pub mod operations;
 pub mod error;
 pub mod models;
+pub mod operations;
 
 #[cfg(test)]
 pub mod tests;
@@ -22,8 +22,8 @@ use error::Result;
 use error::{GenericSnafu, PoolSnafu};
 use models::Query;
 use snafu::ResultExt;
-use uuid::Uuid;
 use tracing::instrument;
+use uuid::Uuid;
 
 pub const QUERIES_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 

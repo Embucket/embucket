@@ -4,15 +4,13 @@ use diesel::SelectableHelper;
 use diesel::TextExpressionMethods;
 use diesel_async::RunQueryDsl;
 
+use crate::Connection;
 use crate::error::{DieselSnafu, Result};
 use crate::models::diesel_schema::queries;
 use crate::models::{Query, QueryStatus};
-use crate::{ListParams, OrderBy, FilterBy, OrderDirection};
-use crate::Connection;
+use crate::{FilterBy, ListParams, OrderBy, OrderDirection};
 use snafu::ResultExt;
 use uuid::Uuid;
-
-
 
 macro_rules! order_by {
     ($query:expr, $direction:ident, $field:expr) => {
@@ -62,30 +60,17 @@ pub async fn delete_query(conn: &mut Connection, id: Uuid) -> Result<usize> {
         .context(DieselSnafu)
 }
 
-
 pub async fn list_queries(conn: &mut Connection, params: ListParams) -> Result<Vec<Query>> {
     // map params to orm request in other way
-    let mut query = queries::table
-        .select(Query::as_select())
-        .into_boxed();
+    let mut query = queries::table.select(Query::as_select()).into_boxed();
 
     for filter_by in params.filter_by {
         query = match filter_by {
-            FilterBy::Status(status) => {
-                query.filter(queries::status.eq(status))
-            },
-            FilterBy::Source(source) => {
-                query.filter(queries::source.eq(source))
-            },
-            FilterBy::Format(format) => {
-                query.filter(queries::result_format.eq(format))
-            },
-            FilterBy::Sql(sql) => {
-                query.filter(queries::sql.like(format!("%{sql}%")))
-            },
-            FilterBy::Error(error) => {
-                query.filter(queries::error.like(format!("%{error}%")))
-            },
+            FilterBy::Status(status) => query.filter(queries::status.eq(status)),
+            FilterBy::Source(source) => query.filter(queries::source.eq(source)),
+            FilterBy::Format(format) => query.filter(queries::result_format.eq(format)),
+            FilterBy::Sql(sql) => query.filter(queries::sql.like(format!("%{sql}%"))),
+            FilterBy::Error(error) => query.filter(queries::error.like(format!("%{error}%"))),
         };
     }
 
@@ -100,18 +85,18 @@ pub async fn list_queries(conn: &mut Connection, params: ListParams) -> Result<V
             OrderBy::Format(direction) => {
                 order_by!(query, direction, queries::result_format)
             }
-            OrderBy::Timestamp(direction, status) => {
-                match status {
-                    QueryStatus::Created => order_by!(query, direction, queries::created_at),
-                    QueryStatus::LimitExceeded => order_by!(query, direction, queries::limit_exceeded_at),                    
-                    QueryStatus::Queued => order_by!(query, direction, queries::queued_at),
-                    QueryStatus::Running => order_by!(query, direction, queries::running_at),
-                    QueryStatus::Successful => order_by!(query, direction, queries::successful_at),
-                    QueryStatus::Failed => order_by!(query, direction, queries::failed_at),
-                    QueryStatus::Cancelled => order_by!(query, direction, queries::cancelled_at),
-                    QueryStatus::TimedOut => order_by!(query, direction, queries::timedout_at),
+            OrderBy::Timestamp(direction, status) => match status {
+                QueryStatus::Created => order_by!(query, direction, queries::created_at),
+                QueryStatus::LimitExceeded => {
+                    order_by!(query, direction, queries::limit_exceeded_at)
                 }
-            }
+                QueryStatus::Queued => order_by!(query, direction, queries::queued_at),
+                QueryStatus::Running => order_by!(query, direction, queries::running_at),
+                QueryStatus::Successful => order_by!(query, direction, queries::successful_at),
+                QueryStatus::Failed => order_by!(query, direction, queries::failed_at),
+                QueryStatus::Cancelled => order_by!(query, direction, queries::cancelled_at),
+                QueryStatus::TimedOut => order_by!(query, direction, queries::timedout_at),
+            },
             OrderBy::Duration(direction) => {
                 order_by!(query, direction, queries::duration_ms)
             }

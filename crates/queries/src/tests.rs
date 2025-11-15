@@ -3,7 +3,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::Connection;
-use crate::{Queries, QueriesDb, Query, QuerySource, ResultFormat, ListParams, FilterBy, OrderBy, OrderDirection, QueryStatus};
+use crate::{
+    FilterBy, ListParams, OrderBy, OrderDirection, Queries, QueriesDb, Query, QuerySource,
+    QueryStatus, ResultFormat,
+};
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::deadpool::Pool;
 use diesel_async::{AsyncPgConnection, SimpleAsyncConnection};
@@ -61,7 +64,7 @@ async fn test_queries_db() {
         .await
         .expect("Failed to add query");
 
-    item.set_successful(1);   
+    item.set_successful(1);
 
     let updated_query = queries
         .update(item.clone())
@@ -69,34 +72,54 @@ async fn test_queries_db() {
         .expect("Failed to update query");
     // timestamps not equal after loading from db, as postgres preserves just microseconds
     assert_ne!(updated_query.successful_at, item.successful_at);
-    assert_eq!(updated_query.successful_at.map(|t|t.timestamp_micros()), item.successful_at.map(|t|t.timestamp_micros()));
+    assert_eq!(
+        updated_query.successful_at.map(|t| t.timestamp_micros()),
+        item.successful_at.map(|t| t.timestamp_micros())
+    );
     // check rest of the fields
     assert_eq!(updated_query.sql, item.sql);
     assert_eq!(updated_query.source, item.source);
     assert_eq!(updated_query.result_format, item.result_format);
     assert_eq!(updated_query.request_id, item.request_id);
     assert_eq!(updated_query.request_metadata, request_metadata);
-    assert_ne!(updated_query.created_at, updated_query.successful_at.unwrap());
+    assert_ne!(
+        updated_query.created_at,
+        updated_query.successful_at.unwrap()
+    );
     assert_eq!(updated_query.rows_count, 1);
     assert!(updated_query.failed_at.is_none());
     assert!(updated_query.duration_ms > 0);
 
     let list_params = ListParams::new()
         .with_filter_by(vec![FilterBy::Status(QueryStatus::Successful)])
-        .with_order_by(vec![OrderBy::Timestamp(OrderDirection::Desc, QueryStatus::Created)]);
-    let list = queries.list(list_params).await.expect("Failed to list queries");
+        .with_order_by(vec![OrderBy::Timestamp(
+            OrderDirection::Desc,
+            QueryStatus::Created,
+        )]);
+    let list = queries
+        .list(list_params)
+        .await
+        .expect("Failed to list queries");
     assert_eq!(list.len(), 1);
 
-    let list_params = ListParams::new()
-        .with_filter_by(vec![FilterBy::Status(QueryStatus::Failed)]);
-    let list = queries.list(list_params).await.expect("Failed to list queries");
+    let list_params = ListParams::new().with_filter_by(vec![FilterBy::Status(QueryStatus::Failed)]);
+    let list = queries
+        .list(list_params)
+        .await
+        .expect("Failed to list queries");
     assert_eq!(list.len(), 0);
 
-    let deleted = queries.delete(item.id).await.expect("Failed to delete query");
+    let deleted = queries
+        .delete(item.id)
+        .await
+        .expect("Failed to delete query");
     assert_eq!(deleted, 1);
 
-    let list_params = ListParams::new()
-        .with_filter_by(vec![FilterBy::Status(QueryStatus::Successful)]);
-    let list = queries.list(list_params).await.expect("Failed to list queries");
+    let list_params =
+        ListParams::new().with_filter_by(vec![FilterBy::Status(QueryStatus::Successful)]);
+    let list = queries
+        .list(list_params)
+        .await
+        .expect("Failed to list queries");
     assert_eq!(list.len(), 0);
 }
