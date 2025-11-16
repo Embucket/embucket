@@ -35,7 +35,17 @@ utoipa-swagger-ui = { workspace = true }
 strum.workspace = true
 serde_yaml = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 snafu = { workspace = true }
+url = { workspace = true }
+object_store = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+iceberg-rust-spec = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
 
 [lints]
 workspace = true

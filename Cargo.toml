@@ -101,6 +101,9 @@ datafusion-physical-plan = { git = "https://github.com/Embucket/datafusion.git",
 datafusion-doc = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
 datafusion-macros = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
 
+[patch."https://github.com/Embucket/iceberg-rust.git"]
+iceberg-rust-spec = { path = "vendor/iceberg-rust-spec" }
+
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = 1 }

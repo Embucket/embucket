@@ -15,7 +15,7 @@ use dashmap::DashMap;
 use iceberg_rust::catalog::commit::{TableUpdate as IcebergTableUpdate, apply_table_updates};
 use iceberg_rust_spec::{
     schema::Schema as IcebergSchema,
-    table_metadata::{FormatVersion, TableMetadataBuilder},
+    table_metadata::{FormatVersion, TableMetadata, TableMetadataBuilder},
     types::{StructField, Type},
 };
 use object_store::{ObjectStore, PutPayload, path::Path};
@@ -23,6 +23,17 @@ use snafu::ResultExt;
 use tokio::sync::RwLock;
 use tracing::instrument;
 use uuid::Uuid;
+
+#[derive(Debug)]
+pub struct RegisterTableFromMetadataArgs {
+    pub metadata: TableMetadata,
+    pub metadata_location: String,
+    pub volume_ident: VolumeIdent,
+    pub volume_location: Option<String>,
+    pub format: TableFormat,
+    pub properties: Option<HashMap<String, String>>,
+    pub is_temporary: bool,
+}
 
 #[async_trait]
 pub trait Metastore: std::fmt::Debug + Send + Sync {
@@ -59,6 +70,11 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
         &self,
         ident: &TableIdent,
         table: TableCreateRequest,
+    ) -> Result<RwObject<Table>>;
+    async fn register_table_from_metadata(
+        &self,
+        ident: &TableIdent,
+        args: RegisterTableFromMetadataArgs,
     ) -> Result<RwObject<Table>>;
     async fn get_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Table>>>;
     async fn update_table(
@@ -551,6 +567,62 @@ impl Metastore for InMemoryMetastore {
             volume_location: table.location,
             is_temporary: table.is_temporary.unwrap_or(false),
             format: table.format.unwrap_or(TableFormat::Iceberg),
+        };
+
+        let row = RwObject::new(stored_table);
+        state.tables.insert(Self::table_key(ident), row.clone());
+        Ok(row)
+    }
+
+    async fn register_table_from_metadata(
+        &self,
+        ident: &TableIdent,
+        args: RegisterTableFromMetadataArgs,
+    ) -> Result<RwObject<Table>> {
+        let RegisterTableFromMetadataArgs {
+            metadata,
+            metadata_location,
+            volume_ident,
+            volume_location,
+            format,
+            properties,
+            is_temporary,
+        } = args;
+        let mut state = self.state.write().await;
+        if !state
+            .schemas
+            .contains_key(&Self::schema_key(&ident.clone().into()))
+        {
+            return metastore_error::SchemaNotFoundSnafu {
+                schema: ident.schema.clone(),
+                db: ident.database.clone(),
+            }
+            .fail();
+        }
+
+        if state.tables.contains_key(&Self::table_key(ident)) {
+            return metastore_error::TableAlreadyExistsSnafu {
+                table: ident.table.clone(),
+                schema: ident.schema.clone(),
+                db: ident.database.clone(),
+            }
+            .fail();
+        }
+
+        Self::ensure_volume(&state, &volume_ident)?;
+
+        let mut properties = properties.unwrap_or_default();
+        Self::update_properties_timestamps(&mut properties);
+
+        let stored_table = Table {
+            ident: ident.clone(),
+            metadata,
+            metadata_location,
+            properties,
+            volume_ident: Some(volume_ident),
+            volume_location,
+            is_temporary,
+            format,
         };
 
         let row = RwObject::new(stored_table);

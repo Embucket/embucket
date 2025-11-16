@@ -52,6 +52,10 @@ impl CachedEntity {
     }
 }
 
+fn normalize_catalog_name(name: &str) -> String {
+    name.to_ascii_lowercase()
+}
+
 pub struct EmbucketCatalogList {
     pub metastore: Arc<dyn Metastore>,
     pub table_object_store: Arc<DashMap<String, Arc<dyn ObjectStore>>>,
@@ -76,17 +80,19 @@ impl EmbucketCatalogList {
         err
     )]
     pub async fn drop_catalog(&self, name: &str, cascade: bool) -> Result<()> {
-        let Some((_, catalog)) = self.catalogs.remove(name) else {
+        let key = normalize_catalog_name(name);
+        let Some((_, catalog)) = self.catalogs.remove(&key) else {
             return InvalidCacheSnafu {
                 entity: "catalog",
                 name,
             }
             .fail();
         };
+        let catalog_name = catalog.name.clone();
         match catalog.catalog_type {
             CatalogType::Embucket | CatalogType::Memory => self
                 .metastore
-                .delete_database(&name.to_string(), cascade)
+                .delete_database(&catalog_name, cascade)
                 .await
                 .context(MetastoreSnafu),
             CatalogType::S3tables => NotImplementedSnafu {
@@ -132,7 +138,7 @@ impl EmbucketCatalogList {
             VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), catalog_name).await?,
         };
         self.catalogs
-            .insert(catalog_name.to_owned(), Arc::new(catalog));
+            .insert(normalize_catalog_name(catalog_name), Arc::new(catalog));
         Ok(())
     }
 
@@ -159,8 +165,8 @@ impl EmbucketCatalogList {
         // Add metastore databases as catalogs
         all_catalogs.extend(self.internal_catalogs().await?);
         for catalog in all_catalogs {
-            self.catalogs
-                .insert(catalog.name.clone(), Arc::new(catalog));
+            let key = normalize_catalog_name(&catalog.name);
+            self.catalogs.insert(key, Arc::new(catalog));
         }
         Ok(())
     }
@@ -258,7 +264,8 @@ impl EmbucketCatalogList {
         &self,
         name: &str,
     ) -> Result<dashmap::mapref::one::Ref<'_, String, Arc<CachingCatalog>>> {
-        self.catalogs.get(name).ok_or_else(|| {
+        let key = normalize_catalog_name(name);
+        self.catalogs.get(&key).ok_or_else(|| {
             InvalidCacheSnafu {
                 entity: "catalog",
                 name,
@@ -460,11 +467,11 @@ impl EmbucketCatalogList {
                 match self.internal_catalogs().await {
                     Ok(catalogs) => {
                         for catalog in catalogs {
-                            if self.catalogs.contains_key(&catalog.name) {
+                            let key = normalize_catalog_name(&catalog.name);
+                            if self.catalogs.contains_key(&key) {
                                 continue;
                             }
-                            self.catalogs
-                                .insert(catalog.name.clone(), Arc::new(catalog));
+                            self.catalogs.insert(key, Arc::new(catalog));
                         }
                     }
                     Err(e) => {
@@ -540,12 +547,11 @@ impl CatalogProviderList for EmbucketCatalogList {
         catalog: Arc<dyn CatalogProvider>,
     ) -> Option<Arc<dyn CatalogProvider>> {
         let catalog = CachingCatalog::new(catalog, name);
-        self.catalogs
-            .insert(catalog.name.clone(), Arc::new(catalog))
-            .map(|arc| {
-                let catalog: Arc<dyn CatalogProvider> = arc;
-                catalog
-            })
+        let key = normalize_catalog_name(&catalog.name);
+        self.catalogs.insert(key, Arc::new(catalog)).map(|arc| {
+            let catalog: Arc<dyn CatalogProvider> = arc;
+            catalog
+        })
     }
 
     #[tracing::instrument(
@@ -554,14 +560,18 @@ impl CatalogProviderList for EmbucketCatalogList {
         skip(self)
     )]
     fn catalog_names(&self) -> Vec<String> {
-        self.catalogs.iter().map(|c| c.key().clone()).collect()
+        self.catalogs
+            .iter()
+            .map(|c| c.value().name.clone())
+            .collect()
     }
 
     #[allow(clippy::as_conversions)]
     #[tracing::instrument(name = "EmbucketCatalogList::catalog", level = "debug", skip(self))]
     fn catalog(&self, name: &str) -> Option<Arc<dyn CatalogProvider>> {
+        let key = normalize_catalog_name(name);
         self.catalogs
-            .get(name)
+            .get(&key)
             .map(|c| Arc::clone(c.value()) as Arc<dyn CatalogProvider>)
     }
 }

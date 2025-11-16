@@ -1,0 +1,152 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "0ba5daec-9a21-4812-8829-70edb6087933",
+  "location" : "s3://embucket-lakehouse/SERGEI_DB/SF_1/LINEITEM.G8xni6nE/",
+  "last-sequence-number" : 2,
+  "last-updated-ms" : 1763236888000,
+  "last-column-id" : 16,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "L_ORDERKEY",
+      "required" : false,
+      "type" : "decimal(38, 0)"
+    }, {
+      "id" : 2,
+      "name" : "L_PARTKEY",
+      "required" : false,
+      "type" : "decimal(38, 0)"
+    }, {
+      "id" : 3,
+      "name" : "L_SUPPKEY",
+      "required" : false,
+      "type" : "decimal(38, 0)"
+    }, {
+      "id" : 4,
+      "name" : "L_LINENUMBER",
+      "required" : false,
+      "type" : "decimal(38, 0)"
+    }, {
+      "id" : 5,
+      "name" : "L_QUANTITY",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 6,
+      "name" : "L_EXTENDEDPRICE",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 7,
+      "name" : "L_DISCOUNT",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 8,
+      "name" : "L_TAX",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 9,
+      "name" : "L_RETURNFLAG",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 10,
+      "name" : "L_LINESTATUS",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 11,
+      "name" : "L_SHIPDATE",
+      "required" : false,
+      "type" : "date"
+    }, {
+      "id" : 12,
+      "name" : "L_COMMITDATE",
+      "required" : false,
+      "type" : "date"
+    }, {
+      "id" : 13,
+      "name" : "L_RECEIPTDATE",
+      "required" : false,
+      "type" : "date"
+    }, {
+      "id" : 14,
+      "name" : "L_SHIPINSTRUCT",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 15,
+      "name" : "L_SHIPMODE",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 16,
+      "name" : "L_COMMENT",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "format-version" : "2"
+  },
+  "current-snapshot-id" : 4873099874937184023,
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 4270286110636239849,
+    "timestamp-ms" : 1763236888000,
+    "manifest-list" : "s3://embucket-lakehouse/SERGEI_DB/SF_1/LINEITEM.G8xni6nE/metadata/snap-1763236888000000000-11d13bb0-c2ac-42b1-9bb4-bda574d98cc8.avro",
+    "schema-id" : 0,
+    "summary" : {
+      "manifests-created" : "1",
+      "total-records" : "600572",
+      "added-files-size" : "15037440",
+      "manifests-kept" : "0",
+      "total-files-size" : "15037440",
+      "added-records" : "600572",
+      "added-data-files" : "1",
+      "manifests-replaced" : "0",
+      "total-data-files" : "1"
+    }
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 4873099874937184023,
+    "timestamp-ms" : 1763236888000,
+    "manifest-list" : "s3://embucket-lakehouse/SERGEI_DB/SF_1/LINEITEM.G8xni6nE/metadata/snap-1763236888000000000-f16883f6-7139-4fbf-aa5b-c21ba0fc573a.avro",
+    "schema-id" : 0,
+    "summary" : {
+      "manifests-created" : "1",
+      "total-records" : "600572",
+      "added-files-size" : "15037440",
+      "manifests-kept" : "0",
+      "operation" : "append",
+      "total-files-size" : "15037440",
+      "added-records" : "600572",
+      "added-data-files" : "1",
+      "manifests-replaced" : "0",
+      "total-data-files" : "1"
+    }
+  } ],
+  "snapshot-log" : [ {
+    "snapshot-id" : 4270286110636239849,
+    "timestamp-ms" : 1763236888000
+  }, {
+    "snapshot-id" : 4873099874937184023,
+    "timestamp-ms" : 1763236888000
+  } ]
+}

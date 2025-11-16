@@ -60,6 +60,12 @@ volumes:
 databases:
   - ident: my_db
     volume: demo
+tables:
+  - database: my_db
+    schema: public
+    table: imported_orders
+    # path to the Iceberg metadata.json stored inside the same S3 bucket as `demo`
+    metadata_location: s3://my-table-bucket/my_db/public/imported_orders/metadata/00001.metadata.json
   # S3 volume - connects to standard S3 bucket
   # - ident: volume
   #   type: s3
@@ -71,6 +77,17 @@ databases:
 ```
 
 Update the credentials and ARN/bucket details with your own values for real deployments.
+
+Tables listed under `tables` are treated as existing Iceberg tables. Embucket downloads the
+referenced `metadata.json` from the database's S3 bucket at startup, registers the table in the
+metastore, and makes it immediately queryable. Metadata paths must:
+
+- Use the `s3://` scheme and live in the same bucket as the volume backing the database.
+- Point to a valid Iceberg metadata file (typically under `<db>/<schema>/<table>/metadata/`).
+- Reference tables stored in S3 (File and Memory volumes are not supported for table import).
+
+If a metadata file is missing or cannot be read, Embucket logs the error and fails to start to
+avoid inconsistent catalogs.
 
 ## What just happened?
 

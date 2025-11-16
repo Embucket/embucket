@@ -99,6 +99,7 @@ impl UserSession {
                         true,
                     )
                     .set_bool("datafusion.sql_parser.parse_float_as_decimal", true)
+                    .set_bool("datafusion.sql_parser.enable_ident_normalization", true)
                     .set_usize(
                         "datafusion.execution.parquet.maximum_parallel_row_group_writers",
                         parallelism_opt.map_or(1, |x| (x / PARALLEL_ROW_GROUP_RATIO).max(1)),
@@ -127,6 +128,10 @@ impl UserSession {
         //register_geo_udfs(&ctx);
 
         let enable_ident_normalization = ctx.enable_ident_normalization();
+        tracing::debug!(
+            enable_ident_normalization,
+            "sql parser ident normalization flag"
+        );
         let session = Self {
             metastore,
             running_queries,

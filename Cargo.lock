@@ -3070,16 +3070,22 @@ version = "0.1.0"
 dependencies = [
  "api-snowflake-rest",
  "api-snowflake-rest-sessions",
+ "async-trait",
  "axum 0.8.6",
+ "bytes",
  "catalog-metastore",
+ "chrono",
  "clap",
  "console-subscriber",
  "dotenv",
  "executor",
+ "iceberg-rust-spec",
+ "object_store",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "serde",
+ "serde_json",
  "serde_yaml",
  "snafu",
  "strum 0.27.2",
@@ -3093,9 +3099,11 @@ dependencies = [
  "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
  "utoipa",
  "utoipa-axum",
  "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]
@@ -4184,7 +4192,6 @@ dependencies = [
 [[package]]
 name = "iceberg-rust-spec"
 version = "0.8.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
 dependencies = [
  "apache-avro",
  "arrow-schema 56.2.0",

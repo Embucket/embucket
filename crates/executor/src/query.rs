@@ -84,6 +84,7 @@ use functions::visitors::{
     like_ilike_any, rlike_regexp_expr_rewriter, select_expr_aliases, table_functions,
     table_functions_cte_relation, timestamp, top_limit,
     unimplemented::functions_checker::visit as unimplemented_functions_checker,
+    uppercase_identifiers,
 };
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::catalog::create::CreateTableBuilder;
@@ -277,6 +278,7 @@ impl UserQuery {
         };
         if let DFStatement::Statement(value) = statement {
             rlike_regexp_expr_rewriter::visit(value);
+            uppercase_identifiers::visit(value);
             functions_rewriter::visit(value);
             like_ilike_any::visit(value);
             top_limit::visit(value);
@@ -339,7 +341,7 @@ impl UserQuery {
                     return self.status_response();
                 }
                 Statement::Use(entity) => {
-                    let (variable, value) = match entity {
+                    let (variable, mut value) = match entity {
                         Use::Catalog(n) => ("catalog", n.to_string()),
                         Use::Schema(n) => ("schema", n.to_string()),
                         Use::Database(n) => ("database", n.to_string()),
@@ -351,6 +353,9 @@ impl UserQuery {
                     };
                     if variable.is_empty() | value.is_empty() {
                         return ex_error::OnyUseWithVariablesSnafu.fail();
+                    }
+                    if matches!(variable, "catalog" | "database" | "schema") {
+                        value = value.to_ascii_lowercase();
                     }
                     let params = HashMap::from([(
                         variable.to_string(),
@@ -2042,7 +2047,7 @@ impl UserQuery {
                     .into_iter()
                     .map(|ident| match ident {
                         ObjectNamePart::Identifier(ident) => {
-                            self.normalize_ident(ident).to_string()
+                            Self::normalize_ident(ident).to_string()
                         }
                         ObjectNamePart::Function(_) => String::new(),
                     })
@@ -2690,7 +2695,7 @@ impl UserQuery {
         let normalized_idents = table_ident
             .into_iter()
             .map(|part| match part {
-                ObjectNamePart::Identifier(ident) => self.normalize_ident(ident),
+                ObjectNamePart::Identifier(ident) => Self::normalize_ident(ident),
                 ObjectNamePart::Function(_) => Ident::new(String::new()),
             })
             .filter(|ident| !ident.value.is_empty())
@@ -2725,7 +2730,7 @@ impl UserQuery {
         let normalized_idents = schema_ident
             .into_iter()
             .map(|part| match part {
-                ObjectNamePart::Identifier(ident) => self.normalize_ident(ident),
+                ObjectNamePart::Identifier(ident) => Self::normalize_ident(ident),
                 ObjectNamePart::Function(_) => Ident::new(String::new()),
             })
             .filter(|ident| !ident.value.is_empty())
@@ -2733,10 +2738,10 @@ impl UserQuery {
         Ok(NormalizedIdent(normalized_idents))
     }
 
-    fn normalize_ident(&self, ident: Ident) -> Ident {
+    fn normalize_ident(ident: Ident) -> Ident {
         match ident.quote_style {
             Some(qs) => Ident::with_quote(qs, ident.value),
-            None => Ident::new(self.session.ident_normalizer.normalize(ident)),
+            None => Ident::new(ident.value.to_ascii_uppercase()),
         }
     }
 
