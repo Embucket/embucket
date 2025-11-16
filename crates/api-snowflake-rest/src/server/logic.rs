@@ -58,6 +58,7 @@ pub async fn handle_query_request(
         sql_text,
         async_exec,
     } = query_body;
+    let async_exec = async_exec.unwrap_or(false);
 
     let serialization_format = state.config.dbt_serialization_format;
     let mut query_context = QueryContext::default()

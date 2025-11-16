@@ -1,4 +1,4 @@
-use super::handlers::{abort, login, query};
+use super::handlers::{abort, login, query, session};
 use super::state::AppState;
 use axum::Router;
 use axum::routing::post;
@@ -16,7 +16,9 @@ use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 
 pub fn create_auth_router() -> Router<AppState> {
-    Router::new().route("/session/v1/login-request", post(login))
+    Router::new()
+        .route("/session/v1/login-request", post(login))
+        .route("/session", post(session))
 }
 
 pub fn create_router() -> Router<AppState> {

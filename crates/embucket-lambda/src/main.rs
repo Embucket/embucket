@@ -127,12 +127,24 @@ impl LambdaApp {
 
     async fn handle_event(&self, request: Request) -> Result<Response<LambdaBody>, LambdaError> {
         let (mut parts, body) = request.into_parts();
+        let body_bytes = lambda_body_into_bytes(body);
+
+        {
+            let body_preview = String::from_utf8_lossy(&body_bytes);
+            info!(
+                method = %parts.method,
+                uri = %parts.uri,
+                headers = ?parts.headers,
+                body = %body_preview,
+                "Received incoming HTTP request"
+            );
+        }
 
         if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
             return Ok(snowflake_error_response(&err));
         }
 
-        let mut axum_request = to_axum_request(parts, body);
+        let mut axum_request = to_axum_request(parts, body_bytes);
         if let Some(addr) = extract_socket_addr(axum_request.headers()) {
             axum_request.extensions_mut().insert(ConnectInfo(addr));
         }
@@ -148,13 +160,16 @@ impl LambdaApp {
     }
 }
 
-fn to_axum_request(parts: http::request::Parts, body: LambdaBody) -> http::Request<AxumBody> {
-    let bytes = match body {
+fn to_axum_request(parts: http::request::Parts, body: Vec<u8>) -> http::Request<AxumBody> {
+    http::Request::from_parts(parts, AxumBody::from(body))
+}
+
+fn lambda_body_into_bytes(body: LambdaBody) -> Vec<u8> {
+    match body {
         LambdaBody::Empty => Vec::new(),
         LambdaBody::Text(text) => text.into_bytes(),
         LambdaBody::Binary(data) => data,
-    };
-    http::Request::from_parts(parts, AxumBody::from(bytes))
+    }
 }
 
 async fn from_axum_response(
@@ -166,6 +181,14 @@ async fn from_axum_response(
         .await
         .map_err(|err| -> LambdaError { Box::new(err) })?
         .to_bytes();
+    let body_preview = String::from_utf8_lossy(bytes.as_ref());
+
+    info!(
+        status = %parts.status,
+        headers = ?parts.headers,
+        body = %body_preview,
+        "Sending HTTP response"
+    );
 
     let mut lambda_response = Response::new(LambdaBody::Binary(bytes.to_vec()));
     *lambda_response.status_mut() = parts.status;
@@ -213,11 +236,18 @@ fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
     let (status, axum::Json(body)) = err.prepare_response();
     let payload =
         serde_json::to_string(&body).unwrap_or_else(|_| "{\"success\":false}".to_string());
+    let body_preview = payload.clone();
     let mut response = Response::new(LambdaBody::Text(payload));
     *response.status_mut() = status;
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    info!(
+        status = %response.status(),
+        headers = ?response.headers(),
+        body = %body_preview,
+        "Sending HTTP error response"
+    );
     response
 }
 

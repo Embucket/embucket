@@ -8,7 +8,18 @@ use api_snowflake_rest_sessions::DFSessionId;
 use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
 use executor::RunningQueryId;
+use serde::Deserialize;
 use std::net::SocketAddr;
+
+#[derive(Debug, Deserialize)]
+pub struct SessionQueryParams {
+    #[serde(default)]
+    delete: bool,
+    #[serde(rename = "requestId", alias = "request_id")]
+    request_id: Option<String>,
+    #[serde(rename = "request_guid", alias = "requestGuid")]
+    request_guid: Option<String>,
+}
 
 #[tracing::instrument(name = "api_snowflake_rest::login", level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn login(
@@ -57,5 +68,43 @@ pub async fn abort(
     state
         .execution_svc
         .abort_query(RunningQueryId::ByRequestId(request_id, sql_text))?;
+    Ok(Json(serde_json::value::Value::Null))
+}
+
+#[tracing::instrument(
+    name = "api_snowflake_rest::session",
+    level = "debug",
+    skip(state, query_params),
+    fields(session_id, request_id, request_guid, delete),
+    err,
+    ret(level = tracing::Level::TRACE)
+)]
+pub async fn session(
+    DFSessionId(session_id): DFSessionId,
+    State(state): State<AppState>,
+    Query(query_params): Query<SessionQueryParams>,
+) -> Result<Json<serde_json::value::Value>> {
+    let SessionQueryParams {
+        delete,
+        request_id,
+        request_guid,
+    } = query_params;
+
+    let span = tracing::Span::current();
+    span.record("session_id", session_id.as_str());
+    if let Some(ref request_id) = request_id {
+        span.record("request_id", request_id.as_str());
+    }
+    if let Some(ref request_guid) = request_guid {
+        span.record("request_guid", request_guid.as_str());
+    }
+    span.record("delete", delete);
+
+    if delete {
+        state.execution_svc.delete_session(&session_id).await?;
+    } else {
+        tracing::debug!("Session endpoint called without delete flag; ignoring request");
+    }
+
     Ok(Json(serde_json::value::Value::Null))
 }

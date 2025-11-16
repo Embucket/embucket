@@ -80,6 +80,27 @@ pub fn handle_query_ok_result(
     // Convert the QueryResult to RecordBatches using the specified serialization format
     // Add columns dbt metadata to each field
     let records = convert_record_batches(&query_result, ser_fmt)?;
+    let total_rows = records
+        .iter()
+        .map(|batch| i64::try_from(batch.num_rows()).unwrap_or(i64::MAX))
+        .sum();
+
+    let row_set = if ser_fmt == DataSerializationFormat::Json {
+        // Convert struct timestamp columns to string representation
+        let records = convert_struct_to_timestamp(&records)?;
+        let serialized_rowset = records_to_json_string(&records)?;
+        let raw_value = RawValue::from_string(serialized_rowset)
+            .context(api_snowflake_rest_error::SerdeJsonSnafu)?;
+        Option::from(raw_value)
+    } else {
+        None
+    };
+    let row_set_base_64 = if ser_fmt == DataSerializationFormat::Arrow {
+        Option::from(records_to_arrow_string(&records)?)
+    } else {
+        None
+    };
+    let returned_rows = total_rows;
 
     let json_resp = JsonResponse {
         data: Option::from(ResponseData {
@@ -89,22 +110,10 @@ pub fn handle_query_ok_result(
                 .map(Into::into)
                 .collect(),
             query_result_format: Some(ser_fmt.to_string().to_lowercase()),
-            row_set: if ser_fmt == DataSerializationFormat::Json {
-                // Convert struct timestamp columns to string representation
-                let records = convert_struct_to_timestamp(&records)?;
-                let serialized_rowset = records_to_json_string(&records)?;
-                let raw_value = RawValue::from_string(serialized_rowset)
-                    .context(api_snowflake_rest_error::SerdeJsonSnafu)?;
-                Option::from(raw_value)
-            } else {
-                None
-            },
-            row_set_base_64: if ser_fmt == DataSerializationFormat::Arrow {
-                Option::from(records_to_arrow_string(&records)?)
-            } else {
-                None
-            },
-            total: Some(1),
+            row_set,
+            row_set_base_64,
+            total: Some(total_rows),
+            returned: Some(returned_rows),
             query_id: Some(query_uuid.to_string()),
             error_code: None,
             sql_state: Some(SqlState::Success.to_string()),

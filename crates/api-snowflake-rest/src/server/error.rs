@@ -231,6 +231,7 @@ impl Error {
                 row_set_base_64: None,
                 row_set: None,
                 total: None,
+                returned: None,
                 query_result_format: None,
                 // Query uuid is returned to the user
                 query_id: Some(self.query_id().as_uuid().to_string()),
