@@ -15,6 +15,8 @@ pub enum OrderBy {
     Format(OrderDirection),
     // we reuse QueryStatus just to point timestamp we want to sort by
     // as every status is directly linked to corresponding timestamp
+    // Also for sorting by finished_at timestamp use any of
+    // LimitExceeded, Successful, Failed, Cancelled, TimedOut.
     Timestamp(OrderDirection, QueryStatus),
     Duration(OrderDirection),
     RowsCount(OrderDirection),

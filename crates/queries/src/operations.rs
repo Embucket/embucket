@@ -37,10 +37,7 @@ pub async fn update_query(conn: &mut Connection, query: Query) -> Result<Query> 
             // created_at was set on create
             queries::dsl::queued_at.eq(query.queued_at),
             queries::dsl::running_at.eq(query.running_at),
-            queries::dsl::successful_at.eq(query.successful_at),
-            queries::dsl::failed_at.eq(query.failed_at),
-            queries::dsl::cancelled_at.eq(query.cancelled_at),
-            queries::dsl::timedout_at.eq(query.timedout_at),
+            queries::dsl::finished_at.eq(query.finished_at),
             queries::dsl::duration_ms.eq(query.duration_ms),
             queries::dsl::rows_count.eq(query.rows_count),
             queries::dsl::result_format.eq(query.result_format),
@@ -87,15 +84,13 @@ pub async fn list_queries(conn: &mut Connection, params: ListParams) -> Result<V
             }
             OrderBy::Timestamp(direction, status) => match status {
                 QueryStatus::Created => order_by!(query, direction, queries::created_at),
-                QueryStatus::LimitExceeded => {
-                    order_by!(query, direction, queries::limit_exceeded_at)
-                }
                 QueryStatus::Queued => order_by!(query, direction, queries::queued_at),
                 QueryStatus::Running => order_by!(query, direction, queries::running_at),
-                QueryStatus::Successful => order_by!(query, direction, queries::successful_at),
-                QueryStatus::Failed => order_by!(query, direction, queries::failed_at),
-                QueryStatus::Cancelled => order_by!(query, direction, queries::cancelled_at),
-                QueryStatus::TimedOut => order_by!(query, direction, queries::timedout_at),
+                QueryStatus::LimitExceeded
+                | QueryStatus::Successful
+                | QueryStatus::Failed
+                | QueryStatus::Cancelled
+                | QueryStatus::TimedOut => order_by!(query, direction, queries::finished_at),
             },
             OrderBy::Duration(direction) => {
                 order_by!(query, direction, queries::duration_ms)

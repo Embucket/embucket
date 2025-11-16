@@ -71,10 +71,10 @@ async fn test_queries_db() {
         .await
         .expect("Failed to update query");
     // timestamps not equal after loading from db, as postgres preserves just microseconds
-    assert_ne!(updated_query.successful_at, item.successful_at);
+    assert_ne!(updated_query.finished_at, item.finished_at);
     assert_eq!(
-        updated_query.successful_at.map(|t| t.timestamp_micros()),
-        item.successful_at.map(|t| t.timestamp_micros())
+        updated_query.finished_at.map(|t| t.timestamp_micros()),
+        item.finished_at.map(|t| t.timestamp_micros())
     );
     // check rest of the fields
     assert_eq!(updated_query.sql, item.sql);
@@ -82,12 +82,9 @@ async fn test_queries_db() {
     assert_eq!(updated_query.result_format, item.result_format);
     assert_eq!(updated_query.request_id, item.request_id);
     assert_eq!(updated_query.request_metadata, request_metadata);
-    assert_ne!(
-        updated_query.created_at,
-        updated_query.successful_at.unwrap()
-    );
+    assert_ne!(updated_query.created_at, updated_query.finished_at.unwrap());
     assert_eq!(updated_query.rows_count, 1);
-    assert!(updated_query.failed_at.is_none());
+    assert_eq!(updated_query.status, QueryStatus::Successful);
     assert!(updated_query.duration_ms > 0);
 
     let list_params = ListParams::new()

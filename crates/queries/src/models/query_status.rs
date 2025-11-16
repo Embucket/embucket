@@ -15,9 +15,9 @@ use std::io::Write;
 #[diesel(sql_type = QueryStatusType)]
 pub enum QueryStatus {
     Created,
-    LimitExceeded,
     Queued,
     Running,
+    LimitExceeded,
     Successful,
     Failed,
     Cancelled,

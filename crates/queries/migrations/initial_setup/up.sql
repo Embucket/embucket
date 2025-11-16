@@ -25,13 +25,9 @@ CREATE TABLE IF NOT EXISTS queries (
     request_id UUID,
     request_metadata JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL, -- NOT NULL
-    limit_exceeded_at TIMESTAMP WITH TIME ZONE,
     queued_at TIMESTAMP WITH TIME ZONE,
     running_at TIMESTAMP WITH TIME ZONE,
-    successful_at TIMESTAMP WITH TIME ZONE,
-    failed_at TIMESTAMP WITH TIME ZONE,
-    cancelled_at TIMESTAMP WITH TIME ZONE,
-    timedout_at TIMESTAMP WITH TIME ZONE,
+    finished_at TIMESTAMP WITH TIME ZONE,
     duration_ms BIGINT NOT NULL,
     rows_count BIGINT NOT NULL,
     error TEXT

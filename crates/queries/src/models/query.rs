@@ -19,13 +19,9 @@ pub struct Query {
     pub request_metadata: Value,
     pub result_format: ResultFormat,
     pub created_at: DateTime<Utc>,
-    pub limit_exceeded_at: Option<DateTime<Utc>>,
     pub queued_at: Option<DateTime<Utc>>,
     pub running_at: Option<DateTime<Utc>>,
-    pub successful_at: Option<DateTime<Utc>>,
-    pub failed_at: Option<DateTime<Utc>>,
-    pub cancelled_at: Option<DateTime<Utc>>,
-    pub timedout_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
     pub duration_ms: i64,
     pub rows_count: i64,
     pub error: Option<String>,
@@ -43,13 +39,9 @@ impl Query {
             request_id: None,
             request_metadata: Value::Null,
             created_at: Utc::now(),
-            limit_exceeded_at: None,
             queued_at: None,
             running_at: None,
-            successful_at: None,
-            failed_at: None,
-            cancelled_at: None,
-            timedout_at: None,
+            finished_at: None,
             duration_ms: 0,
             rows_count: 0,
             error: None,
@@ -92,18 +84,18 @@ impl Query {
         let now = Utc::now();
         match status {
             QueryStatus::Created => {} // created_at is set in constructor once
-            QueryStatus::LimitExceeded => self.limit_exceeded_at = Some(now),
             QueryStatus::Queued => self.queued_at = Some(now),
             QueryStatus::Running => self.running_at = Some(now),
-            QueryStatus::Successful => {
-                self.successful_at = Some(now);
+            QueryStatus::LimitExceeded
+            | QueryStatus::Failed
+            | QueryStatus::Cancelled
+            | QueryStatus::TimedOut
+            | QueryStatus::Successful => {
+                self.finished_at = Some(now);
                 self.duration_ms = now
                     .signed_duration_since(self.created_at)
                     .num_milliseconds();
             }
-            QueryStatus::Failed => self.failed_at = Some(now),
-            QueryStatus::Cancelled => self.cancelled_at = Some(now),
-            QueryStatus::TimedOut => self.timedout_at = Some(now),
         }
     }
 
