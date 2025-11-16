@@ -33,7 +33,7 @@ impl FromSql<QueryStatusType, Pg> for QueryStatus {
             b"running" => Ok(Self::Running),
             b"successful" => Ok(Self::Successful),
             b"failed" => Ok(Self::Failed),
-            b"canceled" => Ok(Self::Cancelled),
+            b"cancelled" => Ok(Self::Cancelled),
             b"timed_out" => Ok(Self::TimedOut),
             _ => Err("Unrecognized enum variant".into()),
         }
@@ -49,7 +49,7 @@ impl ToSql<QueryStatusType, Pg> for QueryStatus {
             Self::Running => out.write_all(b"running")?,
             Self::Successful => out.write_all(b"successful")?,
             Self::Failed => out.write_all(b"failed")?,
-            Self::Cancelled => out.write_all(b"canceled")?,
+            Self::Cancelled => out.write_all(b"cancelled")?,
             Self::TimedOut => out.write_all(b"timed_out")?,
         }
         Ok(IsNull::No)

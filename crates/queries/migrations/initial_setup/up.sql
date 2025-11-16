@@ -12,7 +12,7 @@ CREATE TYPE query_status_type AS ENUM (
     'running',
     'successful',
     'failed',
-    'canceled',
+    'cancelled',
     'timed_out'
 );
 
