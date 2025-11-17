@@ -35,7 +35,6 @@ use catalog_metastore::{
     Volume, VolumeType,
 };
 use tokio::sync::RwLock;
-use tokio::sync::oneshot;
 use tokio::time::{Duration, timeout};
 use tracing::Instrument;
 use uuid::Uuid;
@@ -446,22 +445,6 @@ impl ExecutionService for CoreExecutionService {
         sessions.contains_key(session_id)
     }
 
-    // #[tracing::instrument(
-    //     name = "ExecutionService::delete_session",
-    //     level = "debug",
-    //     skip(self),
-    //     fields(new_sessions_count),
-    //     err
-    // )]
-    // async fn delete_session(&self, session_id: String) -> Result<()> {
-    //     // TODO: Need to have a timeout for the lock
-    //     let mut session_list = self.df_sessions.write().await;
-    //     session_list.remove(&session_id);
-
-    //     // Record the result as part of the current span.
-    //     tracing::Span::current().record("new_sessions_count", session_list.len());
-    //     Ok(())
-    // }
     fn get_sessions(&self) -> Arc<RwLock<HashMap<String, Arc<UserSession>>>> {
         self.df_sessions.clone()
     }
@@ -500,21 +483,10 @@ impl ExecutionService for CoreExecutionService {
             return ex_error::QueryIsntRunningSnafu { query_id }.fail();
         }
 
-        let recv_result = query_handle.rx.await;
-        // do some handling on result recv error
-        if recv_result.is_err() {
-            // just in case, log error in this way
-            tracing::error_span!(
-                "error_receiving_query_result_status",
-                query_id = query_id.as_i64(),
-                query_uuid = query_id.as_uuid().to_string(),
-            );
-        }
-
-        let query_result_status =
-            recv_result.context(ex_error::QueryResultRecvSnafu { query_id })?;
-
-        Ok(query_result_status.query_result?)
+        let query_result_status = query_handle.handle
+            .await
+            .context(ex_error::AsyncResultTaskJoinSnafu { query_id })?;
+        query_result_status.query_result
     }
 
     #[tracing::instrument(
@@ -569,8 +541,6 @@ impl ExecutionService for CoreExecutionService {
         let query_timeout_secs = self.config.query_timeout_secs;
         let queries_ref = self.queries.clone();
 
-        let (tx, rx) = oneshot::channel();
-
         let child = tracing::info_span!("spawn_query_task");
 
         let alloc_span = tracing::info_span!(
@@ -579,7 +549,7 @@ impl ExecutionService for CoreExecutionService {
             query_id = %query_id.as_i64(),
             session_id = %session_id
         );
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut query_obj = query_obj;
             // Execute the query with a timeout to prevent long-running or stuck queries
             // from blocking system resources indefinitely. If the timeout is exceeded,
@@ -635,24 +605,15 @@ impl ExecutionService for CoreExecutionService {
 
             query_obj.session.record_query_id(query_id);
 
-            // Send result to the result owner
-            if tx.send(query_result_status).is_err() {
-                // Error happens if receiver is dropped
-                // (natural in case if query submitted result owner doesn't listen)
-                tracing::error_span!("no_receiver_on_query_result_status",
-                    query_id = query_id.as_i64(),
-                    query_uuid = query_id.as_uuid().to_string(),
-                );
-            }
-
             // notify listeners that historical result is ready
             if let Ok(running_query) = running_query {
                 let _ = running_query.notify_query_finished(query_status);
             }
+            query_result_status
         }.instrument(alloc_span).instrument(child));
 
         // return handle of the query we just submit
-        Ok(AsyncQueryHandle { query_id, rx })
+        Ok(AsyncQueryHandle { query_id, handle })
     }
 
     #[tracing::instrument(

@@ -587,22 +587,6 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Query [{}] result sending error", query_id.as_uuid()))]
-    QueryResultSend {
-        query_id: QueryRecordId,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("Query [{}] result recv error: {error}", query_id.as_uuid()))]
-    QueryResultRecv {
-        query_id: QueryRecordId,
-        #[snafu(source)]
-        error: tokio::sync::oneshot::error::RecvError,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("Query [{}] result notify error: {error}", query_id.as_uuid()))]
     QueryStatusRecv {
         query_id: QueryRecordId,
@@ -629,6 +613,15 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Failed to get async result for query [{query_id}]: {error}"))]
+    AsyncResultTaskJoin {
+        #[snafu(source)]
+        error: tokio::task::JoinError,
+        query_id: QueryRecordId,
+        #[snafu(implicit)]
+        location: Location,
+    }    
 }
 
 impl Error {

@@ -6,12 +6,12 @@ use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub struct AsyncQueryHandle {
     pub query_id: QueryRecordId,
-    pub rx: oneshot::Receiver<QueryResultStatus>,
+    pub handle: JoinHandle<QueryResultStatus>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
