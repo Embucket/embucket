@@ -1669,58 +1669,6 @@ impl UserQuery {
             .fail();
         }
         self.execute_logical_plan(plan).await?;
-
-        //
-        // let ident: MetastoreSchemaIdent = self.resolve_schema_object_name(schema_name.0)?.into();
-        // let plan = self.sql_statement_to_plan(statement).await?;
-        // let catalog = self.get_catalog(&ident.database)?;
-        //
-        // let downcast_result = self
-        //     .resolve_iceberg_catalog_or_execute(catalog.clone(), ident.database.clone(), plan)
-        //     .await;
-        // let iceberg_catalog = match downcast_result {
-        //     IcebergCatalogResult::Catalog(catalog) => catalog,
-        //     IcebergCatalogResult::Result(result) => {
-        //         return result.map(|_| self.created_entity_response())?;
-        //     }
-        // };
-        //
-        // let schema_exists = iceberg_catalog
-        //     .list_namespaces(None)
-        //     .await
-        //     .context(ex_error::IcebergSnafu)?
-        //     .iter()
-        //     .any(|namespace| namespace.join(".") == ident.schema);
-        //
-        // if schema_exists {
-        //     if if_not_exists {
-        //         return self.created_entity_response();
-        //     }
-        //     return ex_error::ObjectAlreadyExistsSnafu {
-        //         r#type: ExistingObjectType::Schema,
-        //         name: ident.schema,
-        //     }
-        //     .fail();
-        // }
-        // let namespace = Namespace::try_new(std::slice::from_ref(&ident.schema))
-        //     .map_err(|err| DataFusionError::External(Box::new(err)))
-        //     .context(ex_error::DataFusionSnafu)?;
-        // iceberg_catalog
-        //     .create_namespace(&namespace, None)
-        //     .await
-        //     .context(ex_error::IcebergSnafu)?;
-        // if let Some(mirror) = Self::get_iceberg_mirror(&catalog) {
-        //     catalog
-        //         .register_schema(
-        //             &namespace.to_string(),
-        //             Arc::new(IcebergSchema::new(namespace.clone(), mirror)),
-        //         )
-        //         .context(ex_error::DataFusionSnafu)?;
-        // }
-        //
-        // self.refresh_catalog_partially(CachedEntity::Schema(ident))
-        //     .await?;
-
         self.created_entity_response()
     }
 
