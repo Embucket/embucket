@@ -25,8 +25,8 @@ use catalog::catalog_list::CachedEntity;
 use catalog::table::CachingTable;
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
-    SchemaIdent as MetastoreSchemaIdent, TableCreateRequest as MetastoreTableCreateRequest,
-    TableFormat as MetastoreTableFormat, TableIdent as MetastoreTableIdent, Volume, VolumeType,
+    TableCreateRequest as MetastoreTableCreateRequest, TableFormat as MetastoreTableFormat,
+    TableIdent as MetastoreTableIdent, Volume, VolumeType,
     models::volumes::create_object_store_from_url,
 };
 use datafusion::arrow::array::{Int64Array, RecordBatch, StringArray};
@@ -73,8 +73,6 @@ use datafusion_expr::{
 };
 use datafusion_iceberg::DataFusionTable;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
-use datafusion_iceberg::catalog::mirror::Mirror;
-use datafusion_iceberg::catalog::schema::IcebergSchema;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
 use datafusion_physical_plan::collect;
 use functions::semi_structured::variant::visitors::visit_all;
@@ -90,7 +88,6 @@ use iceberg_rust::catalog::create::CreateTableBuilder;
 use iceberg_rust::catalog::tabular::Tabular;
 use iceberg_rust::error::Error as IcebergError;
 use iceberg_rust::spec::arrow::schema::new_fields_with_ids;
-use iceberg_rust::spec::namespace::Namespace;
 use iceberg_rust::spec::schema::Schema;
 use iceberg_rust::spec::snapshot::Snapshot;
 use iceberg_rust::spec::table_metadata::TableMetadata;
@@ -469,16 +466,6 @@ impl UserQuery {
                 }
                 .build()
             })
-    }
-
-    #[instrument(name = "UserQuery::get_iceberg_mirror", level = "trace")]
-    fn get_iceberg_mirror(catalog: &Arc<dyn CatalogProvider>) -> Option<Arc<Mirror>> {
-        let caching_catalog = catalog.as_any().downcast_ref::<CachingCatalog>()?;
-        let iceberg_catalog = caching_catalog
-            .catalog
-            .as_any()
-            .downcast_ref::<IcebergCatalog>()?;
-        Some(iceberg_catalog.mirror())
     }
 
     /// The code below relies on [`Catalog`] trait for different iceberg catalog
@@ -1660,68 +1647,79 @@ impl UserQuery {
 
     #[instrument(name = "UserQuery::create_schema", level = "trace", skip(self), err)]
     pub async fn create_schema(&self, statement: Statement) -> Result<QueryResult> {
-        let Statement::CreateSchema {
-            schema_name,
-            if_not_exists,
-            ..
-        } = statement.clone()
-        else {
-            return ex_error::OnlyCreateSchemaStatementsSnafu.fail();
-        };
-
-        let SchemaName::Simple(schema_name) = schema_name else {
-            return ex_error::OnlySimpleSchemaNamesSnafu.fail();
-        };
-
-        let ident: MetastoreSchemaIdent = self.resolve_schema_object_name(schema_name.0)?.into();
-        let plan = self.sql_statement_to_plan(statement).await?;
-        let catalog = self.get_catalog(&ident.database)?;
-
-        let downcast_result = self
-            .resolve_iceberg_catalog_or_execute(catalog.clone(), ident.database.clone(), plan)
-            .await;
-        let iceberg_catalog = match downcast_result {
-            IcebergCatalogResult::Catalog(catalog) => catalog,
-            IcebergCatalogResult::Result(result) => {
-                return result.map(|_| self.created_entity_response())?;
+        let mut plan = self.sql_statement_to_plan(statement).await?;
+        let (schema_ref, if_not_exists) = match &mut plan {
+            LogicalPlan::Ddl(DdlStatement::CreateCatalogSchema(t)) => {
+                let resolved = self.resolve_schema_name(&t.schema_name)?;
+                t.schema_name = resolved.to_string();
+                (self.schema_ref_to_resolved(resolved), t.if_not_exists)
             }
+            _ => return ex_error::OnlyCreateSchemaStatementsSnafu.fail(),
         };
 
-        let schema_exists = iceberg_catalog
-            .list_namespaces(None)
-            .await
-            .context(ex_error::IcebergSnafu)?
-            .iter()
-            .any(|namespace| namespace.join(".") == ident.schema);
-
-        if schema_exists {
+        let catalog = self.get_catalog(&schema_ref.catalog)?;
+        if catalog.schema(&schema_ref.schema).is_some() {
             if if_not_exists {
                 return self.created_entity_response();
             }
             return ex_error::ObjectAlreadyExistsSnafu {
                 r#type: ExistingObjectType::Schema,
-                name: ident.schema,
+                name: schema_ref.schema.to_string(),
             }
             .fail();
         }
-        let namespace = Namespace::try_new(std::slice::from_ref(&ident.schema))
-            .map_err(|err| DataFusionError::External(Box::new(err)))
-            .context(ex_error::DataFusionSnafu)?;
-        iceberg_catalog
-            .create_namespace(&namespace, None)
-            .await
-            .context(ex_error::IcebergSnafu)?;
-        if let Some(mirror) = Self::get_iceberg_mirror(&catalog) {
-            catalog
-                .register_schema(
-                    &namespace.to_string(),
-                    Arc::new(IcebergSchema::new(namespace.clone(), mirror)),
-                )
-                .context(ex_error::DataFusionSnafu)?;
-        }
+        self.execute_logical_plan(plan).await?;
 
-        self.refresh_catalog_partially(CachedEntity::Schema(ident))
-            .await?;
+        //
+        // let ident: MetastoreSchemaIdent = self.resolve_schema_object_name(schema_name.0)?.into();
+        // let plan = self.sql_statement_to_plan(statement).await?;
+        // let catalog = self.get_catalog(&ident.database)?;
+        //
+        // let downcast_result = self
+        //     .resolve_iceberg_catalog_or_execute(catalog.clone(), ident.database.clone(), plan)
+        //     .await;
+        // let iceberg_catalog = match downcast_result {
+        //     IcebergCatalogResult::Catalog(catalog) => catalog,
+        //     IcebergCatalogResult::Result(result) => {
+        //         return result.map(|_| self.created_entity_response())?;
+        //     }
+        // };
+        //
+        // let schema_exists = iceberg_catalog
+        //     .list_namespaces(None)
+        //     .await
+        //     .context(ex_error::IcebergSnafu)?
+        //     .iter()
+        //     .any(|namespace| namespace.join(".") == ident.schema);
+        //
+        // if schema_exists {
+        //     if if_not_exists {
+        //         return self.created_entity_response();
+        //     }
+        //     return ex_error::ObjectAlreadyExistsSnafu {
+        //         r#type: ExistingObjectType::Schema,
+        //         name: ident.schema,
+        //     }
+        //     .fail();
+        // }
+        // let namespace = Namespace::try_new(std::slice::from_ref(&ident.schema))
+        //     .map_err(|err| DataFusionError::External(Box::new(err)))
+        //     .context(ex_error::DataFusionSnafu)?;
+        // iceberg_catalog
+        //     .create_namespace(&namespace, None)
+        //     .await
+        //     .context(ex_error::IcebergSnafu)?;
+        // if let Some(mirror) = Self::get_iceberg_mirror(&catalog) {
+        //     catalog
+        //         .register_schema(
+        //             &namespace.to_string(),
+        //             Arc::new(IcebergSchema::new(namespace.clone(), mirror)),
+        //         )
+        //         .context(ex_error::DataFusionSnafu)?;
+        // }
+        //
+        // self.refresh_catalog_partially(CachedEntity::Schema(ident))
+        //     .await?;
 
         self.created_entity_response()
     }
@@ -2667,38 +2665,31 @@ impl UserQuery {
     }
 
     // Fill in the database if missing and normalize the identifiers for ObjectNamePart
-    pub fn resolve_schema_object_name(
-        &self,
-        mut schema_ident: Vec<ObjectNamePart>,
-    ) -> Result<NormalizedIdent> {
-        match schema_ident.len() {
-            1 => {
-                schema_ident.insert(
-                    0,
-                    ObjectNamePart::Identifier(Ident::new(self.current_database())),
-                );
-            }
-            2 => {}
-            _ => {
-                return ex_error::InvalidSchemaIdentifierSnafu {
-                    ident: schema_ident
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join("."),
-                }
-                .fail();
-            }
-        }
-        let normalized_idents = schema_ident
-            .into_iter()
-            .map(|part| match part {
-                ObjectNamePart::Identifier(ident) => self.normalize_ident(ident),
-                ObjectNamePart::Function(_) => Ident::new(String::new()),
-            })
-            .filter(|ident| !ident.value.is_empty())
+    pub fn resolve_schema_name(&self, ident: &str) -> Result<SchemaReference> {
+        let parts: Vec<String> = ident
+            .split('.')
+            .map(std::string::ToString::to_string)
             .collect();
-        Ok(NormalizedIdent(normalized_idents))
+        match parts.len() {
+            1 => Ok(SchemaReference::Full {
+                catalog: Arc::from(self.current_database()),
+                schema: Arc::from(
+                    self.normalize_ident(Ident::new(parts[0].clone()))
+                        .to_string(),
+                ),
+            }),
+            2 => Ok(SchemaReference::Full {
+                catalog: Arc::from(
+                    self.normalize_ident(Ident::new(parts[0].clone()))
+                        .to_string(),
+                ),
+                schema: Arc::from(
+                    self.normalize_ident(Ident::new(parts[1].clone()))
+                        .to_string(),
+                ),
+            }),
+            _ => ex_error::InvalidSchemaIdentifierSnafu { ident }.fail(),
+        }
     }
 
     fn normalize_ident(&self, ident: Ident) -> Ident {
