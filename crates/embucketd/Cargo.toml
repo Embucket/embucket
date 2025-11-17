@@ -42,6 +42,6 @@ snafu = { workspace = true }
 workspace = true
 
 [features]
-default = ["queries"]
+default = []
 alloc-tracing = ["dep:tracing-allocations"]
 queries = ["dep:queries"]
