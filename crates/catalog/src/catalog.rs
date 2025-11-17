@@ -1,13 +1,20 @@
+use crate::df_error;
 use crate::schema::CachingSchema;
 use chrono::NaiveDateTime;
 use dashmap::DashMap;
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
+use datafusion_common::DataFusionError;
+use futures::executor::block_on;
+use iceberg_rust::catalog::Catalog;
+use iceberg_rust_spec::namespace::Namespace;
+use snafu::futures::TryFutureExt;
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
 
 #[derive(Clone)]
 pub struct CachingCatalog {
     pub catalog: Arc<dyn CatalogProvider>,
+    pub iceberg_catalog: Option<Arc<dyn Catalog>>,
     pub catalog_type: CatalogType,
     pub schemas_cache: DashMap<String, Arc<CachingSchema>>,
     pub should_refresh: bool,
@@ -50,9 +57,14 @@ impl Display for CatalogType {
 }
 
 impl CachingCatalog {
-    pub fn new(catalog: Arc<dyn CatalogProvider>, name: String) -> Self {
+    pub fn new(
+        catalog_provider: Arc<dyn CatalogProvider>,
+        name: String,
+        iceberg_catalog: Option<Arc<dyn Catalog>>,
+    ) -> Self {
         Self {
-            catalog,
+            catalog: catalog_provider,
+            iceberg_catalog,
             schemas_cache: DashMap::new(),
             should_refresh: false,
             enable_information_schema: true,
@@ -128,6 +140,7 @@ impl CatalogProvider for CachingCatalog {
                         name: name.clone(),
                         schema,
                         tables_cache: DashMap::new(),
+                        iceberg_catalog: self.iceberg_catalog.clone(),
                     }),
                 );
             }
@@ -148,6 +161,7 @@ impl CatalogProvider for CachingCatalog {
                 name: name.to_string(),
                 schema: Arc::clone(&schema),
                 tables_cache: DashMap::new(),
+                iceberg_catalog: self.iceberg_catalog.clone(),
             });
 
             self.schemas_cache
@@ -173,6 +187,7 @@ impl CatalogProvider for CachingCatalog {
             name: name.to_string(),
             schema: Arc::clone(&schema),
             tables_cache: DashMap::new(),
+            iceberg_catalog: self.iceberg_catalog.clone(),
         });
         self.schemas_cache
             .insert(name.to_string(), Arc::clone(&caching_schema));
@@ -190,7 +205,22 @@ impl CatalogProvider for CachingCatalog {
         name: &str,
         cascade: bool,
     ) -> datafusion_common::Result<Option<Arc<dyn SchemaProvider>>> {
-        self.schemas_cache.remove(name);
-        self.catalog.deregister_schema(name, cascade)
+        let schema = self.schemas_cache.remove(name);
+
+        if let Some(catalog) = &self.iceberg_catalog {
+            let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
+                .map_err(|err| DataFusionError::External(Box::new(err)))?;
+            block_on(
+                catalog
+                    .drop_namespace(&namespace)
+                    .context(df_error::IcebergSnafu),
+            )?;
+        } else {
+            return self.catalog.deregister_schema(name, cascade);
+        }
+        if let Some((_, caching_schema)) = schema {
+            return Ok(Some(caching_schema));
+        }
+        Ok(None)
     }
 }

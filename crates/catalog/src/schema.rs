@@ -1,14 +1,20 @@
+use crate::df_error;
 use crate::table::CachingTable;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
 use datafusion_common::DataFusionError;
 use datafusion_expr::TableType;
+use futures::executor::block_on;
+use iceberg_rust::catalog::Catalog;
+use iceberg_rust_spec::identifier::Identifier;
+use snafu::futures::TryFutureExt;
 use std::any::Any;
 use std::sync::Arc;
 
 pub struct CachingSchema {
     pub schema: Arc<dyn SchemaProvider>,
+    pub iceberg_catalog: Option<Arc<dyn Catalog>>,
     pub name: String,
     pub tables_cache: DashMap<String, Arc<CachingTable>>,
 }
@@ -89,9 +95,15 @@ impl SchemaProvider for CachingSchema {
         name: &str,
     ) -> datafusion_common::Result<Option<Arc<dyn TableProvider>>> {
         let table = self.tables_cache.remove(name);
+
         if let Some((_, caching_table)) = table {
             if caching_table.table_type() != TableType::View {
-                return self.schema.deregister_table(name);
+                if let Some(catalog) = &self.iceberg_catalog {
+                    let ident = Identifier::new(std::slice::from_ref(&self.name), name);
+                    block_on(catalog.drop_table(&ident).context(df_error::IcebergSnafu))?;
+                } else {
+                    return self.schema.deregister_table(name);
+                }
             }
             return Ok(Some(caching_table as Arc<dyn TableProvider>));
         }

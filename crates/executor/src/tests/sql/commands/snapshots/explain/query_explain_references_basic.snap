@@ -1,6 +1,5 @@
 ---
 source: crates/executor/src/tests/sql/commands/explain.rs
-assertion_line: 26
 description: "\"EXPLAIN SELECT name FROM testing;\""
 info: "Setup queries: CREATE OR REPLACE TABLE testing (name VARCHAR)\nAS SELECT * FROM VALUES\n  ('yes'),\n  ('no')"
 ---
