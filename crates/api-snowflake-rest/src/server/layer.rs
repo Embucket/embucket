@@ -40,16 +40,6 @@ pub async fn require_auth(
     // Record the result as part of the current span.
     tracing::Span::current().record("session_id", jwt_claims.session_id.as_str());
 
-    // let sessions = state.execution_svc.get_sessions(); // `get_sessions` returns an RwLock
-    //
-    // let sessions = sessions.read().await;
-    //
-    // if !sessions.contains_key(&session_id) {
-    //     return error::InvalidAuthTokenSnafu.fail()?;
-    // }
-    // //Dropping the lock guard before going to the next request
-    // drop(sessions);
-
     let response = next.run(req).await;
 
     // Record the result as part of the current span.

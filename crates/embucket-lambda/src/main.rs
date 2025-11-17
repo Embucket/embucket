@@ -161,6 +161,9 @@ impl LambdaApp {
             );
         }
 
+        // if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
+        //     return Ok(snowflake_error_response(&err));
+        // }
 
         let mut axum_request = to_axum_request(parts, body_bytes);
         if let Some(addr) = extract_socket_addr(axum_request.headers()) {

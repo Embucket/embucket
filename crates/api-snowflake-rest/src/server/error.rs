@@ -72,13 +72,13 @@ pub enum Error {
     #[snafu(transparent)]
     Execution { source: executor::Error },
 
-    #[snafu(display("No JWT secret set"))]
+    #[snafu(display("JWT secret is not set"))]
     NoJwtSecret {
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("JWT create error: {error}"))]
+    #[snafu(display("Failed to create JWT: {error}"))]
     CreateJwt {
         #[snafu(source)]
         error: JwtError,
