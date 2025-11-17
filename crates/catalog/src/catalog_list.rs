@@ -213,7 +213,8 @@ impl EmbucketCatalogList {
                 .with_properties(Properties {
                     created_at: db.created_at,
                     updated_at: db.created_at,
-                }),
+                })
+                .with_metastore(self.metastore.clone()),
         )
     }
 

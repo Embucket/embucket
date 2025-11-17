@@ -15,6 +15,11 @@ pub enum DFExternalError {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Metastore is missing for embucket catalog"))]
+    MetastoreIsMissing {
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("Ordinal position param overflow: {error}"))]
     OrdinalPositionParamOverflow {
         #[snafu(source)]

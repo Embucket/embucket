@@ -415,11 +415,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("Only simple schema names are supported"))]
-    OnlySimpleSchemaNames {
-        #[snafu(implicit)]
-        location: Location,
-    },
     #[snafu(display("unsupported SHOW statement: {statement}"))]
     UnsupportedShowStatement {
         statement: String,
