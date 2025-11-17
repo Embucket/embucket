@@ -61,9 +61,7 @@ pub async fn handle_query_request(
     let async_exec = async_exec.unwrap_or(false);
 
     let serialization_format = state.config.dbt_serialization_format;
-    let mut query_context = QueryContext::default()
-        .with_async_query(async_exec)
-        .with_request_id(query.request_id);
+    let mut query_context = QueryContext::default().with_request_id(query.request_id);
 
     if let Some(ip) = client_ip {
         query_context = query_context.with_ip_address(ip);
@@ -73,10 +71,11 @@ pub async fn handle_query_request(
         return api_snowflake_rest_error::NotImplementedSnafu.fail();
     }
 
+    let query_uuid = query_context.query_id.as_uuid();
     let result = state
         .execution_svc
         .query(session_id, &sql_text, query_context)
         .await?;
 
-    handle_query_ok_result(&sql_text, result, serialization_format)
+    handle_query_ok_result(&sql_text, query_uuid, result, serialization_format)
 }

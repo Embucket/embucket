@@ -73,10 +73,10 @@ fn records_to_json_string(recs: &[RecordBatch]) -> std::result::Result<String, E
 )]
 pub fn handle_query_ok_result(
     sql_text: &str,
+    query_uuid: Uuid,
     query_result: QueryResult,
     ser_fmt: DataSerializationFormat,
 ) -> Result<JsonResponse> {
-    let query_uuid: Uuid = query_result.query_id.as_uuid();
     // Convert the QueryResult to RecordBatches using the specified serialization format
     // Add columns dbt metadata to each field
     let records = convert_record_batches(&query_result, ser_fmt)?;
