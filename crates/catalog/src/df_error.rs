@@ -20,11 +20,6 @@ pub enum DFExternalError {
         #[snafu(implicit)]
         location: Location,
     },
-    #[snafu(display("No schema returned during registration"))]
-    MissingSchema {
-        #[snafu(implicit)]
-        location: Location,
-    },
     #[snafu(display("Ordinal position param overflow: {error}"))]
     OrdinalPositionParamOverflow {
         #[snafu(source)]

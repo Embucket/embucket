@@ -235,9 +235,7 @@ impl CatalogProvider for CachingCatalog {
             )?;
             schema_provider
         } else {
-            self.catalog
-                .register_schema(name, schema)?
-                .context(df_error::MissingSchemaSnafu)?
+            return self.catalog.register_schema(name, schema);
         };
 
         let caching_schema = Arc::new(CachingSchema {
