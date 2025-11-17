@@ -94,6 +94,21 @@ impl IntoResponse for Error {
 }
 
 impl Error {
+    #[must_use]
+    pub fn missing_auth_token() -> Self {
+        MissingAuthTokenSnafu.build()
+    }
+
+    #[must_use]
+    pub fn invalid_auth_token() -> Self {
+        InvalidAuthTokenSnafu.build()
+    }
+
+    #[must_use]
+    pub fn invalid_auth_data() -> Self {
+        InvalidAuthDataSnafu.build()
+    }
+
     pub fn query_id(&self) -> QueryRecordId {
         if let Self::Execution { source, .. } = self {
             source.query_id()
@@ -216,6 +231,7 @@ impl Error {
                 row_set_base_64: None,
                 row_set: None,
                 total: None,
+                returned: None,
                 query_result_format: None,
                 // Query uuid is returned to the user
                 query_id: Some(self.query_id().as_uuid().to_string()),

@@ -43,25 +43,9 @@ pub struct LoginRequestData {
     pub svn_revision: Option<String>,
     pub account_name: String,
     pub login_name: String,
-    pub client_environment: ClientEnvironment,
+    pub client_environment: HashMap<String, serde_json::Value>,
     pub password: String,
     pub session_parameters: HashMap<String, serde_json::Value>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub struct ClientEnvironment {
-    pub application: String,
-    pub os: String,
-    pub os_version: String,
-    pub python_version: String,
-    pub python_runtime: String,
-    pub python_compiler: String,
-    pub ocsp_mode: String,
-    pub tracing: u32,
-    pub login_timeout: Option<u32>,
-    pub network_timeout: Option<u32>,
-    pub socket_timeout: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,7 +60,7 @@ pub struct QueryRequest {
 #[serde(rename_all = "camelCase")]
 pub struct QueryRequestBody {
     pub sql_text: String,
-    pub async_exec: bool,
+    pub async_exec: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +79,10 @@ pub struct ResponseData {
     pub row_set_base_64: Option<String>,
     #[serde(rename = "rowset")]
     pub row_set: Option<Box<RawValue>>,
-    pub total: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub returned: Option<i64>,
     #[serde(rename = "queryResultFormat")]
     pub query_result_format: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
