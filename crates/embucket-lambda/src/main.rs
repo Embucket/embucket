@@ -67,6 +67,10 @@ struct LambdaApp {
 }
 
 impl LambdaApp {
+    #[tracing::instrument(name = "lambda_app_initialize", skip_all, fields(
+        data_format = %config.data_format,
+        max_concurrency = config.max_concurrency_level
+    ))]
     async fn initialize(config: EnvConfig) -> InitResult<Self> {
         let snowflake_cfg = SnowflakeServerConfig::new(&config.data_format)?.with_demo_credentials(
             config.auth_demo_user.clone(),
@@ -125,17 +129,30 @@ impl LambdaApp {
         Ok(Self { router, state })
     }
 
+    #[tracing::instrument(name = "lambda_handle_event", skip_all, fields(
+        http.method = %request.method(),
+        http.uri = %request.uri(),
+        http.request_id = tracing::field::Empty,
+        http.status_code = tracing::field::Empty
+    ))]
     async fn handle_event(&self, request: Request) -> Result<Response<LambdaBody>, LambdaError> {
         let (mut parts, body) = request.into_parts();
         let body_bytes = lambda_body_into_bytes(body);
 
         {
-            let body_preview = String::from_utf8_lossy(&body_bytes);
+            let body_size = body_bytes.len();
+            let is_compressed = parts
+                .headers
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.contains("gzip"))
+                .unwrap_or(false);
+
             info!(
                 method = %parts.method,
                 uri = %parts.uri,
-                headers = ?parts.headers,
-                body = %body_preview,
+                body_size_bytes = body_size,
+                body_compressed = is_compressed,
                 "Received incoming HTTP request"
             );
         }
@@ -156,7 +173,12 @@ impl LambdaApp {
             .await
             .expect("Router service should be infallible");
 
-        from_axum_response(response).await
+        let lambda_response = from_axum_response(response).await?;
+
+        // Record response status in the current span
+        tracing::Span::current().record("http.status_code", lambda_response.status().as_u16());
+
+        Ok(lambda_response)
     }
 }
 
@@ -181,12 +203,19 @@ async fn from_axum_response(
         .await
         .map_err(|err| -> LambdaError { Box::new(err) })?
         .to_bytes();
-    let body_preview = String::from_utf8_lossy(bytes.as_ref());
+
+    let body_size = bytes.len();
+    let is_compressed = parts
+        .headers
+        .get("content-encoding")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("gzip"))
+        .unwrap_or(false);
 
     info!(
         status = %parts.status,
-        headers = ?parts.headers,
-        body = %body_preview,
+        body_size_bytes = body_size,
+        body_compressed = is_compressed,
         "Sending HTTP response"
     );
 
@@ -205,6 +234,7 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
         .map(|ip| SocketAddr::new(ip, 0))
 }
 
+#[tracing::instrument(name = "ensure_session_header", skip_all)]
 async fn ensure_session_header(
     headers: &mut HeaderMap,
     state: &AppState,
@@ -221,6 +251,7 @@ async fn ensure_session_header(
     }
 }
 
+#[tracing::instrument(name = "ensure_session", skip(state), fields(session_id = %session_id))]
 async fn ensure_session(state: &AppState, session_id: &str) -> Result<(), SnowflakeError> {
     if !state
         .execution_svc
@@ -254,10 +285,28 @@ fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
 fn init_tracing() {
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let emit_ansi = std::io::stdout().is_terminal();
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .with_ansi(emit_ansi)
-        .compact()
-        .try_init();
+
+    // Use json format if requested via env var, otherwise use pretty format with span events
+    let format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
+
+    if format == "json" {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(true)
+            .with_ansi(false)
+            .json()
+            .with_current_span(true)
+            .with_span_list(true)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(true)
+            .with_ansi(emit_ansi)
+            .with_span_events(
+                tracing_subscriber::fmt::format::FmtSpan::ENTER
+                    | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+            )
+            .try_init();
+    }
 }
