@@ -144,8 +144,7 @@ impl LambdaApp {
                 .headers
                 .get("content-encoding")
                 .and_then(|v| v.to_str().ok())
-                .map(|v| v.contains("gzip"))
-                .unwrap_or(false);
+                .is_some_and(|v| v.contains("gzip"));
 
             info!(
                 method = %parts.method,
@@ -208,8 +207,7 @@ async fn from_axum_response(
         .headers
         .get("content-encoding")
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.contains("gzip"))
-        .unwrap_or(false);
+        .is_some_and(|v| v.contains("gzip"));
 
     info!(
         status = %parts.status,
