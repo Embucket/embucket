@@ -79,16 +79,10 @@ pub enum ConfigError {
     TableDatabaseMissing { table: String, database: String },
     #[snafu(display("Volume {volume} not found for table {table}"))]
     TableVolumeMissing { table: String, volume: VolumeIdent },
-    #[snafu(display(
-        "No object store configured for volume {volume} while bootstrapping table {table}"
-    ))]
-    MissingVolumeObjectStore { table: String, volume: VolumeIdent },
     #[snafu(display("Invalid metadata location for table {table}: {reason}"))]
     InvalidMetadataLocation { table: String, reason: String },
     #[snafu(display("Invalid metadata"))]
     InvalidMetadata,
-    #[snafu(display("Failed to create file object store"))]
-    InvalidFileVolume,
     #[snafu(display("Failed to fetch metadata for table {table}: {source}"))]
     MetadataFetch {
         table: String,
@@ -101,8 +95,6 @@ pub enum ConfigError {
         #[snafu(source)]
         source: serde_json::Error,
     },
-    #[snafu(display("Unsupported metadata type"))]
-    UnsupportedMetadataType,
 }
 
 const DEFAULT_SCHEMA_NAME: &str = "public";
