@@ -1546,7 +1546,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -3263,6 +3263,9 @@ dependencies = [
  "console-subscriber",
  "dotenv",
  "executor",
+ "iceberg-file-catalog",
+ "iceberg-rust",
+ "object_store",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -4356,6 +4359,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "iceberg-file-catalog"
+version = "0.8.0"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
+dependencies = [
+ "async-trait",
+ "futures",
+ "iceberg-rust",
+ "object_store",
+ "serde_json",
+ "thiserror 2.0.17",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "iceberg-rust"
 version = "0.8.0"
 source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
@@ -4635,15 +4653,6 @@ name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -5922,7 +5931,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.11.0",
  "proc-macro2",
  "quote",
  "syn 2.0.107",
