@@ -14,7 +14,6 @@ use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::{
     AwsCredentials, Database, Metastore, RwObject, S3TablesVolume, VolumeType,
 };
-use catalog_metastore::{SchemaIdent, TableIdent};
 use dashmap::DashMap;
 use datafusion::{
     catalog::{CatalogProvider, CatalogProviderList},
@@ -36,22 +35,6 @@ use tokio::time::interval;
 use url::Url;
 
 pub const DEFAULT_CATALOG: &str = "embucket";
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum CachedEntity {
-    Schema(SchemaIdent),
-    Table(TableIdent),
-}
-
-impl CachedEntity {
-    #[must_use]
-    pub fn normalized(&self) -> Self {
-        match self {
-            Self::Schema(ident) => Self::Schema(ident.normalized()),
-            Self::Table(ident) => Self::Table(ident.normalized()),
-        }
-    }
-}
 
 pub struct EmbucketCatalogList {
     pub metastore: Arc<dyn Metastore>,
@@ -260,109 +243,6 @@ impl EmbucketCatalogList {
                 .with_refresh(false)
                 .with_catalog_type(CatalogType::S3tables),
         )
-    }
-
-    /// Do not keep returned references to avoid deadlocks
-    fn catalog_ref_by_name(
-        &self,
-        name: &str,
-    ) -> Result<dashmap::mapref::one::Ref<'_, String, Arc<CachingCatalog>>> {
-        self.catalogs.get(name).ok_or_else(|| {
-            InvalidCacheSnafu {
-                entity: "catalog",
-                name,
-            }
-            .build()
-        })
-    }
-
-    /// Invalidates the cache for a specific catalog entity (schema or table).
-    ///
-    /// This method ensures that the cache for the specified entity is refreshed or cleared as appropriate.
-    /// - For a schema: If the schema exists in the underlying catalog, it is (re-)cached; if it does not exist, the cache entry is removed.
-    /// - For a table: The table cache is invalidated. If the table exists in the underlying schema, it is (re-)cached; otherwise, the cache entry is removed.
-    ///
-    /// # Arguments
-    /// * `entity` - The cached entity to invalidate, which can be either a schema or a table.
-    ///
-    /// # Errors
-    /// Returns an error if:
-    /// - The specified catalog or schema does not exist in the cache.
-    /// - There is a failure when accessing the underlying catalog or schema provider.
-    #[allow(clippy::as_conversions, clippy::too_many_lines)]
-    #[tracing::instrument(
-        name = "EmbucketCatalogList::refresh_schema",
-        level = "debug",
-        skip(self),
-        err
-    )]
-    pub async fn invalidate_cache(&self, entity: CachedEntity) -> Result<()> {
-        match entity {
-            CachedEntity::Schema(schema_ident) => {
-                let SchemaIdent { schema, database } = schema_ident;
-                let catalog_ref = self.catalog_ref_by_name(&database)?;
-                if !catalog_ref.should_refresh {
-                    return Ok(());
-                }
-                if let Some(schema_provider) = catalog_ref.catalog.schema(&schema) {
-                    // schema exists -> ensure it's cached
-                    if catalog_ref.schemas_cache.get(&schema).is_none() {
-                        let schema = CachingSchema {
-                            schema: schema_provider,
-                            tables_cache: DashMap::default(),
-                            name: schema.clone(),
-                            iceberg_catalog: catalog_ref.iceberg_catalog.clone(),
-                        };
-                        catalog_ref
-                            .schemas_cache
-                            .insert(schema.name.clone(), Arc::new(schema));
-                    }
-                } else {
-                    // no schema exists -> ensure cache is empty
-                    catalog_ref.schemas_cache.remove(&schema);
-                }
-            }
-            CachedEntity::Table(table_ident) => {
-                let TableIdent {
-                    database,
-                    schema,
-                    table,
-                } = table_ident;
-                let catalog_ref = self.catalog_ref_by_name(&database)?;
-                if !catalog_ref.should_refresh {
-                    return Ok(());
-                }
-                let schema_ref = catalog_ref.schemas_cache.get(&schema).ok_or_else(|| {
-                    InvalidCacheSnafu {
-                        entity: "schema",
-                        name: format!("{database}.{schema}"),
-                    }
-                    .build()
-                })?;
-
-                // invalidate table cache if table exists, noop if doesn't
-                schema_ref.tables_cache.remove(&table);
-
-                if let Some(table_provider) = schema_ref
-                    .schema
-                    .table(&table)
-                    .await
-                    .context(catalog_error::DataFusionSnafu)?
-                {
-                    // ensure table is cached
-                    schema_ref.tables_cache.insert(
-                        table.clone(),
-                        Arc::new(CachingTable::new_with_schema(
-                            table.clone(),
-                            table_provider.schema(),
-                            Arc::clone(&table_provider),
-                        )),
-                    );
-                }
-            }
-        }
-
-        Ok(())
     }
 
     #[allow(clippy::as_conversions, clippy::too_many_lines)]

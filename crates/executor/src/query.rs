@@ -5,7 +5,7 @@ use super::catalog::information_schema::information_schema::{
 use super::datafusion::planner::ExtendedSqlToRel;
 use super::error::{
     self as ex_error, Error, InvalidColumnIdentifierSnafu, MergeSourceNotSupportedSnafu,
-    ObjectType as ExistingObjectType, RefreshCatalogListSnafu, Result,
+    ObjectType as ExistingObjectType, Result,
 };
 use super::running_queries::RunningQueries;
 use super::session::UserSession;
@@ -18,7 +18,6 @@ use crate::datafusion::physical_plan::merge::{
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
 use crate::models::{QueryContext, QueryResult};
-use catalog::catalog_list::CachedEntity;
 use catalog::table::{CachingTable, IcebergTableBuilder};
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
@@ -167,29 +166,6 @@ impl UserQuery {
             .clone()
             .or_else(|| self.session.get_session_variable("schema"))
             .unwrap_or_else(|| "public".to_string())
-    }
-
-    #[instrument(
-        name = "UserQuery::refresh_catalog_partially",
-        level = "debug",
-        skip(self),
-        err
-    )]
-    async fn refresh_catalog_partially(&self, entity: CachedEntity) -> Result<()> {
-        if let Some(catalog_list_impl) = self
-            .session
-            .ctx
-            .state()
-            .catalog_list()
-            .as_any()
-            .downcast_ref::<EmbucketCatalogList>()
-        {
-            catalog_list_impl
-                .invalidate_cache(entity.normalized())
-                .await
-                .context(RefreshCatalogListSnafu)?;
-        }
-        Ok(())
     }
 
     #[instrument(name = "UserQuery::drop_catalog", level = "debug", skip(self), err)]
@@ -1831,14 +1807,7 @@ impl UserQuery {
             ),
             QueryContext::default(),
         );
-        let res = query.execute().await;
-
-        let table_ident: MetastoreTableIdent = object_name.into();
-
-        self.refresh_catalog_partially(CachedEntity::Table(table_ident))
-            .await?;
-
-        res
+        query.execute().await
     }
 
     pub fn resolve_show_in_name(
