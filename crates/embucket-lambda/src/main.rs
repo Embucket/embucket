@@ -7,9 +7,7 @@ use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
 use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
-use api_snowflake_rest_sessions::session::{
-    SESSION_EXPIRATION_SECONDS, SessionStore,
-};
+use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use axum::{Router, middleware};
