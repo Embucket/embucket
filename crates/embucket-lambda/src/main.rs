@@ -3,21 +3,19 @@ mod metastore_config;
 
 use crate::config::EnvConfig;
 use crate::metastore_config::MetastoreBootstrapConfig;
-use api_snowflake_rest::server::error::Error as SnowflakeError;
 use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
 use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::{
-    SESSION_EXPIRATION_SECONDS, SessionStore, extract_token_from_auth,
+    SESSION_EXPIRATION_SECONDS, SessionStore,
 };
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use axum::{Router, middleware};
 use catalog_metastore::InMemoryMetastore;
 use executor::service::CoreExecutionService;
-use http::header::{AUTHORIZATION, CONTENT_TYPE};
-use http::{HeaderMap, HeaderValue};
+use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, run, service_fn};
 use std::io::IsTerminal;
@@ -28,7 +26,6 @@ use tower::{ServiceBuilder, ServiceExt};
 use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 use tracing::{error, info};
-use uuid::Uuid;
 
 type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
