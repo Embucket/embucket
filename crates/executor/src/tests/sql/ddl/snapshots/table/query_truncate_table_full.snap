@@ -1,13 +1,14 @@
 ---
 source: crates/executor/src/tests/sql/ddl/table.rs
-description: "\"TRUNCATE TABLE embucket.public.employee_table\""
+description: "\"SELECT count() FROM embucket.public.employee_table\""
+info: "Setup queries: TRUNCATE TABLE embucket.public.employee_table"
 ---
 Ok(
     [
-        "+-------+",
-        "| count |",
-        "+-------+",
-        "| 0     |",
-        "+-------+",
+        "+---------+",
+        "| count() |",
+        "+---------+",
+        "| 0       |",
+        "+---------+",
     ],
 )

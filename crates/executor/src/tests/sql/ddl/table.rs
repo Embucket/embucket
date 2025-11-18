@@ -258,7 +258,8 @@ test_query!(
 );
 test_query!(
     truncate_table_full,
-    "TRUNCATE TABLE embucket.public.employee_table",
+    "SELECT count() FROM embucket.public.employee_table",
+    setup_queries = ["TRUNCATE TABLE embucket.public.employee_table"],
     snapshot_path = "table"
 );
 test_query!(

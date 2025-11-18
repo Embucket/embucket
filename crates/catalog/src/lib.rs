@@ -10,6 +10,7 @@ pub mod df_error;
 pub mod error;
 pub mod information_schema;
 pub mod schema;
+pub mod snowflake_table;
 pub mod table;
 
 #[cfg(test)]

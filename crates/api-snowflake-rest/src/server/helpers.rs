@@ -14,6 +14,7 @@ use executor::utils::{
 };
 use serde_json::value::RawValue;
 use snafu::ResultExt;
+use tracing;
 use uuid::Uuid;
 
 // https://arrow.apache.org/docs/format/Columnar.html#buffer-alignment-and-padding
@@ -73,7 +74,7 @@ fn records_to_json_string(recs: &[RecordBatch]) -> std::result::Result<String, E
 )]
 pub fn handle_query_ok_result(
     sql_text: &str,
-    query_uuid: Uuid,
+    query_id: Uuid,
     query_result: QueryResult,
     ser_fmt: DataSerializationFormat,
 ) -> Result<JsonResponse> {
@@ -114,7 +115,7 @@ pub fn handle_query_ok_result(
             row_set_base_64,
             total: Some(total_rows),
             returned: Some(returned_rows),
-            query_id: Some(query_uuid.to_string()),
+            query_id: Some(query_id.to_string()),
             error_code: None,
             sql_state: Some(SqlState::Success.to_string()),
         }),

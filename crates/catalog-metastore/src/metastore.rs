@@ -1,5 +1,3 @@
-use std::{collections::HashMap, sync::Arc};
-
 use crate::error::{self as metastore_error, Result};
 use crate::models::{
     RwObject,
@@ -20,6 +18,7 @@ use iceberg_rust_spec::{
 };
 use object_store::{ObjectStore, PutPayload, path::Path};
 use snafu::ResultExt;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 use tracing::instrument;
 use uuid::Uuid;
@@ -60,6 +59,7 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
         ident: &TableIdent,
         table: TableCreateRequest,
     ) -> Result<RwObject<Table>>;
+    async fn register_table(&self, ident: &TableIdent, table: Table) -> Result<RwObject<Table>>;
     async fn get_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Table>>>;
     async fn update_table(
         &self,
@@ -110,7 +110,8 @@ impl InMemoryMetastore {
         )
     }
 
-    fn table_key(ident: &TableIdent) -> (DatabaseIdent, String, String) {
+    #[must_use]
+    pub fn table_key(ident: &TableIdent) -> (DatabaseIdent, String, String) {
         (
             ident.database.to_ascii_lowercase(),
             ident.schema.to_ascii_lowercase(),
@@ -554,6 +555,13 @@ impl Metastore for InMemoryMetastore {
         };
 
         let row = RwObject::new(stored_table);
+        state.tables.insert(Self::table_key(ident), row.clone());
+        Ok(row)
+    }
+
+    async fn register_table(&self, ident: &TableIdent, table: Table) -> Result<RwObject<Table>> {
+        let mut state = self.state.write().await;
+        let row = RwObject::new(table);
         state.tables.insert(Self::table_key(ident), row.clone());
         Ok(row)
     }

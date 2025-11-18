@@ -3,21 +3,17 @@ mod metastore_config;
 
 use crate::config::EnvConfig;
 use crate::metastore_config::MetastoreBootstrapConfig;
-use api_snowflake_rest::server::error::Error as SnowflakeError;
 use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
 use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
-use api_snowflake_rest_sessions::session::{
-    SESSION_EXPIRATION_SECONDS, SessionStore, extract_token_from_auth,
-};
+use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use axum::{Router, middleware};
 use catalog_metastore::InMemoryMetastore;
 use executor::service::CoreExecutionService;
-use http::header::{AUTHORIZATION, CONTENT_TYPE};
-use http::{HeaderMap, HeaderValue};
+use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, run, service_fn};
 use std::io::IsTerminal;
@@ -28,7 +24,6 @@ use tower::{ServiceBuilder, ServiceExt};
 use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 use tracing::{error, info};
-use uuid::Uuid;
 
 type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -67,8 +62,16 @@ struct LambdaApp {
 }
 
 impl LambdaApp {
+    #[tracing::instrument(name = "lambda_app_initialize", skip_all, fields(
+        data_format = %config.data_format,
+        max_concurrency = config.max_concurrency_level
+    ))]
     async fn initialize(config: EnvConfig) -> InitResult<Self> {
-        let snowflake_cfg = SnowflakeServerConfig::new(&config.data_format)?.with_demo_credentials(
+        let snowflake_cfg = SnowflakeServerConfig::new(
+            &config.data_format,
+            config.jwt_secret.clone().unwrap_or_default(),
+        )?
+        .with_demo_credentials(
             config.auth_demo_user.clone(),
             config.auth_demo_password.clone(),
         );
@@ -125,24 +128,36 @@ impl LambdaApp {
         Ok(Self { router, state })
     }
 
+    #[tracing::instrument(name = "lambda_handle_event", skip_all, fields(
+        http.method = %request.method(),
+        http.uri = %request.uri(),
+        http.request_id = tracing::field::Empty,
+        http.status_code = tracing::field::Empty
+    ))]
     async fn handle_event(&self, request: Request) -> Result<Response<LambdaBody>, LambdaError> {
-        let (mut parts, body) = request.into_parts();
+        let (parts, body) = request.into_parts();
         let body_bytes = lambda_body_into_bytes(body);
 
         {
-            let body_preview = String::from_utf8_lossy(&body_bytes);
+            let body_size = body_bytes.len();
+            let is_compressed = parts
+                .headers
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| v.contains("gzip"));
+
             info!(
                 method = %parts.method,
                 uri = %parts.uri,
-                headers = ?parts.headers,
-                body = %body_preview,
+                body_size_bytes = body_size,
+                body_compressed = is_compressed,
                 "Received incoming HTTP request"
             );
         }
 
-        if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
-            return Ok(snowflake_error_response(&err));
-        }
+        // if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
+        //     return Ok(snowflake_error_response(&err));
+        // }
 
         let mut axum_request = to_axum_request(parts, body_bytes);
         if let Some(addr) = extract_socket_addr(axum_request.headers()) {
@@ -156,7 +171,12 @@ impl LambdaApp {
             .await
             .expect("Router service should be infallible");
 
-        from_axum_response(response).await
+        let lambda_response = from_axum_response(response).await?;
+
+        // Record response status in the current span
+        tracing::Span::current().record("http.status_code", lambda_response.status().as_u16());
+
+        Ok(lambda_response)
     }
 }
 
@@ -181,12 +201,18 @@ async fn from_axum_response(
         .await
         .map_err(|err| -> LambdaError { Box::new(err) })?
         .to_bytes();
-    let body_preview = String::from_utf8_lossy(bytes.as_ref());
+
+    let body_size = bytes.len();
+    let is_compressed = parts
+        .headers
+        .get("content-encoding")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("gzip"));
 
     info!(
         status = %parts.status,
-        headers = ?parts.headers,
-        body = %body_preview,
+        body_size_bytes = body_size,
+        body_compressed = is_compressed,
         "Sending HTTP response"
     );
 
@@ -205,59 +231,79 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
         .map(|ip| SocketAddr::new(ip, 0))
 }
 
-async fn ensure_session_header(
-    headers: &mut HeaderMap,
-    state: &AppState,
-) -> Result<(), SnowflakeError> {
-    if let Some(token) = extract_token_from_auth(headers) {
-        ensure_session(state, &token).await
-    } else {
-        let session_id = Uuid::new_v4().to_string();
-        state.execution_svc.create_session(&session_id).await?;
-        let header_value = HeaderValue::from_str(&format!("Snowflake Token=\"{session_id}\""))
-            .map_err(|_| SnowflakeError::invalid_auth_data())?;
-        headers.insert(AUTHORIZATION, header_value);
-        Ok(())
-    }
-}
-
-async fn ensure_session(state: &AppState, session_id: &str) -> Result<(), SnowflakeError> {
-    if !state
-        .execution_svc
-        .update_session_expiry(session_id)
-        .await?
-    {
-        let _ = state.execution_svc.create_session(session_id).await?;
-    }
-    Ok(())
-}
-
-fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
-    let (status, axum::Json(body)) = err.prepare_response();
-    let payload =
-        serde_json::to_string(&body).unwrap_or_else(|_| "{\"success\":false}".to_string());
-    let body_preview = payload.clone();
-    let mut response = Response::new(LambdaBody::Text(payload));
-    *response.status_mut() = status;
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    info!(
-        status = %response.status(),
-        headers = ?response.headers(),
-        body = %body_preview,
-        "Sending HTTP error response"
-    );
-    response
-}
+// #[tracing::instrument(name = "ensure_session_header", skip_all)]
+// async fn ensure_session_header(
+//     headers: &mut HeaderMap,
+//     state: &AppState,
+// ) -> Result<(), SnowflakeError> {
+//     if let Some(token) = extract_token_from_auth(headers) {
+//         ensure_session(state, &token).await
+//     } else {
+//         let session_id = Uuid::new_v4().to_string();
+//         state.execution_svc.create_session(&session_id).await?;
+//         let header_value = HeaderValue::from_str(&format!("Snowflake Token=\"{session_id}\""))
+//             .map_err(|_| SnowflakeError::invalid_auth_data())?;
+//         headers.insert(AUTHORIZATION, header_value);
+//         Ok(())
+//     }
+// }
+//
+// #[tracing::instrument(name = "ensure_session", skip(state), fields(session_id = %session_id))]
+// async fn ensure_session(state: &AppState, session_id: &str) -> Result<(), SnowflakeError> {
+//     if !state
+//         .execution_svc
+//         .update_session_expiry(session_id)
+//         .await?
+//     {
+//         let _ = state.execution_svc.create_session(session_id).await?;
+//     }
+//     Ok(())
+// }
+//
+// fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
+//     let (status, axum::Json(body)) = err.prepare_response();
+//     let payload =
+//         serde_json::to_string(&body).unwrap_or_else(|_| "{\"success\":false}".to_string());
+//     let body_preview = payload.clone();
+//     let mut response = Response::new(LambdaBody::Text(payload));
+//     *response.status_mut() = status;
+//     response
+//         .headers_mut()
+//         .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+//     info!(
+//         status = %response.status(),
+//         headers = ?response.headers(),
+//         body = %body_preview,
+//         "Sending HTTP error response"
+//     );
+//     response
+// }
 
 fn init_tracing() {
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let emit_ansi = std::io::stdout().is_terminal();
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(true)
-        .with_ansi(emit_ansi)
-        .compact()
-        .try_init();
+
+    // Use json format if requested via env var, otherwise use pretty format with span events
+    let format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
+
+    if format == "json" {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(true)
+            .with_ansi(false)
+            .json()
+            .with_current_span(true)
+            .with_span_list(true)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(true)
+            .with_ansi(emit_ansi)
+            .with_span_events(
+                tracing_subscriber::fmt::format::FmtSpan::ENTER
+                    | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+            )
+            .try_init();
+    }
 }

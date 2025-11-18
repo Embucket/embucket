@@ -2,6 +2,7 @@ use axum::{Json, http, response::IntoResponse};
 use error_stack_trace;
 use http::header::InvalidHeaderValue;
 use http::{StatusCode, header::MaxSizeReached};
+use jsonwebtoken::errors::Error as JwtError;
 use serde::{Deserialize, Serialize};
 use snafu::Location;
 use snafu::prelude::*;
@@ -32,6 +33,14 @@ pub enum Error {
     Execution {
         #[snafu(source)]
         error: executor::Error,
+    },
+
+    #[snafu(display("Bad authentication token. {error}"))]
+    BadAuthToken {
+        #[snafu(source)]
+        error: JwtError,
+        #[snafu(implicit)]
+        location: Location,
     },
 }
 

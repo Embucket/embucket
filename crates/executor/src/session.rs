@@ -11,7 +11,7 @@ use crate::datafusion::physical_optimizer::physical_optimizer_rules;
 use crate::datafusion::query_planner::CustomQueryPlanner;
 use crate::models::QueryContext;
 use crate::query::UserQuery;
-use crate::query_types::QueryRecordId;
+use crate::query_types::QueryId;
 use crate::running_queries::RunningQueries;
 use crate::utils::Config;
 use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
@@ -54,7 +54,7 @@ pub struct UserSession {
     pub config: Arc<Config>,
     pub expiry: AtomicI64,
     pub session_params: Arc<SessionParams>,
-    pub recent_queries: Arc<RwLock<VecDeque<QueryRecordId>>>,
+    pub recent_queries: Arc<RwLock<VecDeque<QueryId>>>,
 }
 
 impl UserSession {
@@ -213,7 +213,7 @@ impl UserSession {
         false
     }
 
-    pub fn record_query_id(&self, query_id: QueryRecordId) {
+    pub fn record_query_id(&self, query_id: QueryId) {
         const MAX_QUERIES: usize = 64;
         if let Ok(mut guard) = self.recent_queries.write() {
             guard.push_front(query_id);

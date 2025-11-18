@@ -1,4 +1,4 @@
-use crate::query_types::{QueryRecordId, QueryStatus};
+use crate::query_types::QueryId;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
 use datafusion_common::arrow::datatypes::Schema;
@@ -6,20 +6,14 @@ use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::oneshot;
 use uuid::Uuid;
-
-pub struct AsyncQueryHandle {
-    pub query_id: QueryRecordId,
-    pub rx: oneshot::Receiver<QueryResultStatus>,
-}
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct QueryContext {
     pub database: Option<String>,
     pub schema: Option<String>,
     pub worksheet_id: Option<i64>,
-    pub query_id: QueryRecordId,
+    pub query_id: QueryId,
     pub request_id: Option<Uuid>,
     pub ip_address: Option<String>,
 }
@@ -35,14 +29,14 @@ impl QueryContext {
             database,
             schema,
             worksheet_id,
-            query_id: QueryRecordId::default(),
+            query_id: QueryId::default(),
             request_id: None,
             ip_address: None,
         }
     }
 
     #[must_use]
-    pub const fn with_query_id(mut self, new_id: QueryRecordId) -> Self {
+    pub const fn with_query_id(mut self, new_id: QueryId) -> Self {
         self.query_id = new_id;
         self
     }
@@ -78,12 +72,6 @@ impl QueryResult {
     pub fn column_info(&self) -> Vec<ColumnInfo> {
         ColumnInfo::from_schema(&self.schema)
     }
-}
-
-#[derive(Debug)]
-pub struct QueryResultStatus {
-    pub query_result: std::result::Result<QueryResult, crate::Error>,
-    pub status: QueryStatus,
 }
 
 // TODO: We should not have serde dependency here
