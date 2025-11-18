@@ -1,16 +1,17 @@
+use catalog_metastore::{
+    Database, Metastore, Schema, SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent,
+};
+use iceberg_rust::spec::table_metadata::TableMetadata;
+use iceberg_rust::spec::util::strip_prefix;
+use serde::Deserialize;
+use serde_json::Value;
+use snafu::prelude::*;
+use std::collections::HashMap;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use iceberg_file_catalog::FileCatalog;
-use object_store::local::LocalFileSystem;
-use object_store::ObjectStore;
-use catalog_metastore::{Database, Metastore, Schema, SchemaIdent, TableIdent, Volume, VolumeIdent, VolumeType};
-use serde::Deserialize;
-use snafu::prelude::*;
 use tokio::fs;
-use object_store::path::Path as ObjectStorePath;
-
 
 #[derive(Debug, Deserialize, Default)]
 pub struct MetastoreBootstrapConfig {
@@ -84,11 +85,24 @@ pub enum ConfigError {
     MissingVolumeObjectStore { table: String, volume: VolumeIdent },
     #[snafu(display("Invalid metadata location for table {table}: {reason}"))]
     InvalidMetadataLocation { table: String, reason: String },
+    #[snafu(display("Invalid metadata"))]
+    InvalidMetadata,
+    #[snafu(display("Failed to create file object store"))]
+    InvalidFileVolume,
     #[snafu(display("Failed to fetch metadata for table {table}: {source}"))]
     MetadataFetch {
         table: String,
+        #[snafu(source)]
         source: object_store::Error,
     },
+    #[snafu(display("Failed to parse metadata for table {table}: {source}"))]
+    MetadataParse {
+        table: String,
+        #[snafu(source)]
+        source: serde_json::Error,
+    },
+    #[snafu(display("Unsupported metadata type"))]
+    UnsupportedMetadataType,
 }
 
 const DEFAULT_SCHEMA_NAME: &str = "public";
@@ -228,7 +242,7 @@ impl MetastoreBootstrapConfig {
         metastore: Arc<dyn Metastore>,
     ) -> Result<(), ConfigError> {
         let table_ident = entry.table_ident();
-        let table_name = entry.table;
+        let table_name = entry.table.clone();
         if metastore
             .table_exists(&table_ident)
             .await
@@ -250,25 +264,6 @@ impl MetastoreBootstrapConfig {
         self.ensure_schema(metastore.clone(), &entry.database, &entry.schema)
             .await?;
 
-        let table_object_store = metastore
-            .table_object_store(&table_ident)
-            .await
-            .context(MetastoreSnafu)?
-            .ok_or_else(|| ConfigError::MissingVolumeObjectStore {
-            table: table_name.clone(),
-            volume: database.volume.clone(),
-        })?;
-        let path = &ObjectStorePath::from_url_path(&entry.metadata_location)
-            .map_err(|e| { ConfigError::InvalidMetadataLocation {
-                table: table_name.clone(),
-                reason: "".to_string(),
-            }})?;
-
-        let metadata = table_object_store
-            .get(path)
-            .await
-            .context(ConfigError::MetadataFetch)?;
-
         let volume_ident = database.volume.clone();
         let volume = metastore
             .get_volume(&volume_ident)
@@ -278,104 +273,72 @@ impl MetastoreBootstrapConfig {
                 table: table_name.clone(),
                 volume: volume_ident.clone(),
             })?;
-        volume.get_object_store()
-        let object_store = metastore
-            .volume_object_store(&volume.ident)
-            .await
-            .context(MetastoreSnafu)?
-            .ok_or_else(|| ConfigError::MissingVolumeObjectStore {
-                table: table_name.clone(),
-                volume: volume.ident.clone(),
-            })?;
-        let file_catalog = FileCatalog::new("s3://base/path", ObjectStoreBuilder::memory())
-            .await
-            .unwrap();
+        let table_object_store = volume.get_object_store().context(MetastoreSnafu)?;
 
-        let file_catalog = FileCatalog::new()
-        let metadata = object_store
-            .get(&ObjectStorePath::from_url_path(&entry.metadata_location))
+        let bytes = table_object_store
+            .get(
+                &strip_prefix(&entry.metadata_location.clone())
+                    .as_str()
+                    .into(),
+            )
             .await
-            .context(TestObjectStoreSnafu);
-        let metadata_bytes = object_store
-            .get(&ObjectStorePath::from(relative_path.clone()))
-            .await
-            .map_err(|source| ConfigError::MetadataFetch {
+            .map_err(|e| ConfigError::InvalidMetadataLocation {
                 table: table_name.clone(),
-                source,
+                reason: e.to_string(),
             })?
             .bytes()
             .await
-            .map_err(|source| ConfigError::MetadataFetch {
+            .context(MetadataFetchSnafu {
                 table: table_name.clone(),
-                source,
             })?;
-        let metadata = Self::parse_table_metadata(metadata_bytes.as_ref(), &table_name)?;
-        let volume_location = if metadata.location.is_empty() {
-            None
-        } else {
-            Some(metadata.location.clone())
-        };
 
+        let json_val: Value = serde_json::from_slice(&bytes).context(MetadataParseSnafu {
+            table: table_name.clone(),
+        })?;
+
+        // Patch missing iceberg spec fields
+        let json_val = patch_missing_operation(json_val)?;
+
+        // Convert back to bytes
+        let patched_bytes = serde_json::to_vec(&json_val).context(MetadataParseSnafu {
+            table: table_name.clone(),
+        })?;
+        // Deserialize normally
+        let metadata: TableMetadata =
+            serde_json::from_slice(&patched_bytes).context(MetadataParseSnafu {
+                table: table_name.clone(),
+            })?;
+
+        let stored_table = catalog_metastore::Table {
+            ident: table_ident.clone(),
+            metadata,
+            metadata_location: entry.metadata_location.clone(),
+            properties: HashMap::default(),
+            volume_ident: Some(volume.ident.clone()),
+            volume_location: None,
+            is_temporary: false,
+            format: TableFormat::Iceberg,
+        };
         metastore
-            .register_table_from_metadata(
-                &table_ident,
-                RegisterTableFromMetadataArgs {
-                    metadata,
-                    metadata_location: relative_path,
-                    volume_ident: volume.ident.clone(),
-                    volume_location,
-                    format: entry.format.clone().unwrap_or(TableFormat::Iceberg),
-                    properties: entry.properties.clone(),
-                    is_temporary: false,
-                },
-            )
+            .register_table(&table_ident, stored_table)
             .await
             .context(MetastoreSnafu)?;
-
-        tracing::info!(table = %table_name, "Registered table from config");
         Ok(())
     }
 }
 
-
-fn get_object_store_builder(volume: Volume) -> ObjectStoreBuilder {
-    match volume.volume {
-        VolumeType::S3(volume) => {
-            let builder = volume.get_s3_builder();
-
-        }
-        VolumeType::S3Tables(volume) => {
-            let builder = volume.s3_builder();
-
-        }
-        VolumeType::File(_) => {}
-        VolumeType::Memory => {}
-    }
-}
-
-pub fn get_object_store(&self) -> catalog_metastore::error::Result<Arc<dyn ObjectStore>> {
-    match &self.volume {
-        VolumeType::S3(volume) => {
-            let s3_builder = volume.get_s3_builder();
-            s3_builder
-                .build()
-                .map(|s3| Arc::new(s3) as Arc<dyn ObjectStore>)
-                .context(metastore_error::ObjectStoreSnafu)
-        }
-        VolumeType::S3Tables(volume) => {
-            let s3_builder = volume.s3_builder();
-            s3_builder
-                .build()
-                .map(|s3| Arc::new(s3) as Arc<dyn ObjectStore>)
-                .context(metastore_error::ObjectStoreSnafu)
-        }
-        VolumeType::File(file) => Ok(Arc::new(
-            LocalFileSystem::new_with_prefix(file.path.clone())
-                .context(metastore_error::ObjectStoreSnafu)?
-                .with_automatic_cleanup(true),
-        ) as Arc<dyn ObjectStore>),
-        VolumeType::Memory => {
-            Ok(Arc::new(object_store::memory::InMemory::new()) as Arc<dyn ObjectStore>)
+fn patch_missing_operation(mut value: Value) -> Result<Value, ConfigError> {
+    if let Some(snapshots) = value.get_mut("snapshots").and_then(|v| v.as_array_mut()) {
+        for snapshot in snapshots {
+            if let Some(summary) = snapshot.get_mut("summary")
+                && summary.get("operation").is_none()
+            {
+                summary
+                    .as_object_mut()
+                    .context(InvalidMetadataSnafu)?
+                    .insert("operation".to_string(), Value::String("append".into()));
+            }
         }
     }
+    Ok(value)
 }

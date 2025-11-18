@@ -53,7 +53,7 @@ iceberg-rest-catalog = { git = "https://github.com/Embucket/iceberg-rust.git", r
 iceberg-rust = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d" }
 iceberg-rust-spec = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d" }
 iceberg-s3tables-catalog = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d" }
-iceberg-file-catalog = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d" }
+
 indexmap = "2.7.1"
 jsonwebtoken = "9.3.1"
 lazy_static = { version = "1.5" }

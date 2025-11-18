@@ -3263,7 +3263,6 @@ dependencies = [
  "console-subscriber",
  "dotenv",
  "executor",
- "iceberg-file-catalog",
  "iceberg-rust",
  "object_store",
  "opentelemetry",
@@ -3271,6 +3270,7 @@ dependencies = [
  "opentelemetry_sdk",
  "queries",
  "serde",
+ "serde_json",
  "serde_yaml",
  "snafu",
  "strum 0.27.2",
@@ -4356,21 +4356,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "iceberg-file-catalog"
-version = "0.8.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
-dependencies = [
- "async-trait",
- "futures",
- "iceberg-rust",
- "object_store",
- "serde_json",
- "thiserror 2.0.17",
- "url",
- "uuid",
 ]
 
 [[package]]
