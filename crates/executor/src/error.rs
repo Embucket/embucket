@@ -1,5 +1,5 @@
 use super::snowflake_error::SnowflakeError;
-use crate::query_types::{QueryRecordId, QueryStatus};
+use crate::query_types::{QueryId, QueryStatus};
 use catalog::error::Error as CatalogError;
 use datafusion_common::DataFusionError;
 use error_stack_trace;
@@ -9,6 +9,7 @@ use snafu::Location;
 use snafu::prelude::*;
 use std::backtrace::Backtrace;
 use std::fmt::Display;
+use crate::RunningQueryId;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -549,18 +550,18 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("{}: Query execution error: {source}", query_id.as_uuid()))]
+    #[snafu(display("{query_id}: Query execution error: {source}"))]
     QueryExecution {
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(source(from(Error, Box::new)))]
         source: Box<Error>,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Query {} isn't running", query_id.as_uuid()))]
+    #[snafu(display("Query {query_id} isn't running"))]
     QueryIsntRunning {
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(implicit)]
         location: Location,
     },
@@ -573,32 +574,32 @@ pub enum Error {
     },
 
     // When user tried to get result before query finished
-    #[snafu(display("Query {} is running", query_id.as_uuid()))]
+    #[snafu(display("Query {query_id} is running"))]
     QueryIsRunning {
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Query {} cancelled", query_id.as_uuid()))]
+    #[snafu(display("Query {query_id} cancelled"))]
     QueryCancelled {
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Query [{}] result notify error: {error}", query_id.as_uuid()))]
+    #[snafu(display("Query {query_id} result notify error: {error}"))]
     QueryStatusRecv {
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(source)]
         error: tokio::sync::watch::error::RecvError,
         #[snafu(implicit)]
         location: Location,
     },
 
-    #[snafu(display("Query [{}] status notify error: {error}", query_id.as_uuid()))]
+    #[snafu(display("Query {query_id} status notify error: {error}"))]
     NotifyQueryStatus {
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(source)]
         error: tokio::sync::watch::error::SendError<QueryStatus>,
         #[snafu(implicit)]
@@ -618,18 +619,25 @@ pub enum Error {
     AsyncResultTaskJoin {
         #[snafu(source)]
         error: tokio::task::JoinError,
-        query_id: QueryRecordId,
+        query_id: QueryId,
         #[snafu(implicit)]
         location: Location,
-    }    
+    },
+
+    #[snafu(display("Missing results handle in running query [{running_query_id:?}]"))]
+    NoJoinHandle {
+        running_query_id: RunningQueryId,
+        #[snafu(implicit)]
+        location: Location,
+    }
 }
 
 impl Error {
-    pub fn query_id(&self) -> QueryRecordId {
+    pub fn query_id(&self) -> QueryId {
         if let Self::QueryExecution { query_id, .. } = self {
             *query_id
         } else {
-            QueryRecordId::default()
+            QueryId::default()
         }
     }
     #[must_use]

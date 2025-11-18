@@ -6,7 +6,7 @@ use datafusion::arrow::error::ArrowError;
 use error_stack::ErrorChainExt;
 use error_stack::ErrorExt;
 use error_stack_trace;
-use executor::QueryRecordId;
+use executor::QueryId;
 use executor::error::OperationOn;
 use executor::error_code::ErrorCode;
 use executor::snowflake_error::Entity;
@@ -94,11 +94,11 @@ impl IntoResponse for Error {
 }
 
 impl Error {
-    pub fn query_id(&self) -> QueryRecordId {
+    pub fn query_id(&self) -> QueryId {
         if let Self::Execution { source, .. } = self {
             source.query_id()
         } else {
-            QueryRecordId::default()
+            QueryId::default()
         }
     }
 
@@ -195,8 +195,7 @@ impl Error {
         tracing::Span::current()
             .record("error_code", error_code.to_string())
             .record("sql_state", sql_state.to_string())
-            .record("query_id", self.query_id().as_i64())
-            .record("query_uuid", self.query_id().as_uuid().to_string())
+            .record("query_id", self.query_id().to_string())
             .record("display_error", &display_error)
             .record("debug_error", self.debug_error_message())
             .record("error_stack_trace", self.output_msg())
@@ -218,7 +217,7 @@ impl Error {
                 total: None,
                 query_result_format: None,
                 // Query uuid is returned to the user
-                query_id: Some(self.query_id().as_uuid().to_string()),
+                query_id: Some(self.query_id().to_string()),
             }),
             code: Some(error_code.to_string()),
         });

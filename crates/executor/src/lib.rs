@@ -17,7 +17,7 @@ pub mod utils;
 pub mod tests;
 
 pub use error::{Error, Result};
-pub use query_types::{QueryRecordId, QueryStatus};
+pub use query_types::{QueryId, QueryStatus};
 pub use running_queries::RunningQueryId;
 pub use snowflake_error::SnowflakeError;
 

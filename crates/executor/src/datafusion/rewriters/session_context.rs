@@ -1,5 +1,5 @@
 use crate::models::QueryContext;
-use crate::query_types::QueryRecordId;
+use crate::query_types::QueryId;
 use crate::running_queries::{RunningQueries, RunningQueryId};
 use datafusion::arrow::array::{ListArray, ListBuilder, StringBuilder};
 use datafusion::logical_expr::{Expr, LogicalPlan};
@@ -19,7 +19,7 @@ pub struct SessionContextExprRewriter {
     pub session_id: String,
     pub version: String,
     pub query_context: QueryContext,
-    pub recent_queries: Arc<RwLock<VecDeque<QueryRecordId>>>,
+    pub recent_queries: Arc<RwLock<VecDeque<QueryId>>>,
     pub running_queries: Arc<dyn RunningQueries>,
 }
 
@@ -64,11 +64,11 @@ impl SessionContextExprRewriter {
 
     #[allow(clippy::needless_pass_by_value)]
     pub fn cancel_query(&self, query_id: String) -> Result<ScalarValue> {
-        let Ok(query_uuid) = Uuid::from_str(&query_id) else {
+        let Ok(query_id) = Uuid::from_str(&query_id) else {
             return Ok(utf8_val("Invalid UUID."));
         };
 
-        let query_id = QueryRecordId::from(query_uuid);
+        let query_id = QueryId::from(query_id);
         if self
             .running_queries
             .abort(RunningQueryId::ByQueryId(query_id))
@@ -79,8 +79,7 @@ impl SessionContextExprRewriter {
             ))
         } else {
             Ok(utf8_val(format!(
-                "query [{}] terminated.",
-                query_id.as_uuid()
+                "query [{query_id}] terminated."
             )))
         }
     }
