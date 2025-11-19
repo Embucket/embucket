@@ -187,10 +187,6 @@ impl RunningQueries for RunningQueriesRegistry {
             .queries
             .get(&query_id)
             .context(ex_error::QueryIsntRunningSnafu { query_id })?;
-        // Two phase mechanism:
-        // 1 - cancel query using cancellation_token
-        // 2 - ExecutionService removes RunningQuery from RunningQueriesRegistry
-        // 3 - Consume or discard result handle
         running_query.cancel();
         Ok(())
     }
