@@ -52,8 +52,7 @@ pub trait ExecutionService: Send + Sync {
     async fn delete_expired_sessions(&self) -> Result<()>;
     async fn get_session(&self, session_id: &str) -> Result<Arc<UserSession>>;
     async fn session_exists(&self, session_id: &str) -> bool;
-    // Currently delete_session function is not used
-    // async fn delete_session(&self, session_id: String) -> Result<()>;
+    async fn delete_session(&self, session_id: &str) -> Result<()>;
     fn get_sessions(&self) -> Arc<RwLock<HashMap<String, Arc<UserSession>>>>;
 
     /// Locates a query by `running_query_id`.
@@ -450,6 +449,22 @@ impl ExecutionService for CoreExecutionService {
         sessions.contains_key(session_id)
     }
 
+    #[tracing::instrument(
+        name = "ExecutionService::delete_session",
+        level = "debug",
+        skip(self),
+        fields(session_id, new_sessions_count),
+        err
+    )]
+    async fn delete_session(&self, session_id: &str) -> Result<()> {
+        let mut session_list = self.df_sessions.write().await;
+        session_list.remove(session_id);
+
+        // Record the result as part of the current span.
+        tracing::Span::current().record("session_id", session_id);
+        tracing::Span::current().record("new_sessions_count", session_list.len());
+        Ok(())
+    }
     fn get_sessions(&self) -> Arc<RwLock<HashMap<String, Arc<UserSession>>>> {
         self.df_sessions.clone()
     }

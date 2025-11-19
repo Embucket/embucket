@@ -1,4 +1,5 @@
 use error_stack_trace;
+use iceberg_rust::error::Error as IcebergError;
 use snafu::Location;
 use snafu::prelude::*;
 
@@ -11,6 +12,11 @@ pub enum DFExternalError {
     #[snafu(display("Object store not found for url {url}"))]
     ObjectStoreNotFound {
         url: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Metastore is missing for embucket catalog"))]
+    MetastoreIsMissing {
         #[snafu(implicit)]
         location: Location,
     },
@@ -42,6 +48,14 @@ pub enum DFExternalError {
     },
     #[snafu(display("Failed to downcast Session to SessionState"))]
     SessionDowncast {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Iceberg error: {error}"))]
+    Iceberg {
+        #[snafu(source(from(IcebergError, Box::new)))]
+        error: Box<IcebergError>,
         #[snafu(implicit)]
         location: Location,
     },

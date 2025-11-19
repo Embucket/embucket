@@ -1,13 +1,26 @@
+use crate::catalogs::embucket::schema::EmbucketSchema;
+use crate::df_error;
 use crate::schema::CachingSchema;
+use catalog_metastore::Metastore;
 use chrono::NaiveDateTime;
 use dashmap::DashMap;
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
+use datafusion_common::DataFusionError;
+use datafusion_iceberg::catalog::catalog::IcebergCatalog;
+use datafusion_iceberg::catalog::schema::IcebergSchema;
+use futures::executor::block_on;
+use iceberg_rust::catalog::Catalog;
+use iceberg_rust_spec::namespace::Namespace;
+use snafu::OptionExt;
+use snafu::futures::TryFutureExt;
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
 
 #[derive(Clone)]
 pub struct CachingCatalog {
     pub catalog: Arc<dyn CatalogProvider>,
+    pub metastore: Option<Arc<dyn Metastore>>,
+    pub iceberg_catalog: Option<Arc<dyn Catalog>>,
     pub catalog_type: CatalogType,
     pub schemas_cache: DashMap<String, Arc<CachingSchema>>,
     pub should_refresh: bool,
@@ -50,9 +63,15 @@ impl Display for CatalogType {
 }
 
 impl CachingCatalog {
-    pub fn new(catalog: Arc<dyn CatalogProvider>, name: String) -> Self {
+    pub fn new(
+        catalog_provider: Arc<dyn CatalogProvider>,
+        name: String,
+        iceberg_catalog: Option<Arc<dyn Catalog>>,
+    ) -> Self {
         Self {
-            catalog,
+            catalog: catalog_provider,
+            iceberg_catalog,
+            metastore: None,
             schemas_cache: DashMap::new(),
             should_refresh: false,
             enable_information_schema: true,
@@ -81,6 +100,12 @@ impl CachingCatalog {
     #[must_use]
     pub const fn with_properties(mut self, properties: Properties) -> Self {
         self.properties = Some(properties);
+        self
+    }
+
+    #[must_use]
+    pub fn with_metastore(mut self, metastore: Arc<dyn Metastore>) -> Self {
+        self.metastore = Some(metastore);
         self
     }
 }
@@ -128,6 +153,7 @@ impl CatalogProvider for CachingCatalog {
                         name: name.clone(),
                         schema,
                         tables_cache: DashMap::new(),
+                        iceberg_catalog: self.iceberg_catalog.clone(),
                     }),
                 );
             }
@@ -148,6 +174,7 @@ impl CatalogProvider for CachingCatalog {
                 name: name.to_string(),
                 schema: Arc::clone(&schema),
                 tables_cache: DashMap::new(),
+                iceberg_catalog: self.iceberg_catalog.clone(),
             });
 
             self.schemas_cache
@@ -169,14 +196,57 @@ impl CatalogProvider for CachingCatalog {
         name: &str,
         schema: Arc<dyn SchemaProvider>,
     ) -> datafusion_common::Result<Option<Arc<dyn SchemaProvider>>> {
+        let schema_provider = if let Some(catalog) = &self.iceberg_catalog {
+            let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
+                .map_err(|err| DataFusionError::External(Box::new(err)))?;
+
+            let schema_provider: Arc<dyn SchemaProvider> = match self.catalog_type {
+                CatalogType::Embucket | CatalogType::Memory => {
+                    let metastore = self
+                        .metastore
+                        .clone()
+                        .context(df_error::MetastoreIsMissingSnafu)?;
+                    Arc::new(EmbucketSchema {
+                        database: self.name.clone(),
+                        schema: name.to_string(),
+                        metastore: Arc::clone(&metastore),
+                        iceberg_catalog: catalog.clone(),
+                    })
+                }
+                CatalogType::S3tables => {
+                    let Some(iceberg_catalog) =
+                        self.catalog.as_any().downcast_ref::<IcebergCatalog>()
+                    else {
+                        return Err(DataFusionError::Plan(format!(
+                            "Catalog {} is not an Iceberg catalog.",
+                            self.name
+                        )));
+                    };
+                    Arc::new(IcebergSchema::new(
+                        namespace.clone(),
+                        iceberg_catalog.mirror(),
+                    ))
+                }
+            };
+            block_on(
+                catalog
+                    .create_namespace(&namespace, None)
+                    .context(df_error::IcebergSnafu),
+            )?;
+            schema_provider
+        } else {
+            return self.catalog.register_schema(name, schema);
+        };
+
         let caching_schema = Arc::new(CachingSchema {
             name: name.to_string(),
-            schema: Arc::clone(&schema),
+            schema: schema_provider,
             tables_cache: DashMap::new(),
+            iceberg_catalog: self.iceberg_catalog.clone(),
         });
         self.schemas_cache
             .insert(name.to_string(), Arc::clone(&caching_schema));
-        self.catalog.register_schema(name, schema)
+        Ok(Some(caching_schema))
     }
 
     #[tracing::instrument(
@@ -190,7 +260,22 @@ impl CatalogProvider for CachingCatalog {
         name: &str,
         cascade: bool,
     ) -> datafusion_common::Result<Option<Arc<dyn SchemaProvider>>> {
-        self.schemas_cache.remove(name);
-        self.catalog.deregister_schema(name, cascade)
+        let schema = self.schemas_cache.remove(name);
+
+        if let Some(catalog) = &self.iceberg_catalog {
+            let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
+                .map_err(|err| DataFusionError::External(Box::new(err)))?;
+            block_on(
+                catalog
+                    .drop_namespace(&namespace)
+                    .context(df_error::IcebergSnafu),
+            )?;
+        } else {
+            return self.catalog.deregister_schema(name, cascade);
+        }
+        if let Some((_, caching_schema)) = schema {
+            return Ok(Some(caching_schema));
+        }
+        Ok(None)
     }
 }

@@ -11,7 +11,7 @@ pub mod sql_types {
 }
 
 diesel::table! {
-    use diesel::sql_types::*;
+    use diesel::sql_types::{Uuid, Text, Int2, Nullable, Jsonb, Timestamptz, Int8};
     use super::sql_types::QueryStatusType;
     use super::sql_types::ResultFormatType;
 
