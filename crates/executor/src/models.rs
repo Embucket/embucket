@@ -1,4 +1,4 @@
-use crate::query_types::{QueryId, QueryStatus};
+use crate::query_types::QueryId;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
 use datafusion_common::arrow::datatypes::Schema;
@@ -6,7 +6,6 @@ use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

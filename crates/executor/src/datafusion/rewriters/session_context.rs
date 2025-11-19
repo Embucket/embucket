@@ -1,6 +1,6 @@
 use crate::models::QueryContext;
 use crate::query_types::QueryId;
-use crate::running_queries::{RunningQueries, RunningQueryId};
+use crate::running_queries::RunningQueries;
 use datafusion::arrow::array::{ListArray, ListBuilder, StringBuilder};
 use datafusion::logical_expr::{Expr, LogicalPlan};
 use datafusion_common::tree_node::{Transformed, TreeNode, TreeNodeRewriter};
@@ -69,18 +69,12 @@ impl SessionContextExprRewriter {
         };
 
         let query_id = QueryId::from(query_id);
-        if self
-            .running_queries
-            .abort(RunningQueryId::ByQueryId(query_id))
-            .is_err()
-        {
+        if self.running_queries.abort(query_id).is_err() {
             Ok(utf8_val(
                 "Identified SQL statement is not currently executing.",
             ))
         } else {
-            Ok(utf8_val(format!(
-                "query [{query_id}] terminated."
-            )))
+            Ok(utf8_val(format!("query [{query_id}] terminated.")))
         }
     }
 }

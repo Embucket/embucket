@@ -70,24 +70,27 @@ pub async fn query(
 
     // find running query by request_id
     let session = state.execution_svc.get_session(&session_id).await?;
-    let running_query_id = RunningQueryId::ByRequestId(query.request_id, sql_text.clone());
-    let query_id_res = session.running_queries.locate_query_id(running_query_id.clone());
+    let query_id_res = session
+        .running_queries
+        .locate_query_id(RunningQueryId::ByRequestId(
+            query.request_id,
+            sql_text.clone(),
+        ));
 
-    let (result, query_id) = if query.retry_count.unwrap_or_default() > 0 && let Ok(query_id ) = query_id_res {
-        let result = state
-            .execution_svc
-            .wait_submitted_query_result(running_query_id)
-            .await?;
+    let (result, query_id) = if query.retry_count.unwrap_or_default() > 0
+        && let Ok(query_id) = query_id_res
+    {
+        let result = state.execution_svc.wait(query_id).await?;
         (result, query_id)
     } else {
         let query_id = query_context.query_id;
         let result = state
-        .execution_svc
-        .query(&session_id, &sql_text, query_context)
-        .await?;
+            .execution_svc
+            .query(&session_id, &sql_text, query_context)
+            .await?;
         (result, query_id)
     };
-    
+
     handle_query_ok_result(&sql_text, query_id, result, serialization_format)
 }
 
@@ -99,8 +102,9 @@ pub async fn abort(
         request_id,
     }): Json<AbortRequestBody>,
 ) -> Result<Json<serde_json::value::Value>> {
-    state
+    let query_id = state
         .execution_svc
-        .abort_query(RunningQueryId::ByRequestId(request_id, sql_text))?;
+        .locate_query_id(RunningQueryId::ByRequestId(request_id, sql_text))?;
+    state.execution_svc.abort(query_id)?;
     Ok(Json(serde_json::value::Value::Null))
 }

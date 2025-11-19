@@ -1,6 +1,6 @@
 use super::error::{self as ex_error, Result};
-use crate::query_types::{QueryId, QueryStatus};
 use super::models::QueryResult;
+use crate::query_types::{QueryId, QueryStatus};
 use dashmap::DashMap;
 use snafu::{OptionExt, ResultExt};
 use std::sync::Arc;
@@ -9,12 +9,14 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+// RunningQuery can't be cloned and most of the time lives in RunningQueriesRegistry,
+// it can't be used directly and only accessible by reference from RunningQueriesRegistry
 #[derive(Debug)]
 pub struct RunningQuery {
     pub query_id: QueryId,
     pub request_id: Option<Uuid>,
-    // save result handle here, so when query finishes caller will retrieve handle 
-    // by removing RunningQuery from registry and get result using result handle
+    // save result handle here, so when query finishes caller will retrieve handle
+    // by removing RunningQuery from registry and will get result using result handle
     pub result_handle: Option<JoinHandle<Result<QueryResult>>>,
     pub cancellation_token: CancellationToken,
     // user can be notified when query is finished
@@ -24,7 +26,7 @@ pub struct RunningQuery {
 
 #[derive(Debug, Clone)]
 pub enum RunningQueryId {
-    ByQueryId(QueryId),  // (query_id)
+    ByQueryId(QueryId),        // (query_id)
     ByRequestId(Uuid, String), // (request_id, sql_text)
 }
 
@@ -42,15 +44,24 @@ impl RunningQuery {
         }
     }
     #[must_use]
-    pub const fn with_request_id(mut self, request_id: Uuid) -> Self {
-        self.request_id = Some(request_id);
-        self
+    pub fn with_request_id(self, request_id: Option<Uuid>) -> Self {
+        Self { request_id, ..self }
     }
 
     #[must_use]
-    pub fn with_result_handle(mut self, result_handle: JoinHandle<Result<QueryResult>>) -> Self {
-        self.result_handle = Some(result_handle);
-        self
+    pub fn with_result_handle(self, result_handle: JoinHandle<Result<QueryResult>>) -> Self {
+        Self {
+            result_handle: Some(result_handle),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_cancellation_token(self, cancellation_token: CancellationToken) -> Self {
+        Self {
+            cancellation_token,
+            ..self
+        }
     }
 
     pub fn cancel(&self) {
@@ -71,12 +82,12 @@ impl RunningQuery {
     }
 
     #[tracing::instrument(
-        name = "RunningQuery::wait",
+        name = "RunningQuery::wait_query_finished",
         level = "trace",
         skip(self),
         err
     )]
-    pub async fn wait(
+    pub async fn wait_query_finished(
         &self,
     ) -> std::result::Result<QueryStatus, watch::error::RecvError> {
         // use loop here to bypass default query status we posted at init
@@ -115,19 +126,18 @@ impl RunningQueriesRegistry {
     }
 
     #[tracing::instrument(
-        name = "RunningQueriesRegistry::wait",
+        name = "RunningQueriesRegistry::wait_query_finished",
         level = "trace",
         skip(self),
         err
     )]
-    pub async fn wait(&self, running_query_id: RunningQueryId) -> Result<QueryStatus> {
-        let query_id = self.locate_query_id(running_query_id)?;
+    pub async fn wait_query_finished(&self, query_id: QueryId) -> Result<QueryStatus> {
         let running_query = self
             .queries
             .get(&query_id)
             .context(ex_error::QueryIsntRunningSnafu { query_id })?;
         running_query
-            .wait()
+            .wait_query_finished()
             .await
             .context(ex_error::QueryStatusRecvSnafu { query_id })
     }
@@ -137,9 +147,9 @@ impl RunningQueriesRegistry {
 #[async_trait::async_trait]
 pub trait RunningQueries: Send + Sync {
     fn add(&self, running_query: RunningQuery);
-    fn remove(&self, running_query_id: RunningQueryId) -> Result<RunningQuery>;
-    fn abort(&self, abort_query: RunningQueryId) -> Result<()>;
-    fn notify_query_finished(&self, running_query_id: RunningQueryId, status: QueryStatus) -> Result<()>;
+    fn remove(&self, query_id: QueryId) -> Result<RunningQuery>;
+    fn abort(&self, query_id: QueryId) -> Result<()>;
+    fn notify_query_finished(&self, query_id: QueryId, status: QueryStatus) -> Result<()>;
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId>;
     fn count(&self) -> usize;
 }
@@ -153,8 +163,7 @@ impl RunningQueries for RunningQueriesRegistry {
         }
 
         // map RunningQuery to query_id
-        self.queries
-            .insert(running_query.query_id, running_query);
+        self.queries.insert(running_query.query_id, running_query);
     }
 
     #[tracing::instrument(
@@ -163,8 +172,7 @@ impl RunningQueries for RunningQueriesRegistry {
         skip(self),
         err
     )]
-    fn remove(&self, running_query_id: RunningQueryId) -> Result<RunningQuery> {
-        let query_id = self.locate_query_id(running_query_id)?;
+    fn remove(&self, query_id: QueryId) -> Result<RunningQuery> {
         let (_, running_query) = self
             .queries
             .remove(&query_id)
@@ -179,15 +187,15 @@ impl RunningQueries for RunningQueriesRegistry {
         fields(running_queries_count = self.count()),
         err
     )]
-    fn abort(&self, abort_query: RunningQueryId) -> Result<()> {
-        // Two phase mechanism:
-        // 1 - cancel query using cancellation_token
-        // 2 - ExecutionService removes RunningQuery from RunningQueriesRegistry
-        let query_id = self.locate_query_id(abort_query)?;
+    fn abort(&self, query_id: QueryId) -> Result<()> {
         let running_query = self
             .queries
             .get(&query_id)
             .context(ex_error::QueryIsntRunningSnafu { query_id })?;
+        // Two phase mechanism:
+        // 1 - cancel query using cancellation_token
+        // 2 - ExecutionService removes RunningQuery from RunningQueriesRegistry
+        // 3 - Consume or discard result handle
         running_query.cancel();
         Ok(())
     }
@@ -198,8 +206,7 @@ impl RunningQueries for RunningQueriesRegistry {
         skip(self),
         err
     )]
-    fn notify_query_finished(&self, running_query_id: RunningQueryId, status: QueryStatus) -> Result<()> {
-        let query_id = self.locate_query_id(running_query_id)?;
+    fn notify_query_finished(&self, query_id: QueryId, status: QueryStatus) -> Result<()> {
         let running_query = self
             .queries
             .get(&query_id)
@@ -216,13 +223,11 @@ impl RunningQueries for RunningQueriesRegistry {
     )]
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId> {
         match running_query_id {
-            RunningQueryId::ByRequestId(request_id, _sql_text) => {
-                Ok(*self
-                    .requests_ids
-                    .get(&request_id)
-                    .context(ex_error::QueryByRequestIdIsntRunningSnafu { request_id })?)
-            },
-            RunningQueryId::ByQueryId(query_id) => Ok(query_id)
+            RunningQueryId::ByRequestId(request_id, _sql_text) => Ok(*self
+                .requests_ids
+                .get(&request_id)
+                .context(ex_error::QueryByRequestIdIsntRunningSnafu { request_id })?),
+            RunningQueryId::ByQueryId(query_id) => Ok(query_id),
         }
     }
 

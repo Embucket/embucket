@@ -9,7 +9,6 @@ use snafu::Location;
 use snafu::prelude::*;
 use std::backtrace::Backtrace;
 use std::fmt::Display;
-use crate::RunningQueryId;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -632,12 +631,12 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Missing results handle in running query [{running_query_id:?}]"))]
+    #[snafu(display("Missing results handle in running query [{query_id:?}]"))]
     NoJoinHandle {
-        running_query_id: RunningQueryId,
+        query_id: QueryId,
         #[snafu(implicit)]
         location: Location,
-    }
+    },
 }
 
 impl Error {
