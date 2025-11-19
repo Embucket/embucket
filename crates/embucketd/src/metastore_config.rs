@@ -1,11 +1,16 @@
+use catalog_metastore::{
+    Database, Metastore, Schema, SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent,
+};
+use iceberg_rust::spec::table_metadata::TableMetadata;
+use iceberg_rust::spec::util::strip_prefix;
+use serde::Deserialize;
+use serde_json::Value;
+use snafu::prelude::*;
+use std::collections::HashMap;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-
-use catalog_metastore::{Database, Metastore, Schema, SchemaIdent, Volume, VolumeIdent};
-use serde::Deserialize;
-use snafu::prelude::*;
 use tokio::fs;
 
 #[derive(Debug, Deserialize, Default)]
@@ -16,6 +21,8 @@ pub struct MetastoreBootstrapConfig {
     databases: Vec<DatabaseEntry>,
     #[serde(default)]
     schemas: Vec<SchemaEntry>,
+    #[serde(default)]
+    tables: Vec<TableEntry>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -38,6 +45,20 @@ struct SchemaEntry {
     schema: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+struct TableEntry {
+    database: String,
+    schema: String,
+    table: String,
+    metadata_location: String,
+}
+
+impl TableEntry {
+    fn table_ident(&self) -> TableIdent {
+        TableIdent::new(&self.database, &self.schema, &self.table)
+    }
+}
+
 #[derive(Debug, Snafu)]
 pub enum ConfigError {
     #[snafu(display("Failed to read metastore config {path:?}: {source}"))]
@@ -53,6 +74,26 @@ pub enum ConfigError {
     #[snafu(display("Metastore bootstrap error: {source}"))]
     Metastore {
         source: catalog_metastore::error::Error,
+    },
+    #[snafu(display("Database {database} not found for table {table}"))]
+    TableDatabaseMissing { table: String, database: String },
+    #[snafu(display("Volume {volume} not found for table {table}"))]
+    TableVolumeMissing { table: String, volume: VolumeIdent },
+    #[snafu(display("Invalid metadata location for table {table}: {reason}"))]
+    InvalidMetadataLocation { table: String, reason: String },
+    #[snafu(display("Invalid metadata"))]
+    InvalidMetadata,
+    #[snafu(display("Failed to fetch metadata for table {table}: {source}"))]
+    MetadataFetch {
+        table: String,
+        #[snafu(source)]
+        source: object_store::Error,
+    },
+    #[snafu(display("Failed to parse metadata for table {table}: {source}"))]
+    MetadataParse {
+        table: String,
+        #[snafu(source)]
+        source: serde_json::Error,
     },
 }
 
@@ -82,6 +123,10 @@ impl MetastoreBootstrapConfig {
         for schema in &self.schemas {
             self.ensure_schema(metastore.clone(), &schema.database, &schema.schema)
                 .await?;
+        }
+
+        for table in &self.tables {
+            self.apply_table(table, metastore.clone()).await?;
         }
 
         Ok(())
@@ -182,4 +227,110 @@ impl MetastoreBootstrapConfig {
         }
         Ok(())
     }
+
+    async fn apply_table(
+        &self,
+        entry: &TableEntry,
+        metastore: Arc<dyn Metastore>,
+    ) -> Result<(), ConfigError> {
+        let table_ident = entry.table_ident();
+        let table_name = entry.table.clone();
+        if metastore
+            .table_exists(&table_ident)
+            .await
+            .context(MetastoreSnafu)?
+        {
+            tracing::debug!(table = %table_name, "Table already exists, skipping config create");
+            return Ok(());
+        }
+
+        let database = metastore
+            .get_database(&entry.database)
+            .await
+            .context(MetastoreSnafu)?
+            .ok_or_else(|| ConfigError::TableDatabaseMissing {
+                table: table_name.clone(),
+                database: entry.database.clone(),
+            })?;
+
+        self.ensure_schema(metastore.clone(), &entry.database, &entry.schema)
+            .await?;
+
+        let volume_ident = database.volume.clone();
+        let volume = metastore
+            .get_volume(&volume_ident)
+            .await
+            .context(MetastoreSnafu)?
+            .ok_or_else(|| ConfigError::TableVolumeMissing {
+                table: table_name.clone(),
+                volume: volume_ident.clone(),
+            })?;
+        let table_object_store = volume.get_object_store().context(MetastoreSnafu)?;
+
+        let bytes = table_object_store
+            .get(
+                &strip_prefix(&entry.metadata_location.clone())
+                    .as_str()
+                    .into(),
+            )
+            .await
+            .map_err(|e| ConfigError::InvalidMetadataLocation {
+                table: table_name.clone(),
+                reason: e.to_string(),
+            })?
+            .bytes()
+            .await
+            .context(MetadataFetchSnafu {
+                table: table_name.clone(),
+            })?;
+
+        let json_val: Value = serde_json::from_slice(&bytes).context(MetadataParseSnafu {
+            table: table_name.clone(),
+        })?;
+
+        // Patch missing iceberg spec fields
+        let json_val = patch_missing_operation(json_val)?;
+
+        // Convert back to bytes
+        let patched_bytes = serde_json::to_vec(&json_val).context(MetadataParseSnafu {
+            table: table_name.clone(),
+        })?;
+        // Deserialize normally
+        let metadata: TableMetadata =
+            serde_json::from_slice(&patched_bytes).context(MetadataParseSnafu {
+                table: table_name.clone(),
+            })?;
+
+        let stored_table = catalog_metastore::Table {
+            ident: table_ident.clone(),
+            metadata,
+            metadata_location: entry.metadata_location.clone(),
+            properties: HashMap::default(),
+            volume_ident: Some(volume.ident.clone()),
+            volume_location: None,
+            is_temporary: false,
+            format: TableFormat::Iceberg,
+        };
+        metastore
+            .register_table(&table_ident, stored_table)
+            .await
+            .context(MetastoreSnafu)?;
+        Ok(())
+    }
+}
+
+fn patch_missing_operation(mut value: Value) -> Result<Value, ConfigError> {
+    if let Some(snapshots) = value.get_mut("snapshots").and_then(|v| v.as_array_mut()) {
+        for snapshot in snapshots {
+            if let Some(summary) = snapshot.get_mut("summary")
+                && summary.get("operation").is_none()
+            {
+                summary
+                    .as_object_mut()
+                    .context(InvalidMetadataSnafu)?
+                    .insert("operation".to_string(), Value::String("append".into()));
+            }
+        }
+    }
+    Ok(value)
 }
