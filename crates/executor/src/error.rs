@@ -624,6 +624,14 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("Failed to join query subtask: {error}"))]
+    QuerySubtaskJoin {
+        #[snafu(source)]
+        error: tokio::task::JoinError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Missing results handle in running query [{running_query_id:?}]"))]
     NoJoinHandle {
         running_query_id: RunningQueryId,

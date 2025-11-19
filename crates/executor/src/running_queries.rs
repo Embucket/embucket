@@ -140,7 +140,6 @@ pub trait RunningQueries: Send + Sync {
     fn remove(&self, running_query_id: RunningQueryId) -> Result<RunningQuery>;
     fn abort(&self, abort_query: RunningQueryId) -> Result<()>;
     fn notify_query_finished(&self, running_query_id: RunningQueryId, status: QueryStatus) -> Result<()>;
-    // async fn wait(&self, running_query_id: RunningQueryId) -> Result<QueryStatus>;
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId>;
     fn count(&self) -> usize;
 }

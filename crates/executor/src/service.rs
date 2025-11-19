@@ -14,6 +14,7 @@ use datafusion::execution::memory_pool::{
 use datafusion::execution::runtime_env::{RuntimeEnv, RuntimeEnvBuilder};
 use datafusion_common::TableReference;
 use snafu::ResultExt;
+use tokio::task;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::vec;
@@ -35,7 +36,7 @@ use catalog_metastore::{
     Volume, VolumeType,
 };
 use tokio::sync::RwLock;
-use tokio::time::{Duration, timeout};
+use tokio::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
 
@@ -471,8 +472,6 @@ impl ExecutionService for CoreExecutionService {
         &self,
         running_query_id: RunningQueryId,
     ) -> Result<QueryResult> {
-        // verify query is running
-        let query_id = self.queries.locate_query_id(running_query_id.clone())?;
         let _query_status = self.queries.wait(running_query_id.clone()).await?;
         let running_query = self.queries.remove(running_query_id.clone())?;
         if let Some(result_handle) = running_query.result_handle {
@@ -499,7 +498,7 @@ impl ExecutionService for CoreExecutionService {
         name = "ExecutionService::submit_query",
         level = "debug",
         skip(self),
-        fields(query_id, old_queries_count = self.queries.count()),
+        fields(query_id, with_timeout_secs, old_queries_count = self.queries.count()),
         err
     )]
     async fn submit_query(
@@ -518,7 +517,8 @@ impl ExecutionService for CoreExecutionService {
 
         // Record the result as part of the current span.
         tracing::Span::current()
-            .record("query_id", query_id.to_string());
+            .record("query_id", query_id.to_string())
+            .record("with_timeout_secs", self.config.query_timeout_secs);
 
         // Create RunningQuery before query execution as query_context is then transfered to the query object
         let mut running_query = if let Some(request_id) = &query_context.request_id {
@@ -527,14 +527,12 @@ impl ExecutionService for CoreExecutionService {
             RunningQuery::new(query_id)
         };
 
-        // Attach the generated query ID to the query context before execution.
-        let query_obj = user_session.query(query, query_context.with_query_id(query_id));
-
+        let query = query.to_string();
         let query_timeout_secs = self.config.query_timeout_secs;
         let queries_ref = self.queries.clone();
-        let cancellation_token = running_query.cancellation_token.clone();
+        let query_token = running_query.cancellation_token.clone();
 
-        let child = tracing::info_span!("spawn_query_task");
+        let task_span = tracing::info_span!("spawn_query_task");
 
         let alloc_span = tracing::info_span!(
             target: "alloc",
@@ -543,16 +541,19 @@ impl ExecutionService for CoreExecutionService {
             session_id = %session_id
         );
         let handle = tokio::spawn(async move {
-            let mut query_obj = query_obj;
-            // Execute the query with a timeout to prevent long-running or stuck queries
-            // from blocking system resources indefinitely. If the timeout is exceeded,
-            // convert the timeout into a standard QueryTimeout error so it can be handled
-            // and recorded like any other execution failure.
-            let result_fut = timeout(Duration::from_secs(query_timeout_secs), query_obj.execute());
+            let sub_task_span = tracing::info_span!("spawn_query_sub_task");
+            let mut query_obj = user_session.query(query, query_context.with_query_id(query_id));
+
+            // Create nested task so in case of abort/timeout it can be aborted
+            // and result is handled properly (status / query result saved)
+            let subtask_fut = task::spawn(async move {
+                query_obj.execute().instrument(sub_task_span).await
+            });
+            let subtask_abort_handle = subtask_fut.abort_handle();
 
             // wait for any future to be resolved
             let (query_result, query_status) = tokio::select! {
-                finished = result_fut => {
+                finished = subtask_fut => {
                     match finished {
                         Ok(inner_result) => {
                             // set query execution status to successful or failed
@@ -561,36 +562,59 @@ impl ExecutionService for CoreExecutionService {
                                 query_id,
                             }), status)
                         },
-                        Err(_) => {
-                            (ex_error::QueryTimeoutSnafu.fail().context(ex_error::QueryExecutionSnafu {
+                        Err(error) => {
+                            tracing::error!("Query {query_id} sub task join error: {error:?}");
+                            (Err(ex_error::Error::QuerySubtaskJoin { error, location: snafu::location!() }).context(ex_error::QueryExecutionSnafu {
                                 query_id,
-                            }), QueryStatus::TimedOut)
+                            }), QueryStatus::Failed)
                         },
                     }
                 },
-                () = cancellation_token.cancelled() => {
+                () = query_token.cancelled() => {
+                    tracing::info_span!("query_cancelled_do_abort");
+                    subtask_abort_handle.abort();
                     (ex_error::QueryCancelledSnafu { query_id }.fail().context(ex_error::QueryExecutionSnafu {
                         query_id,
                     }), QueryStatus::Cancelled)
+                },
+                // Execute the query with a timeout to prevent long-running or stuck queries
+                // from blocking system resources indefinitely. If the timeout is exceeded,
+                // convert the timeout into a standard QueryTimeout error so it can be handled
+                // and recorded like any other execution failure
+                () = tokio::time::sleep(Duration::from_secs(query_timeout_secs)) => {
+                    tracing::info_span!("query_timeout_received_do_abort");
+                    subtask_abort_handle.abort();
+                    (ex_error::QueryTimeoutSnafu.fail().context(ex_error::QueryExecutionSnafu {
+                        query_id,
+                    }), QueryStatus::TimedOut)
                 }
             };
 
-            let _ = tracing::debug_span!("spawned_query_task_result",
+            let _ = tracing::info_span!("finished_query_status",
                 query_id = query_id.to_string(),
                 query_status = format!("{query_status:?}"),
             )
             .entered();
 
-            query_obj.session.record_query_id(query_id);
+            user_session.record_query_id(query_id);
 
+            // Notify subscribers query finishes and result is ready. 
+            // Do not immediately remove query from running queries registry
+            // as RunningQuery contains result handle that caller should consume.
             queries_ref.notify_query_finished(RunningQueryId::ByQueryId(query_id), query_status)?;
-            // remove query from running queries registry
-            // if let Ok(running_query) = queries_ref.remove(RunningQueryId::ByQueryId(query_id)) {
-            // let _ = running_query.notify_query_finished(query_status);
-            //}
+
+            // Discard results after short timeout, to prevent memory leaks
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let running_query = queries_ref.remove(RunningQueryId::ByQueryId(query_id));
+                if let Ok(RunningQuery {result_handle: Some(result_handle), ..}) = running_query {
+                    tracing::debug!("Discarding '{query_status:?}' result for query {query_id}");
+                    let _ = result_handle.await;
+                }
+            });
 
             query_result
-        }.instrument(alloc_span).instrument(child));
+        }.instrument(alloc_span).instrument(task_span));
 
         self.queries.add(running_query.with_result_handle(handle));
 
