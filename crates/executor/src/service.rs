@@ -488,8 +488,7 @@ impl ExecutionService for CoreExecutionService {
     #[tracing::instrument(
         name = "ExecutionService::locate_query_id",
         level = "debug",
-        skip(self),
-        err
+        skip(self)
     )]
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId> {
         self.queries.locate_query_id(running_query_id)

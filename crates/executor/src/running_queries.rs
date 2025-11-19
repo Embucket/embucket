@@ -166,12 +166,7 @@ impl RunningQueries for RunningQueriesRegistry {
         self.queries.insert(running_query.query_id, running_query);
     }
 
-    #[tracing::instrument(
-        name = "RunningQueriesRegistry::remove",
-        level = "trace",
-        skip(self),
-        err
-    )]
+    #[tracing::instrument(name = "RunningQueriesRegistry::remove", level = "trace", skip(self))]
     fn remove(&self, query_id: QueryId) -> Result<RunningQuery> {
         let (_, running_query) = self
             .queries
