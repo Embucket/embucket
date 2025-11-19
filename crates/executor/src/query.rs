@@ -1,13 +1,11 @@
+use super::catalog::catalog_list::EmbucketCatalogList;
 use super::catalog::information_schema::information_schema::{
     INFORMATION_SCHEMA, InformationSchemaProvider,
-};
-use super::catalog::{
-    catalog_list::EmbucketCatalogList, catalogs::embucket::catalog::EmbucketCatalog,
 };
 use super::datafusion::planner::ExtendedSqlToRel;
 use super::error::{
     self as ex_error, Error, InvalidColumnIdentifierSnafu, MergeSourceNotSupportedSnafu,
-    ObjectType as ExistingObjectType, RefreshCatalogListSnafu, Result,
+    ObjectType as ExistingObjectType, Result,
 };
 use super::running_queries::RunningQueries;
 use super::session::UserSession;
@@ -20,9 +18,7 @@ use crate::datafusion::physical_plan::merge::{
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
 use crate::models::{QueryContext, QueryResult};
-use catalog::catalog::CachingCatalog;
-use catalog::catalog_list::CachedEntity;
-use catalog::table::CachingTable;
+use catalog::table::{CachingTable, IcebergTableBuilder};
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
     TableCreateRequest as MetastoreTableCreateRequest, TableFormat as MetastoreTableFormat,
@@ -32,8 +28,8 @@ use catalog_metastore::{
 use datafusion::arrow::array::{Int64Array, RecordBatch, StringArray};
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef};
 use datafusion::arrow::datatypes::{Fields, SchemaBuilder};
+use datafusion::catalog::TableProvider;
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
-use datafusion::catalog::{MemoryCatalogProvider, TableProvider};
 use datafusion::datasource::DefaultTableSource;
 use datafusion::datasource::default_table_source::provider_as_source;
 use datafusion::datasource::file_format::FileFormat;
@@ -72,7 +68,6 @@ use datafusion_expr::{
     build_join_schema, is_null, lit, when,
 };
 use datafusion_iceberg::DataFusionTable;
-use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
 use datafusion_physical_plan::collect;
 use functions::semi_structured::variant::visitors::visit_all;
@@ -83,7 +78,6 @@ use functions::visitors::{
     table_functions_cte_relation, timestamp, top_limit,
     unimplemented::functions_checker::visit as unimplemented_functions_checker,
 };
-use iceberg_rust::catalog::Catalog;
 use iceberg_rust::catalog::create::CreateTableBuilder;
 use iceberg_rust::catalog::tabular::Tabular;
 use iceberg_rust::error::Error as IcebergError;
@@ -123,11 +117,6 @@ pub struct UserQuery {
     pub query: String,
     pub session: Arc<UserSession>,
     pub query_context: QueryContext,
-}
-
-pub enum IcebergCatalogResult {
-    Catalog(Arc<dyn Catalog>),
-    Result(Result<QueryResult>),
 }
 
 impl UserQuery {
@@ -177,29 +166,6 @@ impl UserQuery {
             .clone()
             .or_else(|| self.session.get_session_variable("schema"))
             .unwrap_or_else(|| "public".to_string())
-    }
-
-    #[instrument(
-        name = "UserQuery::refresh_catalog_partially",
-        level = "debug",
-        skip(self),
-        err
-    )]
-    async fn refresh_catalog_partially(&self, entity: CachedEntity) -> Result<()> {
-        if let Some(catalog_list_impl) = self
-            .session
-            .ctx
-            .state()
-            .catalog_list()
-            .as_any()
-            .downcast_ref::<EmbucketCatalogList>()
-        {
-            catalog_list_impl
-                .invalidate_cache(entity.normalized())
-                .await
-                .context(RefreshCatalogListSnafu)?;
-        }
-        Ok(())
     }
 
     #[instrument(name = "UserQuery::drop_catalog", level = "debug", skip(self), err)]
@@ -465,58 +431,6 @@ impl UserQuery {
                 }
                 .build()
             })
-    }
-
-    /// The code below relies on [`Catalog`] trait for different iceberg catalog
-    /// implementations (REST, S3 table buckets, or anything else).
-    /// In case this is built-in datafusion's [`MemoryCatalogProvider`] we shortcut and rely on its implementation
-    /// to actually execute logical plan.
-    /// Otherwise, code tries to downcast catalog to [`Catalog`] and if successful,
-    /// return the catalog
-    #[instrument(
-        name = "UserQuery::resolve_iceberg_catalog_or_execute",
-        level = "trace",
-        skip(self, catalog)
-    )]
-    pub async fn resolve_iceberg_catalog_or_execute(
-        &self,
-        catalog: Arc<dyn CatalogProvider>,
-        catalog_name: String,
-        plan: LogicalPlan,
-    ) -> IcebergCatalogResult {
-        // Try to downcast to CachingCatalog first since all catalogs are registered as CachingCatalog
-        let catalog =
-            if let Some(caching_catalog) = catalog.as_any().downcast_ref::<CachingCatalog>() {
-                &caching_catalog.catalog
-            } else {
-                return IcebergCatalogResult::Result(
-                    ex_error::CatalogDownCastSnafu {
-                        catalog: catalog_name,
-                    }
-                    .fail(),
-                );
-            };
-
-        // Try to resolve the actual underlying catalog type
-        if let Some(iceberg_catalog) = catalog.as_any().downcast_ref::<IcebergCatalog>() {
-            IcebergCatalogResult::Catalog(iceberg_catalog.catalog())
-        } else if let Some(embucket_catalog) = catalog.as_any().downcast_ref::<EmbucketCatalog>() {
-            IcebergCatalogResult::Catalog(embucket_catalog.catalog())
-        } else if catalog
-            .as_any()
-            .downcast_ref::<MemoryCatalogProvider>()
-            .is_some()
-        {
-            let result = self.execute_logical_plan(plan).await;
-            IcebergCatalogResult::Result(result)
-        } else {
-            IcebergCatalogResult::Result(
-                ex_error::CatalogDownCastSnafu {
-                    catalog: catalog_name,
-                }
-                .fail(),
-            )
-        }
     }
 
     #[instrument(name = "UserQuery::set_variable", level = "trace", skip(self), err)]
@@ -825,10 +739,10 @@ impl UserQuery {
             .execute_and_check(plan, self.session.ctx.state().config_options(), |_, _| ())
             .context(ex_error::DataFusionSnafu)?;
 
-        let ident: MetastoreTableIdent = new_table_ident.into();
-        let catalog_name = ident.database.clone();
-
-        // Inject more information to to the error
+        // Inject more information to the error
+        let table_ref = self.resolve_ident(&new_table_ident)?;
+        let catalog_name = table_ref.catalog.to_string();
+        let table_name = table_ref.table.to_string();
         let catalog = self.get_catalog(&catalog_name).map_err(|_| {
             ex_error::CatalogNotFoundSnafu {
                 operation_on: OperationOn::Table(OperationType::Create),
@@ -836,19 +750,27 @@ impl UserQuery {
             }
             .build()
         })?;
-        self.create_iceberg_table(
-            catalog.clone(),
-            catalog_name.clone(),
+        let schema_provider = catalog.schema(&table_ref.schema).ok_or_else(|| {
+            ex_error::SchemaNotFoundInDatabaseSnafu {
+                operation_on: OperationOn::Table(OperationType::Drop),
+                schema: table_ref.schema.to_string(),
+                db: catalog_name.clone(),
+            }
+            .build()
+        })?;
+
+        let table_provider: Option<Arc<dyn TableProvider>> = self.create_iceberg_table_provider(
+            table_ref,
+            schema_provider.clone(),
             table_location,
-            ident.clone(),
             create_table_statement,
             plan.clone(),
-        )
-        .await?;
-
-        // Now we have created table in the metastore, we need to register it in the catalog
-        self.refresh_catalog_partially(CachedEntity::Table(ident))
-            .await?;
+        )?;
+        if let Some(provider) = table_provider {
+            schema_provider
+                .register_table(table_name, provider)
+                .context(ex_error::DataFusionSnafu)?;
+        }
 
         // Insert data to new table
         // Since we don't execute logical plan, and we don't transform it to physical plan and
@@ -899,57 +821,30 @@ impl UserQuery {
         self.created_entity_response()
     }
 
-    #[allow(unused_variables)]
+    #[allow(unused_variables, clippy::needless_pass_by_value)]
     #[instrument(
         name = "UserQuery::create_iceberg_table",
         level = "trace",
         skip(self),
         err
     )]
-    pub async fn create_iceberg_table(
+    pub fn create_iceberg_table_provider(
         &self,
-        catalog: Arc<dyn CatalogProvider>,
-        catalog_name: String,
+        table_ref: ResolvedTableReference,
+        schema_provider: Arc<dyn SchemaProvider>,
         table_location: Option<String>,
-        ident: MetastoreTableIdent,
         statement: CreateTableStatement,
         plan: LogicalPlan,
-    ) -> Result<QueryResult> {
-        let iceberg_catalog = match self
-            .resolve_iceberg_catalog_or_execute(catalog, catalog_name, plan.clone())
-            .await
-        {
-            IcebergCatalogResult::Catalog(catalog) => catalog,
-            IcebergCatalogResult::Result(result) => {
-                return result.map(|_| self.created_entity_response())?;
-            }
-        };
-
-        let iceberg_ident = ident.to_iceberg_ident();
-
-        // Check if it already exists, if exists and CREATE OR REPLACE - drop it
-        let table_exists = iceberg_catalog
-            .clone()
-            .load_tabular(&iceberg_ident)
-            .await
-            .is_ok();
-
-        if table_exists {
+    ) -> Result<Option<Arc<dyn TableProvider>>> {
+        // Check if table already exists, if exists and CREATE OR REPLACE - drop it
+        if schema_provider.table_exist(&table_ref.table) {
             if statement.if_not_exists {
-                return self.created_entity_response();
+                return Ok(None);
             }
-
             if statement.or_replace {
-                iceberg_catalog
-                    .drop_table(&iceberg_ident)
-                    .await
-                    .context(ex_error::IcebergSnafu)?;
-            } else {
-                return ex_error::ObjectAlreadyExistsSnafu {
-                    r#type: ExistingObjectType::Table,
-                    name: ident.to_string(),
-                }
-                .fail();
+                schema_provider
+                    .deregister_table(&table_ref.table)
+                    .context(ex_error::DataFusionSnafu)?;
             }
         }
 
@@ -989,15 +884,11 @@ impl UserQuery {
             .map_err(|err| DataFusionError::External(Box::new(err)))
             .context(ex_error::DataFusionSnafu)?;
 
-        let mut create_table = CreateTableBuilder::default();
-        create_table
-            .with_name(ident.table)
-            .with_schema(schema)
-            // .with_location(location.clone())
-            .build(&[ident.schema], iceberg_catalog)
-            .await
-            .context(ex_error::IcebergSnafu)?;
-        self.created_entity_response()
+        let mut builder = CreateTableBuilder::default();
+        builder
+            .with_name(table_ref.table.to_string())
+            .with_schema(schema);
+        Ok(Some(Arc::new(IcebergTableBuilder::new(builder))))
     }
 
     #[instrument(
@@ -1915,14 +1806,7 @@ impl UserQuery {
             ),
             QueryContext::default(),
         );
-        let res = query.execute().await;
-
-        let table_ident: MetastoreTableIdent = object_name.into();
-
-        self.refresh_catalog_partially(CachedEntity::Table(table_ident))
-            .await?;
-
-        res
+        query.execute().await
     }
 
     pub fn resolve_show_in_name(
@@ -2556,6 +2440,26 @@ impl UserQuery {
             },
             _ => references.first().cloned(),
         }
+    }
+
+    fn resolve_ident(&self, table_ident: &NormalizedIdent) -> Result<ResolvedTableReference> {
+        let ident = table_ident.0.clone();
+        let table_ref = match ident.len() {
+            1 => TableReference::bare(ident[0].value.clone()),
+            2 => TableReference::partial(ident[0].value.clone(), ident[1].value.clone()),
+            3 => TableReference::full(
+                ident[0].value.clone(),
+                ident[1].value.clone(),
+                ident[2].value.clone(),
+            ),
+            _ => {
+                return ex_error::InvalidTableIdentifierSnafu {
+                    ident: table_ident.to_string(),
+                }
+                .fail();
+            }
+        };
+        Ok(self.resolve_table_ref(table_ref))
     }
 
     // Fill in the database and schema if they are missing

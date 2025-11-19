@@ -141,4 +141,15 @@ impl From<ColumnInfoModel> for ColumnInfo {
 pub struct Auth {
     pub demo_user: String,
     pub demo_password: String,
+    pub jwt_secret: String,
+}
+
+impl Auth {
+    #[must_use]
+    pub fn new(jwt_secret: String) -> Self {
+        Self {
+            jwt_secret,
+            ..Self::default()
+        }
+    }
 }

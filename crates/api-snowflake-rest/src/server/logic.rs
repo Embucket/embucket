@@ -3,11 +3,17 @@ use crate::models::{
     JsonResponse, LoginRequestData, LoginResponse, LoginResponseData, QueryRequest,
     QueryRequestBody,
 };
-use crate::server::error::{self as api_snowflake_rest_error, Result};
+use crate::server::error::{
+    self as api_snowflake_rest_error, CreateJwtSnafu, NoJwtSecretSnafu, Result,
+};
 use crate::server::helpers::handle_query_ok_result;
 use executor::RunningQueryId;
+use api_snowflake_rest_sessions::helpers::{create_jwt, ensure_jwt_secret_is_valid, jwt_claims};
 use executor::models::QueryContext;
-use uuid::Uuid;
+use snafu::{OptionExt, ResultExt};
+use time::Duration;
+
+pub const JWT_TOKEN_EXPIRATION_SECONDS: u32 = 24 * 60 * 60;
 
 #[tracing::instrument(
     name = "api_snowflake_rest::logic::login",
@@ -30,11 +36,21 @@ pub async fn handle_login_request(
         return api_snowflake_rest_error::InvalidAuthDataSnafu.fail();
     }
 
-    let session_id = Uuid::new_v4().to_string();
+    let jwt_secret = &*state.config.auth.jwt_secret;
+    let _ = ensure_jwt_secret_is_valid(jwt_secret).context(NoJwtSecretSnafu)?;
+
+    let jwt_claims = jwt_claims(
+        &login_name,
+        Duration::seconds(JWT_TOKEN_EXPIRATION_SECONDS.into()),
+    );
+
+    let session_id = jwt_claims.session_id.clone();
     let _ = state.execution_svc.create_session(&session_id).await?;
 
+    let jwt_token = create_jwt(&jwt_claims, jwt_secret).context(CreateJwtSnafu)?;
+
     Ok(LoginResponse {
-        data: Option::from(LoginResponseData { token: session_id }),
+        data: Option::from(LoginResponseData { token: jwt_token }),
         success: true,
         message: Option::from("successfully executed".to_string()),
     })

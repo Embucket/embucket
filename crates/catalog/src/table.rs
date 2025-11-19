@@ -1,18 +1,20 @@
 use crate::df_error;
 use async_trait::async_trait;
-use datafusion::arrow::datatypes::SchemaRef;
+use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::catalog::{Session, TableProvider};
 use datafusion::datasource::{ViewTable, provider_as_source};
 use datafusion::execution::SessionState;
-use datafusion_common::Statistics;
 use datafusion_common::tree_node::{Transformed, TreeNode};
+use datafusion_common::{Statistics, plan_err};
 use datafusion_expr::dml::InsertOp;
 use datafusion_expr::{Expr, LogicalPlan, TableProviderFilterPushDown, TableScan, TableType};
 use datafusion_physical_plan::ExecutionPlan;
+use iceberg_rust::catalog::create::CreateTableBuilder;
 use once_cell::sync::OnceCell;
 use snafu::OptionExt;
 use std::any::Any;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 pub struct CachingTable {
@@ -38,8 +40,8 @@ impl CachingTable {
     }
 }
 
-impl std::fmt::Debug for CachingTable {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for CachingTable {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Table")
             .field("schema", &"")
             .field("name", &self.name)
@@ -175,4 +177,48 @@ async fn rewrite_view_source(
         })?
         .data;
     Ok(new_plan)
+}
+
+pub struct IcebergTableBuilder {
+    pub builder: CreateTableBuilder,
+}
+
+impl IcebergTableBuilder {
+    #[must_use]
+    pub const fn new(builder: CreateTableBuilder) -> Self {
+        Self { builder }
+    }
+}
+
+impl Debug for IcebergTableBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IcebergTableBuilder")
+            .field("builder", &"")
+            .finish()
+    }
+}
+
+#[async_trait]
+impl TableProvider for IcebergTableBuilder {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn schema(&self) -> SchemaRef {
+        SchemaRef::from(Schema::empty())
+    }
+
+    fn table_type(&self) -> TableType {
+        TableType::Base
+    }
+
+    async fn scan(
+        &self,
+        _state: &dyn Session,
+        _projection: Option<&Vec<usize>>,
+        _filters: &[Expr],
+        _limit: Option<usize>,
+    ) -> datafusion_common::Result<Arc<dyn ExecutionPlan>> {
+        plan_err!("Iceberg table builder cannot be scanned")
+    }
 }

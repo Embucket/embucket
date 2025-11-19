@@ -1,13 +1,16 @@
 use crate::df_error;
-use crate::table::CachingTable;
+use crate::table::{CachingTable, IcebergTableBuilder};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
 use datafusion_common::DataFusionError;
 use datafusion_expr::TableType;
+use datafusion_iceberg::DataFusionTable;
 use futures::executor::block_on;
 use iceberg_rust::catalog::Catalog;
+use iceberg_rust::catalog::tabular::Tabular as IcebergTabular;
 use iceberg_rust_spec::identifier::Identifier;
+use snafu::ResultExt;
 use snafu::futures::TryFutureExt;
 use std::any::Any;
 use std::sync::Arc;
@@ -81,12 +84,29 @@ impl SchemaProvider for CachingSchema {
         name: String,
         table: Arc<dyn TableProvider>,
     ) -> datafusion_common::Result<Option<Arc<dyn TableProvider>>> {
-        let caching_table = Arc::new(CachingTable::new(name.clone(), Arc::clone(&table)));
-        self.tables_cache.insert(name.clone(), caching_table);
-        if table.table_type() != TableType::View {
-            return self.schema.register_table(name, table);
-        }
-        Ok(Some(table))
+        let table_provider: Arc<dyn TableProvider> = if let Some(catalog) = &self.iceberg_catalog
+            && let Some(iceberg_builder) = table.as_any().downcast_ref::<IcebergTableBuilder>()
+            && table.table_type() != TableType::View
+        {
+            let ident = Identifier::new(std::slice::from_ref(&self.name), &name);
+            block_on(async move {
+                let mut builder = iceberg_builder.builder.clone();
+                let iceberg_table = builder
+                    .build(ident.namespace(), catalog.clone())
+                    .await
+                    .context(df_error::IcebergSnafu)?;
+                let tabular = IcebergTabular::Table(iceberg_table);
+                let table_provider: Arc<dyn TableProvider> =
+                    Arc::new(DataFusionTable::new(tabular, None, None, None));
+                Ok::<Arc<dyn TableProvider>, DataFusionError>(table_provider)
+            })?
+        } else {
+            table
+        };
+
+        let caching_table = Arc::new(CachingTable::new(name.clone(), Arc::clone(&table_provider)));
+        self.tables_cache.insert(name, caching_table);
+        Ok(Some(table_provider))
     }
 
     #[allow(clippy::as_conversions)]

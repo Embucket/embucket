@@ -121,7 +121,7 @@ async fn async_main(
         .data_format
         .clone()
         .unwrap_or_else(|| "json".to_string());
-    let snowflake_rest_cfg = Config::new(&data_format)
+    let snowflake_rest_cfg = Config::new(&data_format, opts.jwt_secret())
         .expect("Failed to create snowflake config")
         .with_demo_credentials(
             opts.auth_demo_user.clone().unwrap(),

@@ -160,6 +160,25 @@ pub struct CliOpts {
         help = "Service idle timeout in seconds"
     )]
     pub timeout: Option<u64>,
+
+    // should unset JWT_SECRET env var after loading
+    #[arg(
+        long,
+        env = "JWT_SECRET",
+        hide_env_values = true,
+        help = "JWT secret for auth"
+    )]
+    jwt_secret: Option<String>,
+}
+
+impl CliOpts {
+    // method resets a secret env
+    pub fn jwt_secret(&self) -> String {
+        unsafe {
+            std::env::remove_var("JWT_SECRET");
+        }
+        self.jwt_secret.clone().unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, ValueEnum)]

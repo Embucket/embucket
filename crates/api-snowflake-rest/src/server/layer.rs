@@ -1,8 +1,13 @@
 use super::{error, state::AppState};
+use crate::server::error::{BadAuthTokenSnafu, NoJwtSecretSnafu};
+use api_snowflake_rest_sessions::helpers::{
+    ensure_jwt_secret_is_valid, get_claims_validate_jwt_token,
+};
 use api_snowflake_rest_sessions::session::extract_token_from_auth;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
+use snafu::{OptionExt, ResultExt};
 
 #[allow(clippy::unwrap_used)]
 #[tracing::instrument(
@@ -26,18 +31,14 @@ pub async fn require_auth(
         return error::MissingAuthTokenSnafu.fail()?;
     };
 
+    let jwt_secret =
+        ensure_jwt_secret_is_valid(&state.config.auth.jwt_secret).context(NoJwtSecretSnafu)?;
+
+    let jwt_claims =
+        get_claims_validate_jwt_token(&token, &jwt_secret).context(BadAuthTokenSnafu)?;
+
     // Record the result as part of the current span.
-    tracing::Span::current().record("session_id", token.as_str());
-
-    let sessions = state.execution_svc.get_sessions(); // `get_sessions` returns an RwLock
-
-    let sessions = sessions.read().await;
-
-    if !sessions.contains_key(&token) {
-        return error::InvalidAuthTokenSnafu.fail()?;
-    }
-    //Dropping the lock guard before going to the next request
-    drop(sessions);
+    tracing::Span::current().record("session_id", jwt_claims.session_id.as_str());
 
     let response = next.run(req).await;
 
