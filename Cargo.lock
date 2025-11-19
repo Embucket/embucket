@@ -2930,8 +2930,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion_iceberg"
-version = "0.8.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
+version = "0.9.0"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=b5089dc285667858469a6c2abb297af3d81a03f5#b5089dc285667858469a6c2abb297af3d81a03f5"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4360,8 +4360,8 @@ dependencies = [
 
 [[package]]
 name = "iceberg-rust"
-version = "0.8.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
+version = "0.9.0"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=b5089dc285667858469a6c2abb297af3d81a03f5#b5089dc285667858469a6c2abb297af3d81a03f5"
 dependencies = [
  "apache-avro",
  "arrow 56.2.0",
@@ -4396,8 +4396,8 @@ dependencies = [
 
 [[package]]
 name = "iceberg-rust-spec"
-version = "0.8.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
+version = "0.9.0"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=b5089dc285667858469a6c2abb297af3d81a03f5#b5089dc285667858469a6c2abb297af3d81a03f5"
 dependencies = [
  "apache-avro",
  "arrow-schema 56.2.0",
@@ -4421,8 +4421,8 @@ dependencies = [
 
 [[package]]
 name = "iceberg-s3tables-catalog"
-version = "0.8.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d#1eeb4515446119dd3b4dbb7ebd2f70ae5b4f827d"
+version = "0.9.0"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=b5089dc285667858469a6c2abb297af3d81a03f5#b5089dc285667858469a6c2abb297af3d81a03f5"
 dependencies = [
  "async-trait",
  "aws-config",
