@@ -7,8 +7,8 @@ use crate::server::error::{
     self as api_snowflake_rest_error, CreateJwtSnafu, NoJwtSecretSnafu, Result,
 };
 use crate::server::helpers::handle_query_ok_result;
-use executor::RunningQueryId;
 use api_snowflake_rest_sessions::helpers::{create_jwt, ensure_jwt_secret_is_valid, jwt_claims};
+use executor::RunningQueryId;
 use executor::models::QueryContext;
 use snafu::{OptionExt, ResultExt};
 use time::Duration;
