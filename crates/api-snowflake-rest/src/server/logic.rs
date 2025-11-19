@@ -8,6 +8,7 @@ use crate::server::error::{
 };
 use crate::server::helpers::handle_query_ok_result;
 use api_snowflake_rest_sessions::helpers::{create_jwt, ensure_jwt_secret_is_valid, jwt_claims};
+use executor::RunningQueryId;
 use executor::models::QueryContext;
 use snafu::{OptionExt, ResultExt};
 use time::Duration;
@@ -87,11 +88,28 @@ pub async fn handle_query_request(
         return api_snowflake_rest_error::NotImplementedSnafu.fail();
     }
 
-    let query_uuid = query_context.query_id.as_uuid();
-    let result = state
-        .execution_svc
-        .query(session_id, &sql_text, query_context)
-        .await?;
+    // find running query by request_id
+    let session = state.execution_svc.get_session(session_id).await?;
+    let query_id_res = session
+        .running_queries
+        .locate_query_id(RunningQueryId::ByRequestId(
+            query.request_id,
+            sql_text.clone(),
+        ));
 
-    handle_query_ok_result(&sql_text, query_uuid, result, serialization_format)
+    let (result, query_id) = if query.retry_count.unwrap_or_default() > 0
+        && let Ok(query_id) = query_id_res
+    {
+        let result = state.execution_svc.wait(query_id).await?;
+        (result, query_id)
+    } else {
+        let query_id = query_context.query_id;
+        let result = state
+            .execution_svc
+            .query(session_id, &sql_text, query_context)
+            .await?;
+        (result, query_id)
+    };
+
+    handle_query_ok_result(&sql_text, query_id, result, serialization_format)
 }

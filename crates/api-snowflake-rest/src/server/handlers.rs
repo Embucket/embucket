@@ -34,7 +34,7 @@ pub async fn login(
     name = "api_snowflake_rest::query",
     level = "debug",
     skip(state),
-    fields(query_id, query_uuid),
+    fields(query_id),
     err,
     ret(level = tracing::Level::TRACE),
 )]
@@ -65,9 +65,10 @@ pub async fn abort(
         request_id,
     }): Json<AbortRequestBody>,
 ) -> Result<Json<serde_json::value::Value>> {
-    state
+    let query_id = state
         .execution_svc
-        .abort_query(RunningQueryId::ByRequestId(request_id, sql_text))?;
+        .locate_query_id(RunningQueryId::ByRequestId(request_id, sql_text))?;
+    state.execution_svc.abort(query_id)?;
     Ok(Json(serde_json::value::Value::Null))
 }
 

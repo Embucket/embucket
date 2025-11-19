@@ -289,7 +289,7 @@ async fn test_max_concurrency_level() {
         let barrier = barrier.clone();
         tokio::spawn(async move {
             let _ = svc
-                .submit_query(
+                .submit(
                     "test_session_id",
                     "SELECT sleep(2)",
                     QueryContext::default(),
@@ -337,7 +337,7 @@ async fn test_max_concurrency_level2() {
 
     for _ in 0..2 {
         let _ = execution_svc
-            .submit_query(
+            .submit(
                 "test_session_id",
                 "SELECT sleep(2)",
                 QueryContext::default(),
