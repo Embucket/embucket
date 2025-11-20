@@ -1,7 +1,7 @@
 pub mod error;
 pub mod metastore;
-pub mod models;
 pub mod metastore_config;
+pub mod models;
 
 pub use error::Error;
 pub use metastore::*;

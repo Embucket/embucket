@@ -5,7 +5,6 @@ pub(crate) mod cli;
 pub(crate) mod helpers;
 pub(crate) mod layers;
 
-use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use api_snowflake_rest::server::layer::require_auth as snowflake_require_auth;
 use api_snowflake_rest::server::router::create_auth_router as create_snowflake_auth_router;
 use api_snowflake_rest::server::router::create_router as create_snowflake_router;
@@ -20,6 +19,7 @@ use axum::{
     routing::{get, post},
 };
 use catalog_metastore::InMemoryMetastore;
+use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use clap::Parser;
 use dotenv::dotenv;
 use executor::service::{CoreExecutionService, ExecutionService, TIMEOUT_SIGNAL_INTERVAL_SECONDS};

@@ -1,7 +1,6 @@
 mod config;
 
 use crate::config::EnvConfig;
-use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
 use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
@@ -13,6 +12,7 @@ use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use axum::{Router, middleware};
 use catalog_metastore::InMemoryMetastore;
+use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use executor::service::CoreExecutionService;
 use http::HeaderMap;
 use http_body_util::BodyExt;

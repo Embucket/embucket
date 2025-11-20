@@ -72,9 +72,7 @@ pub enum ConfigError {
         source: serde_yaml::Error,
     },
     #[snafu(display("Metastore bootstrap error: {source}"))]
-    Metastore {
-        source: crate::error::Error,
-    },
+    Metastore { source: crate::error::Error },
     #[snafu(display("Database {database} not found for table {table}"))]
     TableDatabaseMissing { table: String, database: String },
     #[snafu(display("Volume {volume} not found for table {table}"))]
