@@ -18,6 +18,10 @@ pub struct EnvConfig {
     pub embucket_version: String,
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
+    pub cache_s3_bucket: Option<String>,
+    pub cache_s3_key: Option<String>,
+    pub cache_tar_path: PathBuf,
+    pub cache_extract_dir: PathBuf,
 }
 
 impl EnvConfig {
@@ -40,6 +44,12 @@ impl EnvConfig {
             embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
+            cache_s3_bucket: env::var("CACHE_S3_BUCKET").ok(),
+            cache_s3_key: env::var("CACHE_S3_KEY").ok(),
+            cache_tar_path: env::var("CACHE_TAR_PATH")
+                .map_or_else(|_| PathBuf::from("/tmp/embucket-cache.tar"), PathBuf::from),
+            cache_extract_dir: env::var("CACHE_EXTRACT_DIR")
+                .map_or_else(|_| PathBuf::from("/tmp/embucket-cache"), PathBuf::from),
         }
     }
 

@@ -101,5 +101,7 @@ aws logs tail /aws/lambda/embucket-lambda --since 5m --follow
 - `LOG_FORMAT`: json
 - `METASTORE_CONFIG`: config/metastore.yaml
 - `RUST_LOG`: (optional) Set logging level, defaults to "info"
-
+- `CACHE_S3_BUCKET` / `CACHE_S3_KEY`: optional S3 bucket/key for a cache tarball hydrated during cold start
+- `CACHE_TAR_PATH`: (optional) Local path to download the tarball, defaults to `/tmp/embucket-cache.tar`
+- `CACHE_EXTRACT_DIR`: (optional) Directory to extract the tarball into, defaults to `/tmp/embucket-cache`
 

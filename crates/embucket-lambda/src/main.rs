@@ -1,3 +1,4 @@
+mod cache;
 mod config;
 mod metastore_config;
 
@@ -44,6 +45,13 @@ async fn main() -> Result<(), LambdaError> {
         "Loaded Lambda configuration"
     );
 
+    cache::download_cache_if_needed(&env_config)
+        .await
+        .map_err(|err| {
+            error!(error = %err, "Failed to prepare cache during Lambda init");
+            err
+        })?;
+
     let app = Arc::new(LambdaApp::initialize(env_config).await.map_err(|err| {
         error!(error = %err, "Failed to initialize Lambda services");
         err
@@ -58,7 +66,6 @@ async fn main() -> Result<(), LambdaError> {
 
 struct LambdaApp {
     router: Router,
-    state: AppState,
 }
 
 impl LambdaApp {
@@ -116,16 +123,23 @@ impl LambdaApp {
             .layer(CompressionLayer::new())
             .layer(RequestDecompressionLayer::new());
 
+        let state_for_router = state.clone();
+        let state_for_auth_middleware = state.clone();
+        let state_for_auth_router = state;
+
         let snowflake_router = create_router()
-            .with_state(state.clone())
+            .with_state(state_for_router)
             .layer(compression_layer.clone())
-            .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+            .layer(middleware::from_fn_with_state(
+                state_for_auth_middleware,
+                require_auth,
+            ));
         let snowflake_auth_router = create_auth_router()
-            .with_state(state.clone())
+            .with_state(state_for_auth_router)
             .layer(compression_layer);
         let router = Router::new().merge(snowflake_router.merge(snowflake_auth_router));
 
-        Ok(Self { router, state })
+        Ok(Self { router })
     }
 
     #[tracing::instrument(name = "lambda_handle_event", skip_all, fields(
