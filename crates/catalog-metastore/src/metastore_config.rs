@@ -1,4 +1,4 @@
-use catalog_metastore::{
+use crate::{
     Database, Metastore, Schema, SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent,
 };
 use iceberg_rust::spec::table_metadata::TableMetadata;
@@ -73,7 +73,7 @@ pub enum ConfigError {
     },
     #[snafu(display("Metastore bootstrap error: {source}"))]
     Metastore {
-        source: catalog_metastore::error::Error,
+        source: crate::error::Error,
     },
     #[snafu(display("Database {database} not found for table {table}"))]
     TableDatabaseMissing { table: String, database: String },
@@ -301,7 +301,7 @@ impl MetastoreBootstrapConfig {
                 table: table_name.clone(),
             })?;
 
-        let stored_table = catalog_metastore::Table {
+        let stored_table = crate::Table {
             ident: table_ident.clone(),
             metadata,
             metadata_location: entry.metadata_location.clone(),

@@ -1,8 +1,7 @@
 mod config;
-mod metastore_config;
 
 use crate::config::EnvConfig;
-use crate::metastore_config::MetastoreBootstrapConfig;
+use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
 use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
