@@ -93,6 +93,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Auth session error: {source}"))]
+    AuthSession {
+        #[snafu(source(from(api_snowflake_rest_sessions::error::Error, Box::new)))]
+        source: Box<api_snowflake_rest_sessions::error::Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 impl IntoResponse for Error {
@@ -216,7 +224,8 @@ impl Error {
             | Self::InvalidAuthToken { .. }
             | Self::NoJwtSecret { .. }
             | Self::CreateJwt { .. }
-            | Self::BadAuthToken { .. } => (
+            | Self::BadAuthToken { .. }
+            | Self::AuthSession { .. } => (
                 http::StatusCode::UNAUTHORIZED,
                 SqlState::Success,
                 ErrorCode::Other,

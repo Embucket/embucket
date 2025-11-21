@@ -7,7 +7,9 @@ use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
 use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
+use api_snowflake_rest_sessions::layer::Host;
 use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
+use axum::Extension;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use axum::{Router, middleware};
@@ -119,10 +121,12 @@ impl LambdaApp {
         let snowflake_router = create_router()
             .with_state(state.clone())
             .layer(compression_layer.clone())
+            .layer(Extension(Host(String::default())))
             .layer(middleware::from_fn_with_state(state.clone(), require_auth));
         let snowflake_auth_router = create_auth_router()
             .with_state(state.clone())
-            .layer(compression_layer);
+            .layer(compression_layer)
+            .layer(Extension(Host(String::default())));
         let router = Router::new().merge(snowflake_router.merge(snowflake_auth_router));
 
         Ok(Self { router, state })

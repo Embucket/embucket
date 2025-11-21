@@ -1,15 +1,43 @@
 use crate::error as session_error;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::session::{
     DFSessionId, SESSION_ID_COOKIE_NAME, SessionStore, extract_token_from_cookie,
 };
-use axum::extract::{Request, State};
+use axum::extract::{FromRequestParts, Request, State};
+use axum::http::{HeaderMap, HeaderName, request::Parts};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use http::header::SET_COOKIE;
-use http::{HeaderMap, HeaderName};
 use snafu::ResultExt;
 use tower_sessions::cookie::{Cookie, SameSite};
+
+#[derive(Debug, Clone)]
+pub struct Host(pub String);
+
+impl<S> FromRequestParts<S> for Host
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    #[allow(clippy::unwrap_used)]
+    async fn from_request_parts(
+        req: &mut Parts,
+        state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        let headers = HeaderMap::from_request_parts(req, state)
+            .await
+            .map_err(|err| match err {})
+            .unwrap(); // unwrap on Infallibe error is safe
+        let host = headers.get("host");
+        let host = host.and_then(|host| host.to_str().ok());
+        if let Some(host) = host {
+            Ok(Self(host.to_string()))
+        } else {
+            session_error::MissingHostSnafu.fail()
+        }
+    }
+}
 
 #[allow(clippy::unwrap_used, clippy::cognitive_complexity)]
 pub async fn propagate_session_cookie(

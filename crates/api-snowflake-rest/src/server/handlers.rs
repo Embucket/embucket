@@ -5,6 +5,7 @@ use crate::models::{
 use crate::server::error::Result;
 use crate::server::logic::{handle_login_request, handle_query_request};
 use api_snowflake_rest_sessions::DFSessionId;
+use api_snowflake_rest_sessions::layer::Host;
 use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
 use executor::RunningQueryId;
@@ -23,10 +24,11 @@ pub struct SessionQueryParams {
 
 #[tracing::instrument(name = "api_snowflake_rest::login", level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn login(
+    Host(host): Host,
     State(state): State<AppState>,
     Json(login_request): Json<LoginRequestBody>,
 ) -> Result<Json<LoginResponse>> {
-    let response = handle_login_request(&state, login_request.data).await?;
+    let response = handle_login_request(&state, host, login_request.data).await?;
     Ok(Json(response))
 }
 

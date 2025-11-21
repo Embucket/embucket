@@ -24,6 +24,7 @@ pub const JWT_TOKEN_EXPIRATION_SECONDS: u32 = 24 * 60 * 60;
 )]
 pub async fn handle_login_request(
     state: &AppState,
+    host: String,
     credentials: LoginRequestData,
 ) -> Result<LoginResponse> {
     let LoginRequestData {
@@ -36,13 +37,17 @@ pub async fn handle_login_request(
         return api_snowflake_rest_error::InvalidAuthDataSnafu.fail();
     }
 
+    // host is required to check token audience claim
     let jwt_secret = &*state.config.auth.jwt_secret;
     let _ = ensure_jwt_secret_is_valid(jwt_secret).context(NoJwtSecretSnafu)?;
 
     let jwt_claims = jwt_claims(
         &login_name,
+        &host,
         Duration::seconds(JWT_TOKEN_EXPIRATION_SECONDS.into()),
     );
+
+    tracing::info!("Host '{host}' for token creation");
 
     let session_id = jwt_claims.session_id.clone();
     let _ = state.execution_svc.create_session(&session_id).await?;
