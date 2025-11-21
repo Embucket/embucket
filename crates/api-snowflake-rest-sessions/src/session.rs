@@ -8,7 +8,7 @@ use http::header::COOKIE;
 use http::request::Parts;
 use http::{HeaderMap, HeaderName};
 use regex::Regex;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use std::{collections::HashMap, sync::Arc};
 
 pub const SESSION_ID_COOKIE_NAME: &str = "session_id";
@@ -52,10 +52,26 @@ where
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let execution_svc = state.get_execution_svc();
 
+        // Not using Host extractor as for some reason it extracts host without port
+        // use axum::RequestPartsExt;
+        // use axum::extract::Extension;
+        // use crate::layer::Host;
+        // let Extension(Host(host)) = req.extract::<Extension<Host>>()
+        //     .await
+        //     .context(session_error::ExtensionRejectionSnafu)?;
+        // tracing::info!("Host '{host}' extracted from DFSessionId");
+
         let (session_id, located_at) = if let Some(token) = extract_token_from_auth(&req.headers) {
+            // host is require to check token audience claim
+            let host = req.headers.get("host");
+            let host = host.and_then(|host| host.to_str().ok());
+            let host = host.context(session_error::MissingHostSnafu)?;
+
+            tracing::info!("From headers: Host '{host}' extracted");
+
             let jwt_secret = state.jwt_secret();
-            let jwt_claims =
-                get_claims_validate_jwt_token(&token, jwt_secret).context(BadAuthTokenSnafu)?;
+            let jwt_claims = get_claims_validate_jwt_token(&token, host, jwt_secret)
+                .context(BadAuthTokenSnafu)?;
 
             (jwt_claims.session_id, "auth header")
         } else {

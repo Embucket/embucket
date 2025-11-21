@@ -10,7 +10,7 @@ use snafu::prelude::*;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[error_stack_trace::debug]
 pub enum Error {
     #[snafu(display("Can't add header to response: {error}"))]
@@ -42,6 +42,20 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Can't authenticate request: Host is missing"))]
+    MissingHost {
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Extension error: {error}"))]
+    ExtensionRejection {
+        #[snafu(source)]
+        error: axum::extract::rejection::ExtensionRejection,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,7 +67,12 @@ pub struct ErrorResponse {
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response<axum::body::Body> {
         let message = self.to_string();
-        let code = StatusCode::INTERNAL_SERVER_ERROR;
+        let code = match self {
+            Self::BadAuthToken { .. }
+            | Self::MissingHost { .. }
+            | Self::ExtensionRejection { .. } => StatusCode::UNAUTHORIZED,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
 
         let error = ErrorResponse {
             message,

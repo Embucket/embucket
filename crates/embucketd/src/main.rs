@@ -12,7 +12,9 @@ use api_snowflake_rest::server::router::create_auth_router as create_snowflake_a
 use api_snowflake_rest::server::router::create_router as create_snowflake_router;
 use api_snowflake_rest::server::server_models::Config;
 use api_snowflake_rest::server::state::AppState as SnowflakeAppState;
+use api_snowflake_rest_sessions::layer::Host;
 use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
+use axum::Extension;
 use axum::middleware;
 use axum::{
     Json, Router,
@@ -189,13 +191,15 @@ async fn async_main(
     let snowflake_router = create_snowflake_router()
         .with_state(snowflake_state.clone())
         .layer(compression_layer.clone())
+        .layer(Extension(Host(String::default())))
         .layer(middleware::from_fn_with_state(
             snowflake_state.clone(),
             snowflake_require_auth,
         ));
     let snowflake_auth_router = create_snowflake_auth_router()
         .with_state(snowflake_state.clone())
-        .layer(compression_layer);
+        .layer(compression_layer)
+        .layer(Extension(Host(String::default())));
     let snowflake_router = snowflake_router.merge(snowflake_auth_router);
 
     // --- OpenAPI specs ---

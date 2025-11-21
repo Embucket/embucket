@@ -3,6 +3,7 @@ use crate::server::error::{BadAuthTokenSnafu, NoJwtSecretSnafu};
 use api_snowflake_rest_sessions::helpers::{
     ensure_jwt_secret_is_valid, get_claims_validate_jwt_token,
 };
+use api_snowflake_rest_sessions::layer::Host;
 use api_snowflake_rest_sessions::session::extract_token_from_auth;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
@@ -19,6 +20,7 @@ use snafu::{OptionExt, ResultExt};
 )]
 pub async fn require_auth(
     State(state): State<AppState>,
+    Host(host): Host,
     req: Request,
     next: Next,
 ) -> error::Result<impl IntoResponse> {
@@ -34,8 +36,10 @@ pub async fn require_auth(
     let jwt_secret =
         ensure_jwt_secret_is_valid(&state.config.auth.jwt_secret).context(NoJwtSecretSnafu)?;
 
+    tracing::info!("Host '{host}' for token validation");
+
     let jwt_claims =
-        get_claims_validate_jwt_token(&token, &jwt_secret).context(BadAuthTokenSnafu)?;
+        get_claims_validate_jwt_token(&token, &host, &jwt_secret).context(BadAuthTokenSnafu)?;
 
     // Record the result as part of the current span.
     tracing::Span::current().record("session_id", jwt_claims.session_id.as_str());
