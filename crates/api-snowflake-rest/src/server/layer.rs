@@ -36,8 +36,6 @@ pub async fn require_auth(
     let jwt_secret =
         ensure_jwt_secret_is_valid(&state.config.auth.jwt_secret).context(NoJwtSecretSnafu)?;
 
-    tracing::info!("Host '{host}' for token validation");
-
     let jwt_claims =
         get_claims_validate_jwt_token(&token, &host, &jwt_secret).context(BadAuthTokenSnafu)?;
 

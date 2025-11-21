@@ -67,8 +67,6 @@ where
             let host = host.and_then(|host| host.to_str().ok());
             let host = host.context(session_error::MissingHostSnafu)?;
 
-            tracing::info!("From headers: Host '{host}' extracted");
-
             let jwt_secret = state.jwt_secret();
             let jwt_claims = get_claims_validate_jwt_token(&token, host, jwt_secret)
                 .context(BadAuthTokenSnafu)?;
