@@ -38,7 +38,7 @@ impl CaseInsensitiveTable {
         let requires_case_rewrite = original_schema
             .fields()
             .iter()
-            .any(|field| *field.name() != field.name().to_ascii_lowercase());
+            .any(|field| field.name().eq(&field.name().to_ascii_uppercase()));
         let normalized_schema = Arc::new(Schema::new(
             original_schema
                 .fields()
