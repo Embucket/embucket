@@ -27,6 +27,7 @@ utoipa = { workspace = true }
 uuid = { workspace = true }
 validator = { workspace = true }
 regex = { workspace = true }
+serde_yaml = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
