@@ -3,14 +3,14 @@ use crate::test_query;
 test_query!(
     list_field_metadata_array,
     "SELECT * FROM array",
-    setup_queries = ["CREATE TABLE array as (SELECT [1,2]::ARRAY)"],
+    setup_queries = ["CREATE TABLE array as (SELECT [1,2]::ARRAY as test)"],
     snapshot_path = "list_field_metadata"
 );
 
 test_query!(
     list_field_metadata_literal,
     "SELECT * FROM array",
-    setup_queries = ["CREATE TABLE array as (SELECT 'A'::ARRAY)"],
+    setup_queries = ["CREATE TABLE array as (SELECT 'A'::ARRAY as test)"],
     snapshot_path = "list_field_metadata"
 );
 
