@@ -1,18 +1,16 @@
-use crate::df_error;
 use crate::snowflake_table::CaseInsensitiveTable;
 use crate::table::{CachingTable, IcebergTableBuilder};
+use crate::{block_on_without_deadlock, df_error};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
 use datafusion_common::DataFusionError;
 use datafusion_expr::TableType;
 use datafusion_iceberg::DataFusionTable;
-use futures::executor::block_on;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::catalog::tabular::Tabular as IcebergTabular;
 use iceberg_rust_spec::identifier::Identifier;
 use snafu::ResultExt;
-use snafu::futures::TryFutureExt;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -89,11 +87,15 @@ impl SchemaProvider for CachingSchema {
             && let Some(iceberg_builder) = table.as_any().downcast_ref::<IcebergTableBuilder>()
             && table.table_type() != TableType::View
         {
-            let ident = Identifier::new(std::slice::from_ref(&self.name), &name);
-            block_on(async move {
-                let mut builder = iceberg_builder.builder.clone();
+            let catalog = Arc::clone(catalog);
+            let mut builder = iceberg_builder.builder.clone();
+            let namespace = vec![self.name.clone()];
+            let table_name = name.clone();
+
+            block_on_without_deadlock(async move {
+                let ident = Identifier::new(&namespace, &table_name);
                 let iceberg_table = builder
-                    .build(ident.namespace(), catalog.clone())
+                    .build(ident.namespace(), catalog)
                     .await
                     .context(df_error::IcebergSnafu)?;
                 let tabular = IcebergTabular::Table(iceberg_table);
@@ -121,8 +123,17 @@ impl SchemaProvider for CachingSchema {
         if let Some((_, caching_table)) = table {
             if caching_table.table_type() != TableType::View {
                 if let Some(catalog) = &self.iceberg_catalog {
-                    let ident = Identifier::new(std::slice::from_ref(&self.name), name);
-                    block_on(catalog.drop_table(&ident).context(df_error::IcebergSnafu))?;
+                    let catalog = Arc::clone(catalog);
+                    let namespace = vec![self.name.clone()];
+                    let table_name = name.to_string();
+
+                    block_on_without_deadlock(async move {
+                        let ident = Identifier::new(&namespace, &table_name);
+                        catalog
+                            .drop_table(&ident)
+                            .await
+                            .context(df_error::IcebergSnafu)
+                    })?;
                 } else {
                     return self.schema.deregister_table(name);
                 }

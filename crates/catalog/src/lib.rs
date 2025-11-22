@@ -1,6 +1,9 @@
 use error::Result;
+use futures::TryFutureExt;
+use futures::executor::block_on;
 use snafu::ResultExt;
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Handle, RuntimeFlavor};
+use tokio::task;
 
 #[allow(clippy::module_inception)]
 pub mod catalog;
@@ -32,6 +35,23 @@ where
     })
     .join()
     .unwrap_or_else(|_| error::ThreadPanickedWhileExecutingFutureSnafu.fail()?)
+}
+
+fn block_on_without_deadlock<F>(future: F) -> F::Output
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    match Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            RuntimeFlavor::CurrentThread => block_on(
+                task::spawn_blocking(|| block_on(future))
+                    .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic())),
+            ),
+            _ => task::block_in_place(|| handle.block_on(future)),
+        },
+        Err(_) => block_on(future),
+    }
 }
 
 pub mod test_utils {
