@@ -1,5 +1,5 @@
 use crate::df_error;
-use crate::snowflake_table::SnowflakeCaseInsensitiveTable;
+use crate::snowflake_table::CaseInsensitiveTable;
 use crate::table::{CachingTable, IcebergTableBuilder};
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -97,10 +97,9 @@ impl SchemaProvider for CachingSchema {
                     .await
                     .context(df_error::IcebergSnafu)?;
                 let tabular = IcebergTabular::Table(iceberg_table);
-                let table_provider: Arc<dyn TableProvider> =
-                    Arc::new(SnowflakeCaseInsensitiveTable::new(Arc::new(
-                        DataFusionTable::new(tabular, None, None, None),
-                    )));
+                let table_provider: Arc<dyn TableProvider> = Arc::new(CaseInsensitiveTable::new(
+                    Arc::new(DataFusionTable::new(tabular, None, None, None)),
+                ));
                 Ok::<Arc<dyn TableProvider>, DataFusionError>(table_provider)
             })?
         } else {

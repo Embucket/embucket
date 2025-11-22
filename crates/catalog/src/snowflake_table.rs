@@ -25,15 +25,20 @@ use std::sync::Arc;
 /// - Wraps the produced physical plan in a projection that aliases columns to
 ///   lowercase names, so the output schema matches the logical expectations.
 #[derive(Debug)]
-pub struct SnowflakeCaseInsensitiveTable {
+pub struct CaseInsensitiveTable {
     inner: Arc<dyn TableProvider>,
     original_schema: SchemaRef,
     normalized_schema: SchemaRef,
+    requires_case_rewrite: bool,
 }
 
-impl SnowflakeCaseInsensitiveTable {
+impl CaseInsensitiveTable {
     pub fn new(inner: Arc<dyn TableProvider>) -> Self {
         let original_schema = inner.schema();
+        let requires_case_rewrite = original_schema
+            .fields()
+            .iter()
+            .any(|field| *field.name() != field.name().to_ascii_lowercase());
         let normalized_schema = Arc::new(Schema::new(
             original_schema
                 .fields()
@@ -49,6 +54,7 @@ impl SnowflakeCaseInsensitiveTable {
             inner,
             original_schema,
             normalized_schema,
+            requires_case_rewrite,
         }
     }
 
@@ -74,9 +80,9 @@ impl SnowflakeCaseInsensitiveTable {
 }
 
 #[async_trait]
-impl TableProvider for SnowflakeCaseInsensitiveTable {
+impl TableProvider for CaseInsensitiveTable {
     fn as_any(&self) -> &dyn Any {
-        self
+        self.inner.as_any()
     }
 
     fn schema(&self) -> SchemaRef {
@@ -95,6 +101,10 @@ impl TableProvider for SnowflakeCaseInsensitiveTable {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> datafusion_common::Result<Arc<dyn ExecutionPlan>> {
+        if !self.requires_case_rewrite {
+            return self.inner.scan(state, projection, filters, limit).await;
+        }
+
         let rewritten_filters = filters
             .iter()
             .map(|expr| self.rewrite_expr(expr.clone()))
@@ -129,6 +139,10 @@ impl TableProvider for SnowflakeCaseInsensitiveTable {
         &self,
         filters: &[&Expr],
     ) -> datafusion_common::Result<Vec<TableProviderFilterPushDown>> {
+        if !self.requires_case_rewrite {
+            return self.inner.supports_filters_pushdown(filters);
+        }
+
         let rewritten = filters
             .iter()
             .map(|expr| self.rewrite_expr((*expr).clone()))
@@ -141,6 +155,7 @@ impl TableProvider for SnowflakeCaseInsensitiveTable {
         self.inner.statistics()
     }
 
+    #[allow(clippy::as_conversions)]
     async fn insert_into(
         &self,
         state: &dyn Session,
