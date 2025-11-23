@@ -13,7 +13,7 @@ use executor::models::QueryContext;
 use snafu::{OptionExt, ResultExt};
 use time::Duration;
 
-pub const JWT_TOKEN_EXPIRATION_SECONDS: u32 = 24 * 60 * 60;
+pub const JWT_TOKEN_EXPIRATION_SECONDS: u32 = 3 * 24 * 60 * 60;
 
 #[tracing::instrument(
     name = "api_snowflake_rest::logic::login",
