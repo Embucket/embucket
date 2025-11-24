@@ -562,4 +562,50 @@ async fn test_execute_read_only_mode() {
         )
         .await
         .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query("test_session_id", "SHOW TABLES;", QueryContext::default())
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN SHOW TABLES;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query("test_session_id", "SHOW SCHEMAS;", QueryContext::default())
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN SHOW SCHEMAS;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "SHOW DATABASES;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN SHOW DATABASES;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
 }

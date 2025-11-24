@@ -288,6 +288,15 @@ impl UserQuery {
                     Statement::Use(entity) => {
                         return self.execute_use_statement(entity).await;
                     }
+                    Statement::ShowDatabases { .. }
+                    | Statement::ShowSchemas { .. }
+                    | Statement::ShowTables { .. }
+                    | Statement::ShowColumns { .. }
+                    | Statement::ShowViews { .. }
+                    | Statement::ShowFunctions { .. }
+                    | Statement::ShowObjects { .. }
+                    | Statement::ShowVariables { .. }
+                    | Statement::ShowVariable { .. } => return Box::pin(self.show_query(*s)).await,
                     other => {
                         return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
                             statement: other.to_string(),
@@ -297,7 +306,17 @@ impl UserQuery {
                 },
                 DFStatement::Explain(explain) => match *explain.statement {
                     DFStatement::Statement(s) => match *s {
-                        Statement::Query(..) | Statement::Use(..) => {
+                        Statement::Query(..)
+                        | Statement::Use(..)
+                        | Statement::ShowDatabases { .. }
+                        | Statement::ShowSchemas { .. }
+                        | Statement::ShowTables { .. }
+                        | Statement::ShowColumns { .. }
+                        | Statement::ShowViews { .. }
+                        | Statement::ShowFunctions { .. }
+                        | Statement::ShowObjects { .. }
+                        | Statement::ShowVariables { .. }
+                        | Statement::ShowVariable { .. } => {
                             return self.execute_sql(&self.query).await;
                         }
                         other => {
