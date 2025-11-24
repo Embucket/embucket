@@ -265,7 +265,10 @@ impl UserQuery {
         ),
         err
     )]
-    pub async fn execute_query_statement(&mut self, mut subquery: Box<Query>) -> Result<QueryResult> {
+    pub async fn execute_query_statement(
+        &mut self,
+        mut subquery: Box<Query>,
+    ) -> Result<QueryResult> {
         self.traverse_and_update_query(subquery.as_mut()).await;
         Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await
     }
@@ -339,19 +342,40 @@ impl UserQuery {
                     Statement::Use(entity) => {
                         return self.execute_use_statement(entity).await;
                     }
-                    other => return ex_error::NotSupportedStatementInReadOnlyModeSnafu { statement: other.to_string() }.fail(),
-                }
+                    other => {
+                        return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                            statement: other.to_string(),
+                        }
+                        .fail();
+                    }
+                },
                 DFStatement::Explain(explain) => match *explain.statement {
                     DFStatement::Statement(s) => match *s {
-                        Statement::Query(..) | Statement::Use(..) => return self.execute_sql(&self.query).await,
-                        other => return ex_error::NotSupportedStatementInReadOnlyModeSnafu { statement: other.to_string() }.fail(),
+                        Statement::Query(..) | Statement::Use(..) => {
+                            return self.execute_sql(&self.query).await;
+                        }
+                        other => {
+                            return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                                statement: other.to_string(),
+                            }
+                            .fail();
+                        }
+                    },
+                    other => {
+                        return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                            statement: other.to_string(),
+                        }
+                        .fail();
                     }
-                    other => return ex_error::NotSupportedStatementInReadOnlyModeSnafu { statement: other.to_string() }.fail(),
+                },
+                other => {
+                    return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                        statement: other.to_string(),
+                    }
+                    .fail();
                 }
-                other => return ex_error::NotSupportedStatementInReadOnlyModeSnafu { statement: other.to_string() }.fail(),
             }
         }
-
 
         if let DFStatement::Statement(s) = statement {
             match *s {
