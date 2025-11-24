@@ -59,7 +59,7 @@ impl Default for Config {
             mem_enable_track_consumers_pool: None,
             disk_pool_size_mb: None,
             query_history_rows_limit: DEFAULT_QUERY_HISTORY_ROWS_LIMIT,
-            read_only: true,
+            read_only: false,
         }
     }
 }
@@ -89,6 +89,12 @@ impl Config {
     #[must_use]
     pub const fn with_query_history_rows_limit(mut self, limit: usize) -> Self {
         self.query_history_rows_limit = limit;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
         self
     }
 }
