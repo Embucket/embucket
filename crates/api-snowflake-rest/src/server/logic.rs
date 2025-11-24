@@ -102,13 +102,15 @@ pub async fn handle_query_request(
             sql_text.clone(),
         ));
 
+    // if retry-disable feature is enabled we ignory retries regardless of query_id is located or not
+    #[cfg(feature = "retry-disable")]
+    if query.retry_count.unwrap_or_default() > 0 {
+        return api_snowflake_rest_error::RetryDisabledSnafu.fail();
+    }
+
     let (result, query_id) = if query.retry_count.unwrap_or_default() > 0
         && let Ok(query_id) = query_id_res
     {
-        #[cfg(feature = "retry-disable")]
-        if query.retry_count.unwrap_or_default() > 0 {
-            return api_snowflake_rest_error::RetryDisabledSnafu.fail();
-        }
         let result = state.execution_svc.wait(query_id).await?;
         (result, query_id)
     } else {
