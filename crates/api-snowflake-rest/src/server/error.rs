@@ -102,7 +102,7 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Retry not allowed"))]
+    #[snafu(display("Retry disabled"))]
     RetryDisabled {
         #[snafu(implicit)]
         location: Location,
