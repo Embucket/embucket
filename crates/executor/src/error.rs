@@ -632,6 +632,13 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Statement not supported in read_only mode: {statement}"))]
+    NotSupportedStatementInReadOnlyMode {
+        statement: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 impl Error {

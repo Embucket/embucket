@@ -18,6 +18,7 @@ pub struct EnvConfig {
     pub embucket_version: String,
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
+    pub read_only: bool,
 }
 
 impl EnvConfig {
@@ -40,6 +41,7 @@ impl EnvConfig {
             embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
+            read_only: parse_env("READ_ONLY").unwrap_or(true),
         }
     }
 
@@ -56,6 +58,7 @@ impl EnvConfig {
             mem_enable_track_consumers_pool: self.mem_enable_track_consumers_pool,
             disk_pool_size_mb: self.disk_pool_size_mb,
             query_history_rows_limit: self.query_history_rows_limit,
+            read_only: self.read_only,
         }
     }
 }

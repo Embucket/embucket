@@ -169,6 +169,14 @@ pub struct CliOpts {
         help = "JWT secret for auth"
     )]
     jwt_secret: Option<String>,
+
+    #[arg(
+        long,
+        env = "READ_ONLY",
+        default_value = "true",
+        help = "If the service should only accept read only commands (selects)"
+    )]
+    pub read_only: bool,
 }
 
 impl CliOpts {
