@@ -8,7 +8,7 @@ use crate::error::{
 };
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
-use aws_config::{BehaviorVersion, Region, SdkConfig, retry::RetryConfig};
+use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::{
@@ -221,12 +221,11 @@ impl EmbucketCatalogList {
             AwsCredentials::Token(ref t) => (None, None, Some(t.clone())),
         };
         let creds = Credentials::from_keys(ak.unwrap_or_default(), sk.unwrap_or_default(), token);
-        let config = SdkConfig::builder()
-            .behavior_version(BehaviorVersion::latest())
+        let config = aws_config::defaults(BehaviorVersion::latest())
             .credentials_provider(SharedCredentialsProvider::new(creds))
-            .retry_config(RetryConfig::standard())
             .region(Region::new(volume.region()))
-            .build();
+            .load()
+            .await;
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
             S3TablesCatalog::new(
                 &config,
