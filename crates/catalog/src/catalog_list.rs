@@ -8,7 +8,7 @@ use crate::error::{
 };
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
-use aws_config::{BehaviorVersion, Region, SdkConfig};
+use aws_config::{BehaviorVersion, Region, SdkConfig, retry::RetryConfig};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::{
@@ -224,6 +224,7 @@ impl EmbucketCatalogList {
         let config = SdkConfig::builder()
             .behavior_version(BehaviorVersion::latest())
             .credentials_provider(SharedCredentialsProvider::new(creds))
+            .retry_config(RetryConfig::standard())
             .region(Region::new(volume.region()))
             .build();
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
