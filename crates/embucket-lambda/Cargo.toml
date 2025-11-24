@@ -34,7 +34,8 @@ name = "bootstrap"
 path = "src/main.rs"
 
 [features]
-default = []
+default = ["retry-disable"]
+retry-disable = ["api-snowflake-rest/retry-disable"]
 streaming = []
 
 [package.metadata.lambda]

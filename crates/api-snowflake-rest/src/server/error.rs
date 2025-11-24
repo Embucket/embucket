@@ -101,6 +101,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Retry disabled"))]
+    RetryDisabled {
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 impl IntoResponse for Error {
@@ -231,6 +237,7 @@ impl Error {
                 ErrorCode::Other,
             ),
             Self::Utf8 { .. }
+            | Self::RetryDisabled { .. }
             | Self::Arrow { .. }
             | Self::SerdeJson { .. }
             | Self::NotImplemented { .. } => {
