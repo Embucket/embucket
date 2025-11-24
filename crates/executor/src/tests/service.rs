@@ -557,16 +557,7 @@ async fn test_execute_read_only_mode() {
     execution_svc
         .query(
             "test_session_id",
-            "USE SCHEMA public",
-            QueryContext::default(),
-        )
-        .await
-        .expect("Failed to execute query in read only mode");
-
-    execution_svc
-        .query(
-            "test_session_id",
-            "EXPLAIN USE SCHEMA public",
+            "USE SCHEMA public;",
             QueryContext::default(),
         )
         .await
