@@ -255,60 +255,6 @@ impl UserQuery {
         Ok(())
     }
 
-    #[instrument(
-        name = "UserQuery::execute_query_statement",
-        level = "debug",
-        skip(self),
-        fields(
-            statement,
-            query_id = self.query_context.query_id.to_string(),
-        ),
-        err
-    )]
-    pub async fn execute_query_statement(
-        &mut self,
-        mut subquery: Box<Query>,
-    ) -> Result<QueryResult> {
-        self.traverse_and_update_query(subquery.as_mut()).await;
-        Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await
-    }
-
-    #[instrument(
-        name = "UserQuery::execute_use_statement",
-        level = "debug",
-        skip(self),
-        fields(
-            statement,
-            query_id = self.query_context.query_id.to_string(),
-        ),
-        err
-    )]
-    pub async fn execute_use_statement(&mut self, entity: Use) -> Result<QueryResult> {
-        let (variable, value) = match entity {
-            Use::Catalog(n) => ("catalog", n.to_string()),
-            Use::Schema(n) => ("schema", n.to_string()),
-            Use::Database(n) => ("database", n.to_string()),
-            Use::Warehouse(n) => ("warehouse", n.to_string()),
-            Use::Role(n) => ("role", n.to_string()),
-            Use::Object(n) => ("object", n.to_string()),
-            Use::SecondaryRoles(sr) => ("secondary_roles", sr.to_string()),
-            Use::Default => ("", String::new()),
-        };
-        if variable.is_empty() | value.is_empty() {
-            return ex_error::OnyUseWithVariablesSnafu.fail();
-        }
-        let params = HashMap::from([(
-            variable.to_string(),
-            SessionProperty::from_str_value(
-                variable.to_string(),
-                value,
-                Some(self.session.ctx.session_id()),
-            ),
-        )]);
-        self.session.set_session_variable(true, params)?;
-        self.status_response()
-    }
-
     #[allow(clippy::too_many_lines)]
     #[instrument(
         name = "UserQuery::execute",
@@ -491,6 +437,60 @@ impl UserQuery {
             return Box::pin(self.create_external_table_query(cetable)).await;
         }
         self.execute_sql(&self.query).await
+    }
+
+    #[instrument(
+        name = "UserQuery::execute_query_statement",
+        level = "debug",
+        skip(self),
+        fields(
+            statement,
+            query_id = self.query_context.query_id.to_string(),
+        ),
+        err
+    )]
+    pub async fn execute_query_statement(
+        &mut self,
+        mut subquery: Box<Query>,
+    ) -> Result<QueryResult> {
+        self.traverse_and_update_query(subquery.as_mut()).await;
+        Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await
+    }
+
+    #[instrument(
+        name = "UserQuery::execute_use_statement",
+        level = "debug",
+        skip(self),
+        fields(
+            statement,
+            query_id = self.query_context.query_id.to_string(),
+        ),
+        err
+    )]
+    pub async fn execute_use_statement(&mut self, entity: Use) -> Result<QueryResult> {
+        let (variable, value) = match entity {
+            Use::Catalog(n) => ("catalog", n.to_string()),
+            Use::Schema(n) => ("schema", n.to_string()),
+            Use::Database(n) => ("database", n.to_string()),
+            Use::Warehouse(n) => ("warehouse", n.to_string()),
+            Use::Role(n) => ("role", n.to_string()),
+            Use::Object(n) => ("object", n.to_string()),
+            Use::SecondaryRoles(sr) => ("secondary_roles", sr.to_string()),
+            Use::Default => ("", String::new()),
+        };
+        if variable.is_empty() | value.is_empty() {
+            return ex_error::OnyUseWithVariablesSnafu.fail();
+        }
+        let params = HashMap::from([(
+            variable.to_string(),
+            SessionProperty::from_str_value(
+                variable.to_string(),
+                value,
+                Some(self.session.ctx.session_id()),
+            ),
+        )]);
+        self.session.set_session_variable(true, params)?;
+        self.status_response()
     }
 
     #[instrument(name = "UserQuery::get_catalog", level = "trace", skip(self), err)]
