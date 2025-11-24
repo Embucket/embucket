@@ -279,6 +279,50 @@ impl UserQuery {
         // 3. Single place to construct Logical plan from this AST
         // 4. Single place to rewrite-optimize-adjust logical plan
         // etc
+        if self.session.config.read_only {
+            match statement {
+                DFStatement::Statement(s) => match *s {
+                    Statement::Query(subquery) => {
+                        return self.execute_query_statement(subquery).await;
+                    }
+                    Statement::Use(entity) => {
+                        return self.execute_use_statement(entity).await;
+                    }
+                    other => {
+                        return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                            statement: other.to_string(),
+                        }
+                        .fail();
+                    }
+                },
+                DFStatement::Explain(explain) => match *explain.statement {
+                    DFStatement::Statement(s) => match *s {
+                        Statement::Query(..) | Statement::Use(..) => {
+                            return self.execute_sql(&self.query).await;
+                        }
+                        other => {
+                            return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                                statement: other.to_string(),
+                            }
+                            .fail();
+                        }
+                    },
+                    other => {
+                        return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                            statement: other.to_string(),
+                        }
+                        .fail();
+                    }
+                },
+                other => {
+                    return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
+                        statement: other.to_string(),
+                    }
+                    .fail();
+                }
+            }
+        }
+
         if let DFStatement::Statement(s) = statement {
             match *s {
                 Statement::AlterSession {
@@ -300,29 +344,7 @@ impl UserQuery {
                     return self.status_response();
                 }
                 Statement::Use(entity) => {
-                    let (variable, value) = match entity {
-                        Use::Catalog(n) => ("catalog", n.to_string()),
-                        Use::Schema(n) => ("schema", n.to_string()),
-                        Use::Database(n) => ("database", n.to_string()),
-                        Use::Warehouse(n) => ("warehouse", n.to_string()),
-                        Use::Role(n) => ("role", n.to_string()),
-                        Use::Object(n) => ("object", n.to_string()),
-                        Use::SecondaryRoles(sr) => ("secondary_roles", sr.to_string()),
-                        Use::Default => ("", String::new()),
-                    };
-                    if variable.is_empty() | value.is_empty() {
-                        return ex_error::OnyUseWithVariablesSnafu.fail();
-                    }
-                    let params = HashMap::from([(
-                        variable.to_string(),
-                        SessionProperty::from_str_value(
-                            variable.to_string(),
-                            value,
-                            Some(self.session.ctx.session_id()),
-                        ),
-                    )]);
-                    self.session.set_session_variable(true, params)?;
-                    return self.status_response();
+                    return self.execute_use_statement(entity).await;
                 }
                 Statement::Set(statement) => {
                     use datafusion::sql::sqlparser::ast::Set;
@@ -397,9 +419,8 @@ impl UserQuery {
                 Statement::Truncate { table_names, .. } => {
                     return Box::pin(self.truncate_table(table_names)).await;
                 }
-                Statement::Query(mut subquery) => {
-                    self.traverse_and_update_query(subquery.as_mut()).await;
-                    return Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await;
+                Statement::Query(subquery) => {
+                    return self.execute_query_statement(subquery).await;
                 }
                 Statement::Drop { .. } => return Box::pin(self.drop_query(*s)).await,
                 Statement::Merge { .. } => return Box::pin(self.merge_query(*s)).await,
@@ -416,6 +437,60 @@ impl UserQuery {
             return Box::pin(self.create_external_table_query(cetable)).await;
         }
         self.execute_sql(&self.query).await
+    }
+
+    #[instrument(
+        name = "UserQuery::execute_query_statement",
+        level = "debug",
+        skip(self),
+        fields(
+            statement,
+            query_id = self.query_context.query_id.to_string(),
+        ),
+        err
+    )]
+    pub async fn execute_query_statement(
+        &mut self,
+        mut subquery: Box<Query>,
+    ) -> Result<QueryResult> {
+        self.traverse_and_update_query(subquery.as_mut()).await;
+        Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await
+    }
+
+    #[instrument(
+        name = "UserQuery::execute_use_statement",
+        level = "debug",
+        skip(self),
+        fields(
+            statement,
+            query_id = self.query_context.query_id.to_string(),
+        ),
+        err
+    )]
+    pub async fn execute_use_statement(&mut self, entity: Use) -> Result<QueryResult> {
+        let (variable, value) = match entity {
+            Use::Catalog(n) => ("catalog", n.to_string()),
+            Use::Schema(n) => ("schema", n.to_string()),
+            Use::Database(n) => ("database", n.to_string()),
+            Use::Warehouse(n) => ("warehouse", n.to_string()),
+            Use::Role(n) => ("role", n.to_string()),
+            Use::Object(n) => ("object", n.to_string()),
+            Use::SecondaryRoles(sr) => ("secondary_roles", sr.to_string()),
+            Use::Default => ("", String::new()),
+        };
+        if variable.is_empty() | value.is_empty() {
+            return ex_error::OnyUseWithVariablesSnafu.fail();
+        }
+        let params = HashMap::from([(
+            variable.to_string(),
+            SessionProperty::from_str_value(
+                variable.to_string(),
+                value,
+                Some(self.session.ctx.session_id()),
+            ),
+        )]);
+        self.session.set_session_variable(true, params)?;
+        self.status_response()
     }
 
     #[instrument(name = "UserQuery::get_catalog", level = "trace", skip(self), err)]

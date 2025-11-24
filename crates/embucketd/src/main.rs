@@ -145,6 +145,7 @@ async fn async_main(
         mem_enable_track_consumers_pool: opts.mem_enable_track_consumers_pool,
         disk_pool_size_mb: opts.disk_pool_size_mb,
         query_history_rows_limit: opts.query_history_rows_limit,
+        read_only: opts.read_only,
     };
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
