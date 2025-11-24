@@ -432,3 +432,143 @@ async fn test_query_timeout() {
         "Expected query execution exceeded timeout error but got {res:?}"
     );
 }
+
+#[tokio::test]
+#[allow(clippy::expect_used)]
+async fn test_execute_read_only_mode() {
+    //setup
+    let metastore = Arc::new(InMemoryMetastore::new());
+    let execution_svc = CoreExecutionService::new(metastore.clone(), Arc::new(Config::default()))
+        .await
+        .expect("Failed to create execution service");
+
+    execution_svc
+        .create_session("test_session_id")
+        .await
+        .expect("Failed to create session");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "CREATE OR REPLACE TABLE fetch_test(c1 INT)",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "INSERT INTO fetch_test VALUES (1),(2),(3),(4)",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query");
+
+    drop(execution_svc);
+
+    //read only mode test
+    let execution_svc =
+        CoreExecutionService::new(metastore, Arc::new(Config::default().with_read_only(true)))
+            .await
+            .expect("Failed to create execution service");
+
+    execution_svc
+        .create_session("test_session_id")
+        .await
+        .expect("Failed to create session");
+
+    //should fail
+    execution_svc
+        .query(
+            "test_session_id",
+            "CREATE OR REPLACE TABLE fetch_test(c1 INT)",
+            QueryContext::default(),
+        )
+        .await
+        .expect_err("Read only mode failed");
+
+    //should fail
+    execution_svc
+        .query(
+            "test_session_id",
+            "INSERT INTO fetch_test VALUES (1),(2),(3),(4)",
+            QueryContext::default(),
+        )
+        .await
+        .expect_err("Read only mode failed");
+
+    execution_svc
+        .query("test_session_id", "SELECT 1", QueryContext::default())
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN SELECT 1",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "WITH limited_data AS (
+                    SELECT c1 FROM fetch_test ORDER BY c1 FETCH FIRST 3 ROWS
+                 )
+                 SELECT * FROM limited_data ORDER BY c1;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN WITH limited_data AS (
+                    SELECT c1 FROM fetch_test ORDER BY c1 FETCH FIRST 3 ROWS
+                 )
+                 SELECT * FROM limited_data ORDER BY c1;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "SELECT 1 UNION ALL SELECT c1 FROM fetch_test;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN SELECT 1 UNION ALL SELECT c1 FROM fetch_test;",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "USE SCHEMA public",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+
+    execution_svc
+        .query(
+            "test_session_id",
+            "EXPLAIN USE SCHEMA public",
+            QueryContext::default(),
+        )
+        .await
+        .expect("Failed to execute query in read only mode");
+}
