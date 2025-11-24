@@ -47,3 +47,4 @@ workspace = true
 default = []
 alloc-tracing = ["dep:tracing-allocations"]
 queries = ["dep:queries"]
+retry-disable = ["api-snowflake-rest/retry-disable"]

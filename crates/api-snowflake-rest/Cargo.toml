@@ -6,6 +6,7 @@ license-file.workspace = true
 
 [features]
 default = ["default-server"]
+retry-disable = []
 external-server = []
 default-server = [
     "dep:api-snowflake-rest-sessions", 
