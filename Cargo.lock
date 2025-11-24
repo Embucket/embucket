@@ -3237,7 +3237,6 @@ dependencies = [
  "axum 0.8.6",
  "base64 0.22.1",
  "catalog-metastore",
- "cfg-if",
  "executor",
  "flate2",
  "http 1.3.1",
