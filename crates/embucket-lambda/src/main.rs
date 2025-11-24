@@ -16,7 +16,7 @@ use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use executor::service::CoreExecutionService;
 use http::HeaderMap;
 use http_body_util::BodyExt;
-use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, run, service_fn};
+use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -25,6 +25,13 @@ use tower::{ServiceBuilder, ServiceExt};
 use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
 use tracing::{error, info};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "streaming")] {
+        use lambda_http::run_with_streaming_response as run;
+    } else {
+        use lambda_http::run;
+    }
+}
 
 type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
