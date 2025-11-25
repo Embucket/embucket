@@ -166,7 +166,7 @@ impl CoreExecutionService {
 
         Self::initialize_datafusion_tracer();
 
-        let catalog_list = Self::catalog_list(metastore.clone()).await?;
+        let catalog_list = Self::catalog_list(metastore.clone(), &config).await?;
         let runtime_env = Self::runtime_env(&config, catalog_list.clone())?;
         Ok(Self {
             metastore,
@@ -237,8 +237,11 @@ impl CoreExecutionService {
         skip(metastore),
         err
     )]
-    pub async fn catalog_list(metastore: Arc<dyn Metastore>) -> Result<Arc<EmbucketCatalogList>> {
-        let catalog_list = Arc::new(EmbucketCatalogList::new(metastore.clone()));
+    pub async fn catalog_list(
+        metastore: Arc<dyn Metastore>,
+        config: &Config,
+    ) -> Result<Arc<EmbucketCatalogList>> {
+        let catalog_list = Arc::new(EmbucketCatalogList::new(metastore.clone(), config.into()));
         catalog_list
             .register_catalogs()
             .await

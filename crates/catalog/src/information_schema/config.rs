@@ -13,6 +13,7 @@ use crate::catalog::CachingCatalog;
 use crate::df_error;
 use crate::information_schema::databases::InformationSchemaDatabasesBuilder;
 use crate::information_schema::navigation_tree::InformationSchemaNavigationTreeBuilder;
+use crate::utils::fetch_table_providers;
 use dashmap::DashMap;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::catalog::CatalogProviderList;
@@ -31,6 +32,7 @@ pub struct InformationSchemaConfig {
     pub(crate) catalog_list: Arc<dyn CatalogProviderList>,
     pub(crate) catalog_name: Arc<str>,
     pub(crate) views_schemas: DashMap<String, Arc<Schema>>,
+    pub(crate) max_concurrent_table_fetches: usize,
 }
 
 impl InformationSchemaConfig {
@@ -51,15 +53,15 @@ impl InformationSchemaConfig {
             let Some(schema) = catalog.schema(&schema_name) else {
                 continue;
             };
-            for table_name in schema.table_names() {
-                if let Some(table) = schema.table(&table_name).await? {
-                    builder.add_table(
-                        &self.catalog_name,
-                        &schema_name,
-                        &table_name,
-                        table.table_type(),
-                    );
-                }
+            let table_providers =
+                fetch_table_providers(schema, self.max_concurrent_table_fetches).await?;
+            for (table_name, table) in table_providers {
+                builder.add_table(
+                    &self.catalog_name,
+                    &schema_name,
+                    &table_name,
+                    table.table_type(),
+                );
             }
         }
 
@@ -97,15 +99,15 @@ impl InformationSchemaConfig {
                 let Some(schema) = catalog.schema(&schema_name) else {
                     continue;
                 };
-                for table_name in schema.table_names() {
-                    if let Some(table) = schema.table(&table_name).await? {
-                        builder.add_navigation_tree(
-                            &catalog_name,
-                            Some(schema_name.clone()),
-                            Some(table_name),
-                            Some(table.table_type()),
-                        );
-                    }
+                let table_providers =
+                    fetch_table_providers(schema, self.max_concurrent_table_fetches).await?;
+                for (table_name, table) in table_providers {
+                    builder.add_navigation_tree(
+                        &catalog_name,
+                        Some(schema_name.clone()),
+                        Some(table_name),
+                        Some(table.table_type()),
+                    );
                 }
             }
 
@@ -149,10 +151,10 @@ impl InformationSchemaConfig {
                     continue;
                 }
                 if let Some(schema) = catalog.schema(&schema_name) {
-                    for table_name in schema.table_names() {
-                        if let Some(table) = schema.table(&table_name).await?
-                            && table.table_type() == TableType::View
-                        {
+                    let table_providers =
+                        fetch_table_providers(schema, self.max_concurrent_table_fetches).await?;
+                    for (table_name, table) in table_providers {
+                        if table.table_type() == TableType::View {
                             builder.add_view(
                                 &self.catalog_name,
                                 &schema_name,
@@ -190,20 +192,18 @@ impl InformationSchemaConfig {
                     continue;
                 }
                 if let Some(schema) = catalog.schema(&schema_name) {
-                    for table_name in schema.table_names() {
-                        if let Some(table) = schema.table(&table_name).await? {
-                            for (field_position, field) in
-                                table.schema().fields().iter().enumerate()
-                            {
-                                builder.add_column(
-                                    &self.catalog_name,
-                                    &schema_name,
-                                    &table_name,
-                                    table.table_type(),
-                                    field_position,
-                                    field,
-                                );
-                            }
+                    let table_providers =
+                        fetch_table_providers(schema, self.max_concurrent_table_fetches).await?;
+                    for (table_name, table) in table_providers {
+                        for (field_position, field) in table.schema().fields().iter().enumerate() {
+                            builder.add_column(
+                                &self.catalog_name,
+                                &schema_name,
+                                &table_name,
+                                table.table_type(),
+                                field_position,
+                                field,
+                            );
                         }
                     }
                 }

@@ -146,6 +146,8 @@ async fn async_main(
         disk_pool_size_mb: opts.disk_pool_size_mb,
         query_history_rows_limit: opts.query_history_rows_limit,
         read_only: opts.read_only,
+        refresh_catalog_list: opts.refresh_catalog_list,
+        max_concurrent_table_fetches: opts.max_concurrent_table_fetches,
     };
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();

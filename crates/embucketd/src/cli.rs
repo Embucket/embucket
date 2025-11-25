@@ -104,7 +104,6 @@ pub struct CliOpts {
     #[arg(
         long,
         env = "ALLOC_TRACING",
-        default_value = "true",
         help = "Enable memory tracing functionality"
     )]
     pub alloc_tracing: Option<bool>,
@@ -177,6 +176,21 @@ pub struct CliOpts {
         help = "If the service should only accept read only commands (selects)"
     )]
     pub read_only: bool,
+
+    #[arg(
+        long,
+        env = "REFRESH_CATALOG_LIST",
+        default_value = "false",
+        help = "If the catalog list should be prepared during service initialization"
+    )]
+    pub refresh_catalog_list: Option<bool>,
+
+    #[arg(
+        long,
+        env = "MAX_CONCURRENT_TABLE_FETCHES",
+        help = "The maximum number of concurrent requests to get tables details"
+    )]
+    pub max_concurrent_table_fetches: Option<usize>,
 }
 
 impl CliOpts {

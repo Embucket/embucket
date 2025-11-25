@@ -47,7 +47,11 @@ pub struct InformationSchemaProvider {
 
 impl InformationSchemaProvider {
     /// Creates a new [`InformationSchemaProvider`] for the provided `catalog_list`
-    pub fn new(catalog_list: Arc<dyn CatalogProviderList>, catalog_name: Arc<str>) -> Self {
+    pub fn new(
+        catalog_list: Arc<dyn CatalogProviderList>,
+        catalog_name: Arc<str>,
+        max_concurrent_table_fetches: usize,
+    ) -> Self {
         let views_schemas = {
             let mut map = DashMap::new();
             map.extend(
@@ -72,6 +76,7 @@ impl InformationSchemaProvider {
                 catalog_list,
                 catalog_name,
                 views_schemas,
+                max_concurrent_table_fetches,
             },
         }
     }

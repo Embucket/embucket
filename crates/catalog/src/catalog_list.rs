@@ -8,6 +8,7 @@ use crate::error::{
 };
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
+use crate::utils::{DEFAULT_MAX_CONCURRENT_TABLE_FETCHES, fetch_table_providers};
 use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
@@ -20,7 +21,6 @@ use datafusion::{
     execution::object_store::ObjectStoreRegistry,
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
-use futures::future::join_all;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use iceberg_s3tables_catalog::S3TablesCatalog;
@@ -40,16 +40,38 @@ pub struct EmbucketCatalogList {
     pub metastore: Arc<dyn Metastore>,
     pub table_object_store: Arc<DashMap<String, Arc<dyn ObjectStore>>>,
     pub catalogs: DashMap<String, Arc<CachingCatalog>>,
+    pub config: CatalogListConfig,
+}
+
+#[derive(Default, Clone)]
+pub struct CatalogListConfig {
+    pub max_concurrent_table_fetches: usize,
+    pub refresh_catalog_list: bool,
+}
+
+impl CatalogListConfig {
+    #[must_use]
+    pub fn new(
+        refresh_catalogs: Option<bool>,
+        max_concurrent_table_fetches: Option<usize>,
+    ) -> Self {
+        Self {
+            max_concurrent_table_fetches: max_concurrent_table_fetches
+                .unwrap_or(DEFAULT_MAX_CONCURRENT_TABLE_FETCHES),
+            refresh_catalog_list: refresh_catalogs.unwrap_or_default(),
+        }
+    }
 }
 
 impl EmbucketCatalogList {
-    pub fn new(metastore: Arc<dyn Metastore>) -> Self {
+    pub fn new(metastore: Arc<dyn Metastore>, config: CatalogListConfig) -> Self {
         let table_object_store: DashMap<String, Arc<dyn ObjectStore>> = DashMap::new();
         table_object_store.insert("file://".to_string(), Arc::new(LocalFileSystem::new()));
         Self {
             metastore,
             table_object_store: Arc::new(table_object_store),
             catalogs: DashMap::default(),
+            config,
         }
     }
 
@@ -268,7 +290,7 @@ impl EmbucketCatalogList {
         );
 
         for catalog in self.catalogs.iter_mut() {
-            if catalog.should_refresh {
+            if self.config.refresh_catalog_list && catalog.should_refresh {
                 let schemas = catalog.schema_names();
                 for schema in schemas.clone() {
                     if let Some(schema_provider) = catalog.catalog.schema(&schema) {
@@ -278,26 +300,14 @@ impl EmbucketCatalogList {
                             name: schema.clone(),
                             iceberg_catalog: catalog.iceberg_catalog.clone(),
                         };
-                        let tables = schema.schema.table_names();
+                        let table_providers = fetch_table_providers(
+                            Arc::clone(&schema.schema),
+                            self.config.max_concurrent_table_fetches,
+                        )
+                        .await
+                        .context(catalog_error::DataFusionSnafu)?;
 
-                        let futs = tables
-                            .iter()
-                            .map(|table_name| async {
-                                let tp = schema
-                                    .schema
-                                    .table(table_name)
-                                    .await
-                                    .context(catalog_error::DataFusionSnafu)
-                                    .ok()?
-                                    .map(Arc::new)?;
-
-                                Some((table_name.clone(), tp))
-                            })
-                            .collect::<Vec<_>>();
-
-                        let results = join_all(futs).await;
-                        for res in results.into_iter().flatten() {
-                            let (table_name, table_provider) = res;
+                        for (table_name, table_provider) in table_providers {
                             schema.tables_cache.insert(
                                 table_name.clone(),
                                 Arc::new(CachingTable::new_with_schema(
