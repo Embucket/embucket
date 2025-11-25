@@ -183,14 +183,15 @@ pub struct CliOpts {
         default_value = "false",
         help = "If the catalog list should be prepared during service initialization"
     )]
-    pub refresh_catalog_list: Option<bool>,
+    pub refresh_catalog_list: bool,
 
     #[arg(
         long,
         env = "MAX_CONCURRENT_TABLE_FETCHES",
+        default_value = "1",
         help = "The maximum number of concurrent requests to get tables details"
     )]
-    pub max_concurrent_table_fetches: Option<usize>,
+    pub max_concurrent_table_fetches: usize,
 }
 
 impl CliOpts {

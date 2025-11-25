@@ -4,9 +4,6 @@ use futures::stream::{self, StreamExt};
 use std::sync::Arc;
 use tracing::warn;
 
-/// Maximum number of table fetches issued at once when none is specified.
-pub const DEFAULT_MAX_CONCURRENT_TABLE_FETCHES: usize = 5;
-
 /// Fetch the table providers of a schema with bounded concurrency.
 ///
 /// Tables that fail to resolve (e.g. removed mid-refresh) are skipped, while

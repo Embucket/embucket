@@ -45,16 +45,16 @@ pub struct Config {
     pub disk_pool_size_mb: Option<usize>,
     pub query_history_rows_limit: usize,
     pub read_only: bool,
-    pub refresh_catalog_list: Option<bool>,
-    pub max_concurrent_table_fetches: Option<usize>,
+    pub refresh_catalog_list: bool,
+    pub max_concurrent_table_fetches: usize,
 }
 
 impl From<&Config> for CatalogListConfig {
     fn from(value: &Config) -> Self {
-        Self::new(
-            value.refresh_catalog_list,
-            value.max_concurrent_table_fetches,
-        )
+        Self {
+            max_concurrent_table_fetches: value.max_concurrent_table_fetches,
+            refresh_catalog_list: value.refresh_catalog_list,
+        }
     }
 }
 
@@ -72,8 +72,8 @@ impl Default for Config {
             disk_pool_size_mb: None,
             query_history_rows_limit: DEFAULT_QUERY_HISTORY_ROWS_LIMIT,
             read_only: false,
-            refresh_catalog_list: None,
-            max_concurrent_table_fetches: None,
+            refresh_catalog_list: false,
+            max_concurrent_table_fetches: 5,
         }
     }
 }
@@ -110,12 +110,6 @@ impl Config {
     pub const fn with_read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
         self
-    }
-
-    #[must_use]
-    pub fn max_concurrent_table_fetches(&self) -> usize {
-        self.max_concurrent_table_fetches
-            .unwrap_or(DEFAULT_QUERY_HISTORY_ROWS_LIMIT)
     }
 }
 

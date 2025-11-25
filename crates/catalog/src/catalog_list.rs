@@ -8,7 +8,7 @@ use crate::error::{
 };
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
-use crate::utils::{DEFAULT_MAX_CONCURRENT_TABLE_FETCHES, fetch_table_providers};
+use crate::utils::fetch_table_providers;
 use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
@@ -47,20 +47,6 @@ pub struct EmbucketCatalogList {
 pub struct CatalogListConfig {
     pub max_concurrent_table_fetches: usize,
     pub refresh_catalog_list: bool,
-}
-
-impl CatalogListConfig {
-    #[must_use]
-    pub fn new(
-        refresh_catalogs: Option<bool>,
-        max_concurrent_table_fetches: Option<usize>,
-    ) -> Self {
-        Self {
-            max_concurrent_table_fetches: max_concurrent_table_fetches
-                .unwrap_or(DEFAULT_MAX_CONCURRENT_TABLE_FETCHES),
-            refresh_catalog_list: refresh_catalogs.unwrap_or_default(),
-        }
-    }
 }
 
 impl EmbucketCatalogList {
