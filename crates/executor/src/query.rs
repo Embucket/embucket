@@ -1860,6 +1860,29 @@ impl UserQuery {
         Box::pin(self.execute_with_custom_plan(&query)).await
     }
 
+    pub fn show_query_table_reference(
+        &self,
+        df_statement: &DFStatement,
+    ) -> Result<Option<TableReference>> {
+        match df_statement {
+            DFStatement::Statement(statement) => match statement.as_ref() {
+                Statement::ShowSchemas { show_options, .. } => Ok(Some(
+                    self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Database)?,
+                )),
+                Statement::ShowTables { show_options, .. }
+                | Statement::ShowViews { show_options, .. }
+                | Statement::ShowObjects(ShowObjects { show_options, .. }) => Ok(Some(
+                    self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Schema)?,
+                )),
+                Statement::ShowColumns { show_options, .. } => Ok(Some(
+                    self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Table)?,
+                )),
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+
     pub async fn describe_table_query(&self, table_name: ObjectName) -> Result<QueryResult> {
         let resolved_ident = self.resolve_table_object_name(table_name.0)?;
         let table_ident = self.resolve_table_ref(&resolved_ident);
@@ -2263,7 +2286,7 @@ impl UserQuery {
         for reference in references {
             let resolved = self.resolve_table_ref(reference);
             if let Entry::Vacant(v) = tables.entry(resolved.clone())
-                && let Ok(schema) = self.schema_for_ref(resolved.clone())
+                && let Ok(schema) = self.schema_for_ref(resolved.clone(), statement)
                 && let Some(table) = schema
                     .table(&resolved.table)
                     .await
@@ -2316,14 +2339,17 @@ impl UserQuery {
     pub fn schema_for_ref(
         &self,
         table_ref: impl Into<TableReference>,
+        statement: &DFStatement,
     ) -> datafusion_common::Result<Arc<dyn SchemaProvider>> {
         let resolved_ref = self.session.ctx.state().resolve_table_ref(table_ref);
         if self.session.ctx.state().config().information_schema()
             && *resolved_ref.schema == *INFORMATION_SCHEMA
         {
+            let show_query_table_reference = self.show_query_table_reference(statement)?;
             return Ok(Arc::new(InformationSchemaProvider::new(
                 Arc::clone(self.session.ctx.state().catalog_list()),
                 resolved_ref.catalog,
+                show_query_table_reference,
             )));
         }
         self.session

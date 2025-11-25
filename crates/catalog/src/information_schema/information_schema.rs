@@ -16,8 +16,8 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::streaming::StreamingTable;
 use datafusion::catalog::{CatalogProviderList, SchemaProvider, TableProvider};
-use datafusion_common::DataFusionError;
 use datafusion_common::Result;
+use datafusion_common::{DataFusionError, TableReference};
 use datafusion_physical_plan::streaming::PartitionStream;
 use std::fmt::Debug;
 use std::{any::Any, sync::Arc};
@@ -47,7 +47,11 @@ pub struct InformationSchemaProvider {
 
 impl InformationSchemaProvider {
     /// Creates a new [`InformationSchemaProvider`] for the provided `catalog_list`
-    pub fn new(catalog_list: Arc<dyn CatalogProviderList>, catalog_name: Arc<str>) -> Self {
+    pub fn new(
+        catalog_list: Arc<dyn CatalogProviderList>,
+        catalog_name: Arc<str>,
+        show_statement_ref: Option<TableReference>,
+    ) -> Self {
         let views_schemas = {
             let mut map = DashMap::new();
             map.extend(
@@ -72,6 +76,7 @@ impl InformationSchemaProvider {
                 catalog_list,
                 catalog_name,
                 views_schemas,
+                show_statement_ref,
             },
         }
     }
