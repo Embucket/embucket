@@ -97,7 +97,7 @@ use sqlparser::ast::{
     AlterTableOperation, AssignmentTarget, CloudProviderParams, MergeAction, MergeClause,
     MergeClauseKind, MergeInsertKind, ObjectNamePart, ObjectType, PivotValueSource, ShowObjects,
     ShowStatementFilter, ShowStatementIn, ShowStatementInParentType as ShowType,
-    TruncateTableTarget, Use, Value, visit_relations_mut,
+    ShowStatementInParentType, TruncateTableTarget, Use, Value, visit_relations_mut,
 };
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -1874,9 +1874,21 @@ impl UserQuery {
                 )),
                 Statement::ShowTables { show_options, .. }
                 | Statement::ShowViews { show_options, .. }
-                | Statement::ShowObjects(ShowObjects { show_options, .. }) => Ok(Some(
-                    self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Schema)?,
-                )),
+                | Statement::ShowObjects(ShowObjects { show_options, .. }) => {
+                    let default_show_type = ShowType::Schema;
+                    let parent_type = show_options
+                        .show_in
+                        .clone()
+                        .and_then(|in_clause| in_clause.parent_type)
+                        .unwrap_or_else(|| default_show_type.clone());
+                    if matches!(parent_type, ShowStatementInParentType::Database) {
+                        return Ok(None);
+                    }
+                    Ok(Some(self.resolve_show_in_name(
+                        show_options.show_in.clone(),
+                        default_show_type,
+                    )?))
+                }
                 Statement::ShowColumns { show_options, .. } => Ok(Some(
                     self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Table)?,
                 )),
