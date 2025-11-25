@@ -180,7 +180,7 @@ pub struct CliOpts {
     #[arg(
         long,
         env = "MAX_CONCURRENT_TABLE_FETCHES",
-        default_value = "1",
+        default_value = "2",
         help = "The maximum number of concurrent requests to get tables details"
     )]
     pub max_concurrent_table_fetches: usize,
