@@ -240,7 +240,7 @@ impl EmbucketCatalogList {
             .context(catalog_error::DataFusionSnafu)?;
         Ok(
             CachingCatalog::new(Arc::new(catalog), name.to_string(), Some(iceberg_catalog))
-                .with_refresh(true)
+                .with_refresh(false)
                 .with_catalog_type(CatalogType::S3tables),
         )
     }

@@ -17,8 +17,8 @@ use dashmap::DashMap;
 use datafusion::arrow::datatypes::Schema;
 use datafusion::catalog::CatalogProviderList;
 use datafusion::logical_expr::{Signature, TypeSignature, Volatility};
-use datafusion_common::DataFusionError;
 use datafusion_common::config::ConfigOptions;
+use datafusion_common::{DataFusionError, TableReference};
 use datafusion_doc::Documentation;
 use datafusion_expr::{AggregateUDF, ScalarUDF, TableType, WindowUDF};
 use functions::session_params::SessionParams;
@@ -31,6 +31,7 @@ pub struct InformationSchemaConfig {
     pub(crate) catalog_list: Arc<dyn CatalogProviderList>,
     pub(crate) catalog_name: Arc<str>,
     pub(crate) views_schemas: DashMap<String, Arc<Schema>>,
+    pub(crate) target_reference: Option<TableReference>,
 }
 
 impl InformationSchemaConfig {
@@ -43,11 +44,19 @@ impl InformationSchemaConfig {
             return Ok(());
         };
 
-        for schema_name in catalog
-            .schema_names()
-            .into_iter()
-            .filter(|s| s != INFORMATION_SCHEMA)
+        let schema_names: Vec<String> = if let Some(schema_ref) = self.target_reference.clone()
+            && let Some(schema_name) = schema_ref.schema()
         {
+            vec![schema_name.to_string()]
+        } else {
+            catalog
+                .schema_names()
+                .into_iter()
+                .filter(|s| s != INFORMATION_SCHEMA)
+                .collect()
+        };
+
+        for schema_name in schema_names {
             let Some(schema) = catalog.schema(&schema_name) else {
                 continue;
             };
@@ -144,10 +153,19 @@ impl InformationSchemaConfig {
         builder: &mut InformationSchemaViewBuilder,
     ) -> datafusion_common::Result<(), DataFusionError> {
         if let Some(catalog) = self.catalog_list.catalog(&self.catalog_name) {
-            for schema_name in catalog.schema_names() {
-                if schema_name == INFORMATION_SCHEMA {
-                    continue;
-                }
+            let schema_names: Vec<String> = if let Some(schema_ref) = self.target_reference.clone()
+                && let Some(schema_name) = schema_ref.schema()
+            {
+                vec![schema_name.to_string()]
+            } else {
+                catalog
+                    .schema_names()
+                    .into_iter()
+                    .filter(|s| s != INFORMATION_SCHEMA)
+                    .collect()
+            };
+
+            for schema_name in schema_names {
                 if let Some(schema) = catalog.schema(&schema_name) {
                     for table_name in schema.table_names() {
                         if let Some(table) = schema.table(&table_name).await?
@@ -185,10 +203,19 @@ impl InformationSchemaConfig {
         builder: &mut InformationSchemaColumnsBuilder,
     ) -> datafusion_common::Result<(), DataFusionError> {
         if let Some(catalog) = self.catalog_list.catalog(&self.catalog_name) {
-            for schema_name in catalog.schema_names() {
-                if schema_name == INFORMATION_SCHEMA {
-                    continue;
-                }
+            let schema_names: Vec<String> = if let Some(schema_ref) = self.target_reference.clone()
+                && let Some(schema_name) = schema_ref.schema()
+            {
+                vec![schema_name.to_string()]
+            } else {
+                catalog
+                    .schema_names()
+                    .into_iter()
+                    .filter(|s| s != INFORMATION_SCHEMA)
+                    .collect()
+            };
+
+            for schema_name in schema_names {
                 if let Some(schema) = catalog.schema(&schema_name) {
                     for table_name in schema.table_names() {
                         if let Some(table) = schema.table(&table_name).await? {

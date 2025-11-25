@@ -30,6 +30,7 @@ async fn create_session_context() -> Arc<SessionContext> {
             Arc::new(InformationSchemaProvider::new(
                 catalog_list_impl.clone(),
                 Arc::from(DEFAULT_CATALOG),
+                None,
             )),
         )
         .unwrap();
