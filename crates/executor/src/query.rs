@@ -115,6 +115,7 @@ pub struct UserQuery {
     pub running_queries: Arc<dyn RunningQueries>,
     pub raw_query: String,
     pub query: String,
+    pub raw_statement: Option<DFStatement>,
     pub session: Arc<UserSession>,
     pub query_context: QueryContext,
 }
@@ -129,6 +130,7 @@ impl UserQuery {
             running_queries: session.running_queries.clone(),
             raw_query: query.clone().into(),
             query: query.into(),
+            raw_statement: None,
             session,
             query_context,
         }
@@ -269,6 +271,7 @@ impl UserQuery {
     pub async fn execute(&mut self) -> Result<QueryResult> {
         let statement = self.parse_query().context(ex_error::DataFusionSnafu)?;
         self.query = statement.to_string();
+        self.raw_statement = Some(statement.clone());
 
         // Record the result as part of the current span.
         tracing::Span::current().record("statement", format!("{statement:#?}"));
@@ -2286,7 +2289,7 @@ impl UserQuery {
         for reference in references {
             let resolved = self.resolve_table_ref(reference);
             if let Entry::Vacant(v) = tables.entry(resolved.clone())
-                && let Ok(schema) = self.schema_for_ref(resolved.clone(), statement)
+                && let Ok(schema) = self.schema_for_ref(resolved.clone())
                 && let Some(table) = schema
                     .table(&resolved.table)
                     .await
@@ -2339,17 +2342,20 @@ impl UserQuery {
     pub fn schema_for_ref(
         &self,
         table_ref: impl Into<TableReference>,
-        statement: &DFStatement,
     ) -> datafusion_common::Result<Arc<dyn SchemaProvider>> {
         let resolved_ref = self.session.ctx.state().resolve_table_ref(table_ref);
         if self.session.ctx.state().config().information_schema()
             && *resolved_ref.schema == *INFORMATION_SCHEMA
         {
-            let show_query_table_reference = self.show_query_table_reference(statement)?;
+            let target_reference = if let Some(statement) = &self.raw_statement {
+                self.show_query_table_reference(statement)?
+            } else {
+                None
+            };
             return Ok(Arc::new(InformationSchemaProvider::new(
                 Arc::clone(self.session.ctx.state().catalog_list()),
                 resolved_ref.catalog,
-                show_query_table_reference,
+                target_reference,
             )));
         }
         self.session

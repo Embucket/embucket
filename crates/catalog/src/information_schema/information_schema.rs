@@ -50,7 +50,7 @@ impl InformationSchemaProvider {
     pub fn new(
         catalog_list: Arc<dyn CatalogProviderList>,
         catalog_name: Arc<str>,
-        show_statement_ref: Option<TableReference>,
+        target_reference: Option<TableReference>,
     ) -> Self {
         let views_schemas = {
             let mut map = DashMap::new();
@@ -76,7 +76,7 @@ impl InformationSchemaProvider {
                 catalog_list,
                 catalog_name,
                 views_schemas,
-                show_statement_ref,
+                target_reference,
             },
         }
     }

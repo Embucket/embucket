@@ -31,7 +31,7 @@ pub struct InformationSchemaConfig {
     pub(crate) catalog_list: Arc<dyn CatalogProviderList>,
     pub(crate) catalog_name: Arc<str>,
     pub(crate) views_schemas: DashMap<String, Arc<Schema>>,
-    pub(crate) show_statement_ref: Option<TableReference>,
+    pub(crate) target_reference: Option<TableReference>,
 }
 
 impl InformationSchemaConfig {
@@ -44,7 +44,7 @@ impl InformationSchemaConfig {
             return Ok(());
         };
 
-        let schema_names: Vec<String> = if let Some(schema_ref) = self.show_statement_ref.clone()
+        let schema_names: Vec<String> = if let Some(schema_ref) = self.target_reference.clone()
             && let Some(schema_name) = schema_ref.schema()
         {
             vec![schema_name.to_string()]
@@ -153,8 +153,7 @@ impl InformationSchemaConfig {
         builder: &mut InformationSchemaViewBuilder,
     ) -> datafusion_common::Result<(), DataFusionError> {
         if let Some(catalog) = self.catalog_list.catalog(&self.catalog_name) {
-            let schema_names: Vec<String> = if let Some(schema_ref) =
-                self.show_statement_ref.clone()
+            let schema_names: Vec<String> = if let Some(schema_ref) = self.target_reference.clone()
                 && let Some(schema_name) = schema_ref.schema()
             {
                 vec![schema_name.to_string()]
@@ -204,8 +203,7 @@ impl InformationSchemaConfig {
         builder: &mut InformationSchemaColumnsBuilder,
     ) -> datafusion_common::Result<(), DataFusionError> {
         if let Some(catalog) = self.catalog_list.catalog(&self.catalog_name) {
-            let schema_names: Vec<String> = if let Some(schema_ref) =
-                self.show_statement_ref.clone()
+            let schema_names: Vec<String> = if let Some(schema_ref) = self.target_reference.clone()
                 && let Some(schema_name) = schema_ref.schema()
             {
                 vec![schema_name.to_string()]
