@@ -104,14 +104,13 @@ Then you can deploy using aws cli or any method you prefer.
  --function-url-auth-type NONE 
 ```
 
-4. ```bash
-Run the Snowflake CLI against the Lambda:
+4. Run the Snowflake CLI against the Lambda:
 
 ```bash
 snow sql -c lambda -q "select 1;"
 ```
 
-**Snowcli config: **
+**Snowcli config:**
 ```aiignore
 [connections.lambda]
 account = "account"
