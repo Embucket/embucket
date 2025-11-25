@@ -31,12 +31,16 @@ struct VolumeEntry {
     volume: Volume,
     #[serde(default)]
     database: Option<String>,
+    #[serde(default)]
+    should_refresh: bool,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 struct DatabaseEntry {
     ident: String,
     volume: VolumeIdent,
+    #[serde(default)]
+    should_refresh: bool,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -114,7 +118,7 @@ impl MetastoreBootstrapConfig {
         }
 
         for db in &self.databases {
-            self.ensure_database(metastore.clone(), &db.ident, &db.volume)
+            self.ensure_database(metastore.clone(), &db.ident, &db.volume, db.should_refresh)
                 .await?;
         }
 
@@ -157,8 +161,13 @@ impl MetastoreBootstrapConfig {
         }
 
         if let Some(database) = &entry.database {
-            self.ensure_database(metastore, database, &entry.volume.ident)
-                .await?;
+            self.ensure_database(
+                metastore,
+                database,
+                &entry.volume.ident,
+                entry.should_refresh,
+            )
+            .await?;
         }
 
         Ok(())
@@ -169,6 +178,7 @@ impl MetastoreBootstrapConfig {
         metastore: Arc<dyn Metastore>,
         ident: &str,
         volume: &str,
+        should_refresh: bool,
     ) -> Result<(), ConfigError> {
         if metastore
             .get_database(&ident.to_string())
@@ -184,6 +194,7 @@ impl MetastoreBootstrapConfig {
                         ident: ident.to_string(),
                         volume: volume.to_string(),
                         properties: None,
+                        should_refresh,
                     },
                 )
                 .await

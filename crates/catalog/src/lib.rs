@@ -15,6 +15,7 @@ pub mod information_schema;
 pub mod schema;
 pub mod snowflake_table;
 pub mod table;
+pub mod utils;
 
 #[cfg(test)]
 pub mod tests;

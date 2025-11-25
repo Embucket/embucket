@@ -8,6 +8,7 @@ use crate::error::{
 };
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
+use crate::utils::fetch_table_providers;
 use aws_config::{BehaviorVersion, Region};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
@@ -20,7 +21,6 @@ use datafusion::{
     execution::object_store::ObjectStoreRegistry,
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
-use futures::future::join_all;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use iceberg_s3tables_catalog::S3TablesCatalog;
@@ -40,16 +40,23 @@ pub struct EmbucketCatalogList {
     pub metastore: Arc<dyn Metastore>,
     pub table_object_store: Arc<DashMap<String, Arc<dyn ObjectStore>>>,
     pub catalogs: DashMap<String, Arc<CachingCatalog>>,
+    pub config: CatalogListConfig,
+}
+
+#[derive(Default, Clone)]
+pub struct CatalogListConfig {
+    pub max_concurrent_table_fetches: usize,
 }
 
 impl EmbucketCatalogList {
-    pub fn new(metastore: Arc<dyn Metastore>) -> Self {
+    pub fn new(metastore: Arc<dyn Metastore>, config: CatalogListConfig) -> Self {
         let table_object_store: DashMap<String, Arc<dyn ObjectStore>> = DashMap::new();
         table_object_store.insert("file://".to_string(), Arc::new(LocalFileSystem::new()));
         Self {
             metastore,
             table_object_store: Arc::new(table_object_store),
             catalogs: DashMap::default(),
+            config,
         }
     }
 
@@ -101,6 +108,7 @@ impl EmbucketCatalogList {
             ident: catalog_name.to_owned(),
             volume: volume_ident.to_owned(),
             properties: None,
+            should_refresh: false,
         };
         let database = self
             .metastore
@@ -113,7 +121,7 @@ impl EmbucketCatalogList {
             VolumeType::Memory => self
                 .get_embucket_catalog(&database)?
                 .with_catalog_type(CatalogType::Memory),
-            VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), catalog_name).await?,
+            VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &database).await?,
         };
         self.catalogs
             .insert(catalog_name.to_owned(), Arc::new(catalog));
@@ -172,7 +180,7 @@ impl EmbucketCatalogList {
                 })?;
             // Create catalog depending on the volume type
             let catalog = match &volume.volume {
-                VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &db.ident).await?,
+                VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &db).await?,
                 _ => self.get_embucket_catalog(&db)?,
             };
             catalogs.push(catalog);
@@ -192,7 +200,7 @@ impl EmbucketCatalogList {
         ));
         Ok(
             CachingCatalog::new(catalog_provider, db.ident.clone(), Some(iceberg_catalog))
-                .with_refresh(true)
+                .with_refresh(db.should_refresh)
                 .with_properties(Properties {
                     created_at: db.created_at,
                     updated_at: db.created_at,
@@ -210,7 +218,7 @@ impl EmbucketCatalogList {
     pub async fn s3tables_catalog(
         &self,
         volume: S3TablesVolume,
-        name: &str,
+        db: &RwObject<Database>,
     ) -> Result<CachingCatalog> {
         let (ak, sk, token) = match volume.credentials {
             AwsCredentials::AccessKey(ref creds) => (
@@ -238,11 +246,13 @@ impl EmbucketCatalogList {
         let catalog = DataFusionIcebergCatalog::new(iceberg_catalog.clone(), None)
             .await
             .context(catalog_error::DataFusionSnafu)?;
-        Ok(
-            CachingCatalog::new(Arc::new(catalog), name.to_string(), Some(iceberg_catalog))
-                .with_refresh(false)
-                .with_catalog_type(CatalogType::S3tables),
+        Ok(CachingCatalog::new(
+            Arc::new(catalog),
+            db.ident.to_string(),
+            Some(iceberg_catalog),
         )
+        .with_refresh(db.should_refresh)
+        .with_catalog_type(CatalogType::S3tables))
     }
 
     #[allow(clippy::as_conversions, clippy::too_many_lines)]
@@ -278,26 +288,14 @@ impl EmbucketCatalogList {
                             name: schema.clone(),
                             iceberg_catalog: catalog.iceberg_catalog.clone(),
                         };
-                        let tables = schema.schema.table_names();
+                        let table_providers = fetch_table_providers(
+                            Arc::clone(&schema.schema),
+                            self.config.max_concurrent_table_fetches,
+                        )
+                        .await
+                        .context(catalog_error::DataFusionSnafu)?;
 
-                        let futs = tables
-                            .iter()
-                            .map(|table_name| async {
-                                let tp = schema
-                                    .schema
-                                    .table(table_name)
-                                    .await
-                                    .context(catalog_error::DataFusionSnafu)
-                                    .ok()?
-                                    .map(Arc::new)?;
-
-                                Some((table_name.clone(), tp))
-                            })
-                            .collect::<Vec<_>>();
-
-                        let results = join_all(futs).await;
-                        for res in results.into_iter().flatten() {
-                            let (table_name, table_provider) = res;
+                        for (table_name, table_provider) in table_providers {
                             schema.tables_cache.insert(
                                 table_name.clone(),
                                 Arc::new(CachingTable::new_with_schema(

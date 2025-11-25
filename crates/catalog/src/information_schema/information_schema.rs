@@ -50,6 +50,7 @@ impl InformationSchemaProvider {
     pub fn new(
         catalog_list: Arc<dyn CatalogProviderList>,
         catalog_name: Arc<str>,
+        max_concurrency: usize,
         target_reference: Option<TableReference>,
     ) -> Self {
         let views_schemas = {
@@ -76,6 +77,7 @@ impl InformationSchemaProvider {
                 catalog_list,
                 catalog_name,
                 views_schemas,
+                max_concurrency,
                 target_reference,
             },
         }

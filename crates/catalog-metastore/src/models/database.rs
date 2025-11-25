@@ -16,6 +16,7 @@ pub struct Database {
     pub properties: Option<HashMap<String, String>>,
     /// Volume identifier
     pub volume: VolumeIdent,
+    pub should_refresh: bool,
 }
 
 impl Database {
@@ -35,6 +36,7 @@ mod tests {
             ident: "db".to_string(),
             properties: None,
             volume: "vol".to_string(),
+            should_refresh: false,
         };
         assert_eq!(db.prefix("parent"), "parent/db");
     }

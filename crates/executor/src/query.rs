@@ -2367,6 +2367,7 @@ impl UserQuery {
             return Ok(Arc::new(InformationSchemaProvider::new(
                 Arc::clone(self.session.ctx.state().catalog_list()),
                 resolved_ref.catalog,
+                self.session.config.max_concurrent_table_fetches,
                 target_reference,
             )));
         }

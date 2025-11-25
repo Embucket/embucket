@@ -96,6 +96,7 @@ pub async fn create_df_session() -> Arc<UserSession> {
                 ident: "embucket".to_string(),
                 properties: None,
                 volume: "test_volume".to_string(),
+                should_refresh: false,
             },
         )
         .await
@@ -116,7 +117,7 @@ pub async fn create_df_session() -> Arc<UserSession> {
         .await
         .expect("Failed to create schema");
     let config = Arc::new(Config::default());
-    let catalog_list = CoreExecutionService::catalog_list(metastore.clone())
+    let catalog_list = CoreExecutionService::catalog_list(metastore.clone(), &config)
         .await
         .expect("Failed to create catalog list");
     let runtime_env = CoreExecutionService::runtime_env(&config, catalog_list.clone())

@@ -19,6 +19,7 @@ pub struct EnvConfig {
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
     pub read_only: bool,
+    pub max_concurrent_table_fetches: usize,
 }
 
 impl EnvConfig {
@@ -42,6 +43,7 @@ impl EnvConfig {
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
             read_only: parse_env("READ_ONLY").unwrap_or(true),
+            max_concurrent_table_fetches: parse_env("MAX_CONCURRENT_TABLE_FETCHES").unwrap_or(5),
         }
     }
 
@@ -59,6 +61,7 @@ impl EnvConfig {
             disk_pool_size_mb: self.disk_pool_size_mb,
             query_history_rows_limit: self.query_history_rows_limit,
             read_only: self.read_only,
+            max_concurrent_table_fetches: self.max_concurrent_table_fetches,
         }
     }
 }

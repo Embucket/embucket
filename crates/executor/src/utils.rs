@@ -1,5 +1,6 @@
 use super::models::QueryResult;
 use crate::error::{ArrowSnafu, CantCastToSnafu, Result};
+use catalog::catalog_list::CatalogListConfig;
 use catalog_metastore::SchemaIdent as MetastoreSchemaIdent;
 use catalog_metastore::TableIdent as MetastoreTableIdent;
 use chrono::{DateTime, FixedOffset, Offset, TimeZone};
@@ -44,6 +45,15 @@ pub struct Config {
     pub disk_pool_size_mb: Option<usize>,
     pub query_history_rows_limit: usize,
     pub read_only: bool,
+    pub max_concurrent_table_fetches: usize,
+}
+
+impl From<&Config> for CatalogListConfig {
+    fn from(value: &Config) -> Self {
+        Self {
+            max_concurrent_table_fetches: value.max_concurrent_table_fetches,
+        }
+    }
 }
 
 impl Default for Config {
@@ -60,6 +70,7 @@ impl Default for Config {
             disk_pool_size_mb: None,
             query_history_rows_limit: DEFAULT_QUERY_HISTORY_ROWS_LIMIT,
             read_only: false,
+            max_concurrent_table_fetches: 5,
         }
     }
 }
