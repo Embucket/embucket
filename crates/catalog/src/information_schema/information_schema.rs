@@ -16,8 +16,8 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::streaming::StreamingTable;
 use datafusion::catalog::{CatalogProviderList, SchemaProvider, TableProvider};
-use datafusion_common::DataFusionError;
 use datafusion_common::Result;
+use datafusion_common::{DataFusionError, TableReference};
 use datafusion_physical_plan::streaming::PartitionStream;
 use std::fmt::Debug;
 use std::{any::Any, sync::Arc};
@@ -50,7 +50,8 @@ impl InformationSchemaProvider {
     pub fn new(
         catalog_list: Arc<dyn CatalogProviderList>,
         catalog_name: Arc<str>,
-        max_concurrent_table_fetches: usize,
+        max_concurrency: usize,
+        target_reference: Option<TableReference>,
     ) -> Self {
         let views_schemas = {
             let mut map = DashMap::new();
@@ -76,7 +77,8 @@ impl InformationSchemaProvider {
                 catalog_list,
                 catalog_name,
                 views_schemas,
-                max_concurrent_table_fetches,
+                max_concurrency,
+                target_reference,
             },
         }
     }

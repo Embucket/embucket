@@ -97,7 +97,7 @@ use sqlparser::ast::{
     AlterTableOperation, AssignmentTarget, CloudProviderParams, MergeAction, MergeClause,
     MergeClauseKind, MergeInsertKind, ObjectNamePart, ObjectType, PivotValueSource, ShowObjects,
     ShowStatementFilter, ShowStatementIn, ShowStatementInParentType as ShowType,
-    TruncateTableTarget, Use, Value, visit_relations_mut,
+    ShowStatementInParentType, TruncateTableTarget, Use, Value, visit_relations_mut,
 };
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -115,6 +115,7 @@ pub struct UserQuery {
     pub running_queries: Arc<dyn RunningQueries>,
     pub raw_query: String,
     pub query: String,
+    pub raw_statement: Option<DFStatement>,
     pub session: Arc<UserSession>,
     pub query_context: QueryContext,
 }
@@ -129,6 +130,7 @@ impl UserQuery {
             running_queries: session.running_queries.clone(),
             raw_query: query.clone().into(),
             query: query.into(),
+            raw_statement: None,
             session,
             query_context,
         }
@@ -269,6 +271,7 @@ impl UserQuery {
     pub async fn execute(&mut self) -> Result<QueryResult> {
         let statement = self.parse_query().context(ex_error::DataFusionSnafu)?;
         self.query = statement.to_string();
+        self.raw_statement = Some(statement.clone());
 
         // Record the result as part of the current span.
         tracing::Span::current().record("statement", format!("{statement:#?}"));
@@ -1860,6 +1863,41 @@ impl UserQuery {
         Box::pin(self.execute_with_custom_plan(&query)).await
     }
 
+    pub fn show_query_table_reference(
+        &self,
+        df_statement: &DFStatement,
+    ) -> Result<Option<TableReference>> {
+        match df_statement {
+            DFStatement::Statement(statement) => match statement.as_ref() {
+                Statement::ShowSchemas { show_options, .. } => Ok(Some(
+                    self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Database)?,
+                )),
+                Statement::ShowTables { show_options, .. }
+                | Statement::ShowViews { show_options, .. }
+                | Statement::ShowObjects(ShowObjects { show_options, .. }) => {
+                    let default_show_type = ShowType::Schema;
+                    let parent_type = show_options
+                        .show_in
+                        .clone()
+                        .and_then(|in_clause| in_clause.parent_type)
+                        .unwrap_or_else(|| default_show_type.clone());
+                    if matches!(parent_type, ShowStatementInParentType::Database) {
+                        return Ok(None);
+                    }
+                    Ok(Some(self.resolve_show_in_name(
+                        show_options.show_in.clone(),
+                        default_show_type,
+                    )?))
+                }
+                Statement::ShowColumns { show_options, .. } => Ok(Some(
+                    self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Table)?,
+                )),
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+
     pub async fn describe_table_query(&self, table_name: ObjectName) -> Result<QueryResult> {
         let resolved_ident = self.resolve_table_object_name(table_name.0)?;
         let table_ident = self.resolve_table_ref(&resolved_ident);
@@ -2321,10 +2359,16 @@ impl UserQuery {
         if self.session.ctx.state().config().information_schema()
             && *resolved_ref.schema == *INFORMATION_SCHEMA
         {
+            let target_reference = if let Some(statement) = &self.raw_statement {
+                self.show_query_table_reference(statement)?
+            } else {
+                None
+            };
             return Ok(Arc::new(InformationSchemaProvider::new(
                 Arc::clone(self.session.ctx.state().catalog_list()),
                 resolved_ref.catalog,
                 self.session.config.max_concurrent_table_fetches,
+                target_reference,
             )));
         }
         self.session

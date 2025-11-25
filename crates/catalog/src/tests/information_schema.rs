@@ -34,6 +34,7 @@ async fn create_session_context() -> Arc<SessionContext> {
                 catalog_list_impl.clone(),
                 Arc::from(DEFAULT_CATALOG),
                 1,
+                None,
             )),
         )
         .unwrap();

@@ -46,7 +46,6 @@ pub struct EmbucketCatalogList {
 #[derive(Default, Clone)]
 pub struct CatalogListConfig {
     pub max_concurrent_table_fetches: usize,
-    pub refresh_catalog_list: bool,
 }
 
 impl EmbucketCatalogList {
@@ -109,6 +108,7 @@ impl EmbucketCatalogList {
             ident: catalog_name.to_owned(),
             volume: volume_ident.to_owned(),
             properties: None,
+            should_refresh: false,
         };
         let database = self
             .metastore
@@ -121,7 +121,7 @@ impl EmbucketCatalogList {
             VolumeType::Memory => self
                 .get_embucket_catalog(&database)?
                 .with_catalog_type(CatalogType::Memory),
-            VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), catalog_name).await?,
+            VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &database).await?,
         };
         self.catalogs
             .insert(catalog_name.to_owned(), Arc::new(catalog));
@@ -180,7 +180,7 @@ impl EmbucketCatalogList {
                 })?;
             // Create catalog depending on the volume type
             let catalog = match &volume.volume {
-                VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &db.ident).await?,
+                VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &db).await?,
                 _ => self.get_embucket_catalog(&db)?,
             };
             catalogs.push(catalog);
@@ -200,7 +200,7 @@ impl EmbucketCatalogList {
         ));
         Ok(
             CachingCatalog::new(catalog_provider, db.ident.clone(), Some(iceberg_catalog))
-                .with_refresh(true)
+                .with_refresh(db.should_refresh)
                 .with_properties(Properties {
                     created_at: db.created_at,
                     updated_at: db.created_at,
@@ -218,7 +218,7 @@ impl EmbucketCatalogList {
     pub async fn s3tables_catalog(
         &self,
         volume: S3TablesVolume,
-        name: &str,
+        db: &RwObject<Database>,
     ) -> Result<CachingCatalog> {
         let (ak, sk, token) = match volume.credentials {
             AwsCredentials::AccessKey(ref creds) => (
@@ -246,11 +246,13 @@ impl EmbucketCatalogList {
         let catalog = DataFusionIcebergCatalog::new(iceberg_catalog.clone(), None)
             .await
             .context(catalog_error::DataFusionSnafu)?;
-        Ok(
-            CachingCatalog::new(Arc::new(catalog), name.to_string(), Some(iceberg_catalog))
-                .with_refresh(true)
-                .with_catalog_type(CatalogType::S3tables),
+        Ok(CachingCatalog::new(
+            Arc::new(catalog),
+            db.ident.to_string(),
+            Some(iceberg_catalog),
         )
+        .with_refresh(db.should_refresh)
+        .with_catalog_type(CatalogType::S3tables))
     }
 
     #[allow(clippy::as_conversions, clippy::too_many_lines)]
@@ -276,7 +278,7 @@ impl EmbucketCatalogList {
         );
 
         for catalog in self.catalogs.iter_mut() {
-            if self.config.refresh_catalog_list && catalog.should_refresh {
+            if catalog.should_refresh {
                 let schemas = catalog.schema_names();
                 for schema in schemas.clone() {
                     if let Some(schema_provider) = catalog.catalog.schema(&schema) {

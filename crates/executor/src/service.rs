@@ -207,6 +207,7 @@ impl CoreExecutionService {
                     ident: ident.clone(),
                     properties: None,
                     volume: ident.clone(),
+                    should_refresh: false,
                 },
             )
             .await
