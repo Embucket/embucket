@@ -243,9 +243,7 @@ impl EmbucketCatalogList {
             .context(catalog_error::S3TablesSnafu)?,
         );
 
-        let catalog = DataFusionIcebergCatalog::new(iceberg_catalog.clone(), None)
-            .await
-            .context(catalog_error::DataFusionSnafu)?;
+        let catalog = DataFusionIcebergCatalog::new_sync(iceberg_catalog.clone(), None);
         Ok(CachingCatalog::new(
             Arc::new(catalog),
             db.ident.to_string(),
