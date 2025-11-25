@@ -57,20 +57,71 @@ volumes:
       aws-access-key-id: YOUR_ACCESS_KEY
       aws-secret-access-key: YOUR_SECRET_KEY
     arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
-databases:
-  - ident: my_db
-    volume: demo
-  # S3 volume - connects to standard S3 bucket
-  # - ident: volume
-  #   type: s3
-  #   bucket: my-data-bucket
-  #   credentials:
-  #     credential_type: access_key
-  #     aws-access-key-id: YOUR_ACCESS_KEY
-  #     aws-secret-access-key: YOUR_SECRET_KEY
 ```
 
 Update the credentials and ARN/bucket details with your own values for real deployments.
+
+## Lambda build from source
+
+Launching a local Embucket instance is great for development and testing. For production deployments, we recommend using a Lambda build.
+
+**Using cargo-lambda:**
+
+```bash
+ cargo lambda build --release -p embucket-lambda --arm64 -o zip --include config/metastore.yaml
+```
+
+Then you can deploy using aws cli or any method you prefer.
+
+**Using AWS CLI:**
+
+1. ```bash
+ aws lambda create-function \
+  --memory-size 10240 \
+  --region us-east-2 \
+  --function-name my-lambda-function \  
+  --runtime provided.al2023 \  
+  --handler bootstrap \  
+  --zip-file fileb://target/lambda/bootstrap/bootstrap.zip \   
+  --role arn:aws:iam::123456789:role/MyLambdaExecRole \  
+  --architectures arm64 \
+  --timeout 30 \
+  --environment "Variables={METASTORE_CONFIG=config/metastore.yaml,JWT_SECRET=secret}"
+ ```
+
+2. ```bash
+ aws lambda create-function-url-config \
+  --function-name my-lambda-function \
+  --auth-type NONE
+```
+
+3. ```bash
+ aws lambda add-permission \
+  --function-name my-lambda-function \ 
+  --statement-id AllowPublicURLInvoke \  
+  --action lambda:InvokeFunctionUrl \
+ --principal "*" \ 
+ --function-url-auth-type NONE 
+```
+
+4. ```bash
+Run the Snowflake CLI against the Lambda:
+
+```bash
+snow sql -c lambda -q "select 1;"
+```
+
+**Snowcli config: **
+```aiignore
+[connections.lambda]
+account = "account"
+user = "embucket"
+password = "embucket"
+host = "hostnameurl.lambda-url.us-east-2.on.aws"
+database = "embucket"
+schema = "public"
+warehouse = "emwh"
+```
 
 ## What just happened?
 
