@@ -55,3 +55,4 @@ include = ["config"]
 [package.metadata.lambda.deploy.env]
 LOG_FORMAT = "json"
 METASTORE_CONFIG = "config/metastore.yaml"
+JWT_SECRET = "secret"

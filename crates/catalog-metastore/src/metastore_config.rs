@@ -2,7 +2,7 @@ use crate::{
     Database, Metastore, Schema, SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent,
 };
 use iceberg_rust::spec::table_metadata::TableMetadata;
-use iceberg_rust::spec::util::strip_prefix;
+use object_store::ObjectStore;
 use serde::Deserialize;
 use serde_json::Value;
 use snafu::prelude::*;
@@ -237,11 +237,15 @@ impl MetastoreBootstrapConfig {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn apply_table(
         &self,
         entry: &TableEntry,
         metastore: Arc<dyn Metastore>,
     ) -> Result<(), ConfigError> {
+        use crate::models::volumes::AwsCredentials;
+        use object_store::aws::AmazonS3Builder;
+
         let table_ident = entry.table_ident();
         let table_name = entry.table.clone();
         if metastore
@@ -274,14 +278,91 @@ impl MetastoreBootstrapConfig {
                 table: table_name.clone(),
                 volume: volume_ident.clone(),
             })?;
-        let table_object_store = volume.get_object_store().context(MetastoreSnafu)?;
+
+        // Parse metadata location to extract bucket and path
+        // For S3 Tables, the metadata_location contains a different bucket than the volume
+        let metadata_location = &entry.metadata_location;
+        let url = url::Url::parse(metadata_location).map_err(|e| {
+            ConfigError::InvalidMetadataLocation {
+                table: table_name.clone(),
+                reason: format!("Failed to parse metadata location URL: {e}"),
+            }
+        })?;
+
+        // Extract bucket name and path from metadata location
+        let bucket_name = url
+            .host_str()
+            .ok_or_else(|| ConfigError::InvalidMetadataLocation {
+                table: table_name.clone(),
+                reason: "Metadata location URL missing bucket name".to_string(),
+            })?;
+        let metadata_path = url.path().trim_start_matches('/');
+
+        // Create object store for the metadata bucket using volume credentials
+        // Get credentials from the volume configuration
+
+        let s3_builder = match &volume.volume {
+            crate::models::volumes::VolumeType::S3(s3_vol) => {
+                // Use the S3 volume's credentials but with the metadata location's bucket
+                let mut builder = AmazonS3Builder::new()
+                    .with_bucket_name(bucket_name)
+                    .with_region(
+                        s3_vol
+                            .region
+                            .clone()
+                            .unwrap_or_else(|| "us-east-2".to_string()),
+                    );
+
+                if let Some(credentials) = &s3_vol.credentials {
+                    match credentials {
+                        AwsCredentials::AccessKey(creds) => {
+                            builder = builder
+                                .with_access_key_id(creds.aws_access_key_id.clone())
+                                .with_secret_access_key(creds.aws_secret_access_key.clone());
+                        }
+                        AwsCredentials::Token(token) => {
+                            builder = builder.with_token(token.clone());
+                        }
+                    }
+                }
+                builder
+            }
+            crate::models::volumes::VolumeType::S3Tables(s3tables_vol) => {
+                // Use S3 Tables credentials but with the metadata location's bucket
+                let mut builder = AmazonS3Builder::new()
+                    .with_bucket_name(bucket_name)
+                    .with_region(s3tables_vol.region());
+
+                match &s3tables_vol.credentials {
+                    AwsCredentials::AccessKey(creds) => {
+                        builder = builder
+                            .with_access_key_id(creds.aws_access_key_id.clone())
+                            .with_secret_access_key(creds.aws_secret_access_key.clone());
+                    }
+                    AwsCredentials::Token(token) => {
+                        builder = builder.with_token(token.clone());
+                    }
+                }
+                builder
+            }
+            _ => {
+                return Err(ConfigError::InvalidMetadataLocation {
+                    table: table_name.clone(),
+                    reason: "Only S3 and S3Tables volumes are supported for metadata locations"
+                        .to_string(),
+                });
+            }
+        };
+
+        let table_object_store: Arc<dyn ObjectStore> = Arc::new(s3_builder.build().map_err(
+            |e| ConfigError::InvalidMetadataLocation {
+                table: table_name.clone(),
+                reason: format!("Failed to build object store: {e}"),
+            },
+        )?);
 
         let bytes = table_object_store
-            .get(
-                &strip_prefix(&entry.metadata_location.clone())
-                    .as_str()
-                    .into(),
-            )
+            .get(&metadata_path.into())
             .await
             .map_err(|e| ConfigError::InvalidMetadataLocation {
                 table: table_name.clone(),

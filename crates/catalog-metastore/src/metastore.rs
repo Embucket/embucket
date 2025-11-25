@@ -623,6 +623,112 @@ impl Metastore for InMemoryMetastore {
     }
 
     async fn table_object_store(&self, ident: &TableIdent) -> Result<Option<Arc<dyn ObjectStore>>> {
+        use crate::models::volumes::AwsCredentials;
+        use object_store::aws::AmazonS3Builder;
+
+        // Get the table to check its metadata_location
+        let (metadata_location, volume) = {
+            let state = self.state.read().await;
+            let table = state.tables.get(&Self::table_key(ident));
+
+            if let Some(table) = table {
+                let metadata_location = table.metadata_location.clone();
+
+                // Get the volume to extract credentials
+                let volume = if let Some(volume_ident) = &table.volume_ident {
+                    state.volumes.get(volume_ident).cloned()
+                } else if let Some(volume_ident) = state
+                    .databases
+                    .get(&Self::database_key(ident))
+                    .map(|database| &database.volume)
+                {
+                    state.volumes.get(volume_ident).cloned()
+                } else {
+                    None
+                };
+
+                (Some(metadata_location), volume)
+            } else {
+                (None, None)
+            }
+        }; // state is dropped here
+
+        // Parse metadata location to determine if we need a different object store
+        // For S3 Tables, the metadata_location will have a different bucket than the volume
+        if let Some(metadata_location) = metadata_location
+            && let Ok(url) = url::Url::parse(&metadata_location)
+            && url.scheme() == "s3"
+            && let Some(bucket_name) = url.host_str()
+            && let Some(volume) = volume
+        {
+            // Check if this bucket is different from the volume's bucket
+            let volume_bucket = match &volume.volume {
+                crate::models::volumes::VolumeType::S3(s3_vol) => s3_vol.bucket.clone(),
+                crate::models::volumes::VolumeType::S3Tables(s3tables_vol) => s3tables_vol.bucket(),
+                _ => None,
+            };
+
+            // If the bucket is different, create a new object store for the metadata location
+            if volume_bucket.as_deref() != Some(bucket_name) {
+                let s3_builder = match &volume.volume {
+                    crate::models::volumes::VolumeType::S3(s3_vol) => {
+                        let mut builder = AmazonS3Builder::new()
+                            .with_bucket_name(bucket_name)
+                            .with_region(
+                                s3_vol
+                                    .region
+                                    .clone()
+                                    .unwrap_or_else(|| "us-east-2".to_string()),
+                            );
+
+                        if let Some(credentials) = &s3_vol.credentials {
+                            match credentials {
+                                AwsCredentials::AccessKey(creds) => {
+                                    builder = builder
+                                        .with_access_key_id(creds.aws_access_key_id.clone())
+                                        .with_secret_access_key(
+                                            creds.aws_secret_access_key.clone(),
+                                        );
+                                }
+                                AwsCredentials::Token(token) => {
+                                    builder = builder.with_token(token.clone());
+                                }
+                            }
+                        }
+                        Some(builder)
+                    }
+                    crate::models::volumes::VolumeType::S3Tables(s3tables_vol) => {
+                        let mut builder = AmazonS3Builder::new()
+                            .with_bucket_name(bucket_name)
+                            .with_region(s3tables_vol.region());
+
+                        match &s3tables_vol.credentials {
+                            AwsCredentials::AccessKey(creds) => {
+                                builder = builder
+                                    .with_access_key_id(creds.aws_access_key_id.clone())
+                                    .with_secret_access_key(creds.aws_secret_access_key.clone());
+                            }
+                            AwsCredentials::Token(token) => {
+                                builder = builder.with_token(token.clone());
+                            }
+                        }
+                        Some(builder)
+                    }
+                    _ => None,
+                };
+
+                if let Some(builder) = s3_builder {
+                    let object_store =
+                        builder.build().context(metastore_error::ObjectStoreSnafu)?;
+                    return Ok(Some(Arc::new(object_store)));
+                }
+            }
+
+            // Otherwise use the volume's object store
+            return self.volume_object_store(&volume.ident).await;
+        }
+
+        // Fall back to using volume object store
         if let Some(volume) = self.volume_for_table(ident).await? {
             self.volume_object_store(&volume.ident).await
         } else {
