@@ -100,7 +100,6 @@ docker run --name embucket --rm -p 3000:3000 \
 
 ```bash
 ./embucketd \
-  --no-bootstrap \
   --metastore-config config/metastore.yaml
 ```
 

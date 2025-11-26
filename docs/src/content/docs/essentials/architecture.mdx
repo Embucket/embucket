@@ -1,0 +1,86 @@
+---
+title: Architecture
+description: Comprehensive overview of Embucket's zero-disk lakehouse architecture, core components, and system design principles
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Embucket delivers a Snowflake-compatible lakehouse. This document explains how Embucket's components work together to provide a complete analytics platform in a single binary.
+
+You'll learn about the system's architecture, core components, data flow, and operational characteristics. This overview targets data engineers, platform architects, and anyone deploying Embucket in production.
+
+## Core components
+
+Embucket integrates four key components into a single binary that delivers complete lakehouse capabilities.
+
+### Query engine
+
+[Apache DataFusion](https://datafusion.apache.org/) powers Embucket's SQL execution. DataFusion provides:
+
+- **Vectorized processing**: Columnar data processing using Apache Arrow
+- **SQL compliance**: ANSI SQL support with Snowflake-specific extensions
+- **Extensibility**: Custom functions and data source integrations
+
+Each Embucket node runs a complete query engine, enabling horizontal scalability and fault tolerance.
+
+<Aside type="note">
+  Each Embucket node can process queries independently. This design eliminates coordinator
+  bottlenecks and provides natural fault tolerance.
+</Aside>
+
+### Data storage
+
+[Apache Iceberg](https://iceberg.apache.org/) manages table metadata and provides ACID guarantees:
+
+- **Schema evolution**: Add, drop, and change columns without rewriting data
+- **Time travel**: Query historical table snapshots
+- **ACID transactions**: Atomic commits with snapshot isolation
+- **Partition pruning**: Efficient query performance on large datasets
+
+All table data stays in your object storage using Parquet files organized by Iceberg's metadata structure.
+
+### API compatibility
+
+Embucket implements Snowflake's SQL dialect and REST API:
+
+- **SQL compatibility**: Snowflake-flavored SQL with existing queries
+- **REST API**: v1 Snowflake REST API for driver compatibility
+- **Tool integration**: Works with dbt, Apache Superset, and BI tools
+- **Protocol support**: All native drivers built on top of REST API
+
+### ACID guarantees
+
+Embucket provides ACID properties through Iceberg's snapshot isolation:
+
+- **Atomicity**: All changes within a transaction succeed or fail together
+- **Consistency**: Schema validation ensures data integrity
+- **Isolation**: Concurrent queries see consistent snapshots
+- **Durability**: Committed changes persist in object storage
+
+## Deployment patterns
+
+Embucket's stateless architecture supports deployment patterns for different requirements.
+
+### Single node deployment
+
+Deploy one Embucket instance for development or small workloads:
+
+- Simple setup with minimal resource requirements
+- Suitable for development and testing environments
+- Single point of failure during maintenance
+
+{/* vale Google.Headings = NO */}
+
+### Run on AWS Lambda
+
+{/* vale Google.Headings = YES */}
+
+Deploy Embucket as an AWS Lambda function:
+
+- High availability and fault tolerance
+- Horizontal scaling for increased query throughput
+
+<Aside type="caution">
+  Embucket nodes share no state, making horizontal scaling straightforward. Ensure your object
+  storage and external catalog can handle concurrent access from many nodes.
+</Aside>
