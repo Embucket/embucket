@@ -31,17 +31,12 @@ use crate::running_queries::RunningQueryId;
 use crate::session::{SESSION_INACTIVITY_EXPIRATION_SECONDS, to_unix};
 use crate::tracing::SpanTracer;
 use crate::utils::{Config, MemPoolType};
-use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
-use catalog_metastore::{
-    Database, InMemoryMetastore, Metastore, Schema, SchemaIdent, TableIdent as MetastoreTableIdent,
-    Volume, VolumeType,
-};
+use catalog::catalog_list::EmbucketCatalogList;
+use catalog_metastore::{InMemoryMetastore, Metastore, TableIdent as MetastoreTableIdent};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
-
-const DEFAULT_SCHEMA: &str = "public";
 
 pub const TIMEOUT_SIGNAL_INTERVAL_SECONDS: u64 = 60;
 
@@ -159,11 +154,6 @@ impl CoreExecutionService {
         err
     )]
     pub async fn new(metastore: Arc<dyn Metastore>, config: Arc<Config>) -> Result<Self> {
-        if config.bootstrap_default_entities {
-            // do not fail on bootstrap errors
-            let _ = Self::bootstrap(metastore.clone()).await;
-        }
-
         Self::initialize_datafusion_tracer();
 
         let catalog_list = Self::catalog_list(metastore.clone(), &config).await?;
@@ -176,60 +166,6 @@ impl CoreExecutionService {
             runtime_env,
             queries: Arc::new(RunningQueriesRegistry::new()),
         })
-    }
-
-    ///This function bootstraps the service if no flag is present (`--no-bootstrap`) with:
-    /// 1. Creation of a default in-memory volume named `embucket`
-    /// 2. Creation of a default database `embucket` in the volume `embucket`
-    /// 3. Creation of a default schema `public` in the database `embucket`
-    ///
-    /// Only traces the errors, doesn't panic.
-    #[tracing::instrument(
-        name = "CoreExecutionService::bootstrap",
-        level = "info",
-        skip(metastore),
-        err
-    )]
-    #[allow(clippy::cognitive_complexity)]
-    async fn bootstrap(metastore: Arc<dyn Metastore>) -> Result<()> {
-        let ident = DEFAULT_CATALOG.to_string();
-        metastore
-            .create_volume(&ident, Volume::new(ident.clone(), VolumeType::Memory))
-            .await
-            .context(ex_error::BootstrapSnafu {
-                entity_type: "volume",
-            })?;
-
-        metastore
-            .create_database(
-                &ident,
-                Database {
-                    ident: ident.clone(),
-                    properties: None,
-                    volume: ident.clone(),
-                    should_refresh: false,
-                },
-            )
-            .await
-            .context(ex_error::BootstrapSnafu {
-                entity_type: "database",
-            })?;
-
-        let schema_ident = SchemaIdent::new(ident.clone(), DEFAULT_SCHEMA.to_string());
-        metastore
-            .create_schema(
-                &schema_ident,
-                Schema {
-                    ident: schema_ident.clone(),
-                    properties: None,
-                },
-            )
-            .await
-            .context(ex_error::BootstrapSnafu {
-                entity_type: "schema",
-            })?;
-
-        Ok(())
     }
 
     #[tracing::instrument(

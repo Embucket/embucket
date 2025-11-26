@@ -14,7 +14,6 @@ pub struct EnvConfig {
     pub mem_enable_track_consumers_pool: Option<bool>,
     pub disk_pool_size_mb: Option<usize>,
     pub query_history_rows_limit: usize,
-    pub bootstrap_default_entities: bool,
     pub embucket_version: String,
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
@@ -38,7 +37,6 @@ impl EnvConfig {
             disk_pool_size_mb: parse_env("DISK_POOL_SIZE_MB"),
             query_history_rows_limit: parse_env("QUERY_HISTORY_ROWS_LIMIT")
                 .unwrap_or(DEFAULT_QUERY_HISTORY_ROWS_LIMIT),
-            bootstrap_default_entities: !env_bool("NO_BOOTSTRAP"),
             embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
@@ -51,7 +49,6 @@ impl EnvConfig {
     pub fn execution_config(&self) -> ExecutionConfig {
         ExecutionConfig {
             embucket_version: self.embucket_version.clone(),
-            bootstrap_default_entities: self.bootstrap_default_entities,
             sql_parser_dialect: self.sql_parser_dialect.clone(),
             query_timeout_secs: self.query_timeout_secs,
             max_concurrency_level: self.max_concurrency_level,
@@ -68,12 +65,6 @@ impl EnvConfig {
 
 fn env_or_default(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
-}
-
-fn env_bool(name: &str) -> bool {
-    env::var(name)
-        .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
 }
 
 fn parse_mem_pool_type() -> Option<MemPoolType> {

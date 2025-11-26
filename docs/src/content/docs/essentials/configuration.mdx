@@ -50,10 +50,10 @@ These settings control Embucket's basic operation and most deployments need them
 
 ### Network configuration
 
-| Setting         | Environment Variable | Default     | Description                         |
-| --------------- | -------------------- | ----------- | ----------------------------------- |
-| `--host`        | `BUCKET_HOST`        | `localhost` | Host address to bind the API server |
-| `--port`        | `BUCKET_PORT`        | `3000`      | Port for the API server             |
+| Setting  | Environment Variable | Default     | Description                         |
+| -------- | -------------------- | ----------- | ----------------------------------- |
+| `--host` | `BUCKET_HOST`        | `localhost` | Host address to bind the API server |
+| `--port` | `BUCKET_PORT`        | `3000`      | Port for the API server             |
 
 ### Authentication
 
@@ -73,12 +73,11 @@ These settings control Embucket's basic operation and most deployments need them
 Embucket metastore configuration is a YAML file that defines the volumes, databases, schemas, and tables.
 Specify file path with the `--metastore-config` command-line argument or `METASTORE_CONFIG` environment variable.
 
-In Embucket, volume is an entity that defines a storage location for data. It can be either an S3 volume or S3 tables volume. 
+In Embucket, volume is an entity that defines a storage location for data. It can be either an S3 volume or S3 tables volume.
 
 ### S3 volume
 
-Use S3 volume for define Iceberg table already stored on S3. This is the use case when you want Embucket to access existing Iceberg table on S3 (i.e. Snowflake Open Catalog Managed tables).
-
+Use an S3 volume to point at Iceberg tables already stored on S3—for example, Snowflake Open Catalog Managed tables.
 
 ```yaml
 volumes:
@@ -112,12 +111,13 @@ tables:
 ```
 
 In the example above:
- * Single volume `tpch` with type `s3` is defined
- * Single database `demo` is defined, it uses `tpch` volume
- * Single schema `tpch_10` is defined, it is in `demo` database
- * Two tables `customer` and `lineitem` are defined, they are in `tpch_10` schema
 
-When loaded, Embucket will create a database `demo` with schema `tpch_10` and two tables `customer` and `lineitem`. It uses volume `tpch` information in the config to access data.
+- Single volume `tpch` with type `s3` is defined
+- Single database `demo` is defined, it uses `tpch` volume
+- Single schema `tpch_10` is defined, it is in `demo` database
+- Two tables `customer` and `lineitem` are defined, they are in `tpch_10` schema
+
+When loaded, Embucket will create a database `demo` with schema `tpch_10` and two tables `customer` and `lineitem`. It uses the `tpch` volume information in the configuration file to access data.
 
 ### S3 tables volume
 
@@ -136,9 +136,10 @@ volumes:
 ```
 
 In the example above:
- * Single volume `tpch` with type `s3-tables` is defined
- * Each s3-tables volume is a database, it is `demo` in this case
- 
+
+- Single volume `tpch` with type `s3-tables` is defined
+- Each s3-tables volume is a database, it is `demo` in this case
+
 When loaded, Embucket will create a database `demo`. It will see all namespaces and tables that exists in the provided S3 Table bucket.
 
 ## Advanced settings
@@ -171,7 +172,6 @@ configuration file or create the necessary entries before querying.
 <Aside type="tip">
   Override tracing level using the `RUST_LOG` environment variable for more granular control.
 </Aside>
-
 
 ## Command-line reference
 

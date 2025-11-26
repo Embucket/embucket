@@ -45,7 +45,7 @@ default-binary = "bootstrap"
 [package.metadata.lambda.deploy]
 # Function name: Can be set via CARGO_LAMBDA_FUNCTION_NAME env var
 # If not set, falls back to binary name or pass as CLI argument
-memory = 3008
+memory = 1024
 timeout = 30
 tracing = "Active"
 # Note: include path is relative to workspace root
@@ -55,3 +55,6 @@ include = ["config"]
 [package.metadata.lambda.deploy.env]
 LOG_FORMAT = "json"
 METASTORE_CONFIG = "config/metastore.yaml"
+JWT_SECRET = "secret"
+QUERY_TIMEOUT_SECS = "29"
+MEM_POOL_SIZE_MB = "800"

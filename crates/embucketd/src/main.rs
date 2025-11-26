@@ -129,14 +129,8 @@ async fn async_main(
             opts.auth_demo_password.clone().unwrap(),
         );
 
-    // Bootstrap the service if no flag is present (`--no-bootstrap`) with:
-    // 1. Creation of a default in-memory volume named `embucket`
-    // 2. Creation of a default database `embucket` in the volume `embucket`
-    // 3. Creation of a default schema `public` in the database `embucket`
-
     let execution_cfg = ExecutionConfig {
         embucket_version: "0.1.0".to_string(),
-        bootstrap_default_entities: !opts.no_bootstrap,
         sql_parser_dialect: opts.sql_parser_dialect.clone(),
         query_timeout_secs: opts.query_timeout_secs,
         max_concurrency_level: opts.max_concurrency_level,

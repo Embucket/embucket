@@ -30,8 +30,6 @@ Embucket provides a Snowflake v1 REST API that works with any Snowflake client. 
 
 Embucket provides a SQL engine based on **[Apache DataFusion](https://datafusion.apache.org/)** - an [Apache Arrow](https://arrow.apache.org/)-native query engine. The engine works with any SQL client. Embucket aims for 100% SQL dialect compatibility with Snowflake but currently support a subset of SQL features. Embucket includes some built-in functions and data types that Snowflake doesn't provide.
 
-
-
 ## Architecture differences
 
 Snowflake provides a managed analytics database built on [FoundationDB](https://www.foundationdb.org) and object storage such as S3. Snowflake delivers a managed service for deploying and scaling analytics workloads. See their [whitepaper](https://www.cs.cmu.edu/~15721-f24/papers/Snowflake.pdf) for details.
@@ -40,7 +38,7 @@ Embucket provides an open source Snowflake alternative with the same ease of use
 
 These technology choices differ structurally:
 
-- **Metadata storage**: Embucket currenlty defer metadata management to external catalogs (such as AWS S3 table buckets)
+- **Metadata storage**: Embucket currently defers metadata management to external catalogs (such as AWS S3 table buckets)
 - **Data format**: [Iceberg](https://iceberg.apache.org/) and Parquet format instead of proprietary format
 - **Query execution**: Single-node [DataFusion](https://datafusion.apache.org/) SQL engine with [Arrow](https://arrow.apache.org/) in-memory representation
 
