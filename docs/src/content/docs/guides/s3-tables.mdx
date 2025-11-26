@@ -5,15 +5,15 @@ description: Store and query your data using AWS S3 table buckets with Embucket 
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
-This guide walks you through configuring AWS S3 table buckets as an external catalog in Embucket. At the moment, S3 table buckets is the only external catalog available. AWS S3 table bucket provides built-in table maintenance, automatic compaction, and optimization features.
+This guide walks you through configuring AWS S3 table buckets as an external catalog in Embucket. Currently, Embucket supports S3 table buckets as the sole external catalog. AWS S3 table buckets provide built-in table maintenance, automatic compaction, and optimization features.
 
 ## What you'll learn
 
 Follow this guide to:
 
 - Create an AWS S3 table bucket using the AWS command-line tool
-- Configure an Embucket with S3 table bucket as an external catalog
-- Exploring schema, tables and existing data
+- Configure Embucket with an S3 table bucket as an external catalog
+- Explore schemas, tables, and existing data
 - Create tables and load data using familiar SQL commands
 - Verify table creation and query data through AWS Console
 
@@ -77,9 +77,9 @@ AWS designed S3 table buckets specifically for tabular data storage. They provid
 
 </Steps>
 
-## Configure Embucket volume
+## Configure an Embucket volume
 
-In Embucket, volumes are used to store data and metadata. Currently all the configuration is static and defined in the configuration file. You specify the config file location with `--metastore-config` flag (or `METASTORE_CONFIG` environment variable).
+In Embucket, volumes store data and metadata. Define configuration statically in the configuration file. Specify the configuration file location with the `--metastore-config` flag or the `METASTORE_CONFIG` environment variable.
 
 Create a section in the config file `volumes` and add an entry for the S3 table bucket volume.
 
@@ -95,10 +95,10 @@ volumes:
     arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
 ```
 
-Here is the list of parameters:
+Parameters:
 
 - `ident`: Volume identifier
-- `type`: Volume type `s3-tables`. At the moment, this is the only type supported.
+- `type`: Volume type `s3-tables`. This remains the only supported type.
 - `database`: Database name that maps to this volume
 - `credentials`: AWS access credentials
 - `arn`: Full S3 table bucket ARN

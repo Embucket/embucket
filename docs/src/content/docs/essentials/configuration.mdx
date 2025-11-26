@@ -70,10 +70,10 @@ These settings control Embucket's basic operation and most deployments need them
 
 ## Metastore configuration
 
-Embucket metastore configuration is a YAML file that defines the volumes, databases, schemas, and tables.
-Specify file path with the `--metastore-config` command-line argument or `METASTORE_CONFIG` environment variable.
+The Embucket metastore uses a YAML file that defines volumes, databases, schemas, and tables.
+Specify the path with the `--metastore-config` command-line argument or the `METASTORE_CONFIG` environment variable.
 
-In Embucket, volume is an entity that defines a storage location for data. It can be either an S3 volume or S3 tables volume.
+In Embucket, a volume defines the storage location for data. Configure either an S3 volume or an S3 tables volume.
 
 ### S3 volume
 
@@ -110,14 +110,14 @@ tables:
     metadata_location: s3://<your-bucket-name>/metadata/00001-d777220e-d508-4033-a229-8c4c8d8fe514.metadata.json
 ```
 
-In the example above:
+In this example:
 
-- Single volume `tpch` with type `s3` is defined
-- Single database `demo` is defined, it uses `tpch` volume
-- Single schema `tpch_10` is defined, it is in `demo` database
-- Two tables `customer` and `lineitem` are defined, they are in `tpch_10` schema
+- Define a single `tpch` volume with type `s3`
+- Create one database, `demo`, that uses the `tpch` volume
+- Create the `tpch_10` schema inside the `demo` database
+- Create two tables, `customer` and `lineitem`, inside the `tpch_10` schema
 
-When loaded, Embucket will create a database `demo` with schema `tpch_10` and two tables `customer` and `lineitem`. It uses the `tpch` volume information in the configuration file to access data.
+When loaded, Embucket creates a database `demo` with schema `tpch_10` and two tables `customer` and `lineitem`. It uses the `tpch` volume information in the configuration file to access data.
 
 ### S3 tables volume
 
@@ -135,12 +135,12 @@ volumes:
     arn: arn:aws:s3tables:us-east-2:767397688925:bucket/my-testing-minimal
 ```
 
-In the example above:
+In this example:
 
-- Single volume `tpch` with type `s3-tables` is defined
-- Each s3-tables volume is a database, it is `demo` in this case
+- Define a single `tpch` volume of type `s3-tables`
+- Each `s3-tables` volume maps to one database; here, `demo`
 
-When loaded, Embucket will create a database `demo`. It will see all namespaces and tables that exists in the provided S3 Table bucket.
+When loaded, Embucket creates a database `demo` and lists all namespaces and tables that exist in the provided S3 Table bucket.
 
 ## Advanced settings
 
@@ -159,8 +159,7 @@ When loaded, Embucket will create a database `demo`. It will see all namespaces 
 | N/A     | `MEM_ENABLE_TRACK_CONSUMERS_POOL` | `true`   | Enable memory pool consumer tracking |
 | N/A     | `DISK_POOL_SIZE_MB`               | `102400` | Disk pool size in megabytes          |
 
-Embucket does not create any default volumes, databases, or schemas; seed the metastore with a
-configuration file or create the necessary entries before querying.
+Embucket doesn't create default volumes, databases, or schemas. Seed the metastore with a configuration file or create the necessary entries before querying.
 
 ### Tracing and debugging
 

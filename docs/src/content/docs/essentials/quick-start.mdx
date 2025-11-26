@@ -12,8 +12,8 @@ This guide shows you how to start Embucket and run your first query in under 5 m
 Read this guide to:
 
 - Start Embucket with zero external dependencies
-- Connect with the Snowflake CLI
-- Run your first query (and optionally explore the web UI)
+- Connect with the Snowflake command-line tool
+- Run your first query
 
 This guide doesn't cover production deployment or advanced configuration options.
 
@@ -39,13 +39,13 @@ The default Docker configuration uses no metastore configuration. See the [confi
 
 </Aside>
 
-## Step 2: Configure Snowflake CLI
+## Step 2: Configure the Snowflake command-line tool
 
-Install and configure the Snowflake CLI against the local endpoint:
+Install and configure the Snowflake command-line tool against the local endpoint:
 
 ```bash
 $ pip install snowflake-cli
-# Find the Snowflake CLI config file path
+# Find the Snowflake command-line tool config file path
 $ snow --info | grep "config_file_path" -A 1
 CONFIG=<your_config_file_path>
 cat <<'EOF' >> $CONFIG
@@ -83,7 +83,7 @@ Expected output:
 
 ## Step 3: Run your first query
 
-Use the Snowflake CLI to run a query against the local Embucket instance:
+Use the Snowflake command-line tool to run a query against the local Embucket instance:
 
 ```bash
 $ snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
