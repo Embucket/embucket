@@ -40,14 +40,6 @@ impl SchemaProvider for CachingSchema {
     }
 
     fn table_names(&self) -> Vec<String> {
-        if !self.tables_cache.is_empty() {
-            // Don't fill the cache since should call async table() to fill it
-            return self
-                .tables_cache
-                .iter()
-                .map(|entry| entry.key().clone())
-                .collect();
-        }
         match &self.iceberg_catalog {
             Some(catalog) => {
                 let catalog = catalog.clone();
