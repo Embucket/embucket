@@ -5,8 +5,11 @@ target/
 .env
 metastore.yaml
 
-styles/
-!styles/config
+# Ignore only the root styles directory; allow .github/styles for Vale
+/styles/
+!/styles/config
+!.github/styles/
+!.github/styles/**
 
 **/*.rs.bk
 .DS_Store
@@ -14,4 +17,3 @@ styles/
 .cursor
 
 metastore.yaml
-
