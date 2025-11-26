@@ -24,18 +24,7 @@ Embucket features:
 Start Embucket and run your first query in 30 seconds:
 
 ```bash
-mkdir -p config
-cat > config/metastore.yaml <<'EOF'
-volumes:
-  - ident: embucket
-    type: memory
-    database: embucket
-EOF
-
-docker run --name embucket --rm -p 3000:3000 \
-  -v $PWD/config:/app/config \
-  embucket/embucket \
-  ./embucketd --metastore-config config/metastore.yaml
+docker run --name embucket --rm -p 3000:3000 embucket/embucket
 ```
 
 Install and configure the Snowflake CLI against the local endpoint:
