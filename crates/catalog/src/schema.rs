@@ -10,6 +10,7 @@ use datafusion_iceberg::DataFusionTable;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::catalog::tabular::Tabular as IcebergTabular;
 use iceberg_rust_spec::identifier::Identifier;
+use iceberg_rust_spec::namespace::Namespace;
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
@@ -39,14 +40,26 @@ impl SchemaProvider for CachingSchema {
     }
 
     fn table_names(&self) -> Vec<String> {
-        if self.tables_cache.is_empty() {
-            self.schema.table_names()
-        } else {
-            // Don't fill the cache since should call async table() to fill it
-            self.tables_cache
-                .iter()
-                .map(|entry| entry.key().clone())
-                .collect()
+        match &self.iceberg_catalog {
+            Some(catalog) => {
+                let catalog = catalog.clone();
+                let Ok(namespace) = Namespace::try_new(std::slice::from_ref(&self.name)) else {
+                    return vec![];
+                };
+                block_on_without_deadlock(async move {
+                    catalog
+                        .list_tabulars(&namespace)
+                        .await
+                        .map(|tables| {
+                            tables
+                                .into_iter()
+                                .map(|identifier| identifier.name().to_owned())
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                })
+            }
+            None => self.schema.table_names(),
         }
     }
 
@@ -85,7 +98,6 @@ impl SchemaProvider for CachingSchema {
     ) -> datafusion_common::Result<Option<Arc<dyn TableProvider>>> {
         let table_provider: Arc<dyn TableProvider> = if let Some(catalog) = &self.iceberg_catalog
             && let Some(iceberg_builder) = table.as_any().downcast_ref::<IcebergTableBuilder>()
-            && table.table_type() != TableType::View
         {
             let catalog = Arc::clone(catalog);
             let mut builder = iceberg_builder.builder.clone();
@@ -104,7 +116,11 @@ impl SchemaProvider for CachingSchema {
                 ));
                 Ok::<Arc<dyn TableProvider>, DataFusionError>(table_provider)
             })?
+        } else if table.table_type() == TableType::View {
+            table
         } else {
+            self.schema
+                .register_table(name.clone(), Arc::clone(&table))?;
             table
         };
 
