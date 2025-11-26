@@ -1,0 +1,106 @@
+---
+title: Quick Start
+description: Get up and running with Embucket in under 5 minutes. From download to first query with zero dependencies.
+sidebar:
+  order: 0
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+This guide shows you how to start Embucket and run your first query in under 5 minutes. You use Embucket's single-binary architecture to start running queries.
+
+Read this guide to:
+
+- Start Embucket with zero external dependencies
+- Connect with the Snowflake CLI
+- Run your first query (and optionally explore the web UI)
+
+This guide doesn't cover production deployment or advanced configuration options.
+
+## Step 1: Start Embucket
+
+Start the Embucket server:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 embucket/embucket ./embucketd
+```
+
+**Done.** You need no external dependencies, databases, or complex configuration. 
+
+Embucket displays output like:
+
+```
+{"timestamp":"2025-07-01T15:35:05.687807Z","level":"INFO","fields":{"message":"Listening on http://0.0.0.0:3000"},"target":"embucketd"}
+```
+
+<Aside type="caution">
+
+The default Docker configuration uses no metastore configuration. See the [configuration guide](/essentials/configuration) for production options.
+
+</Aside>
+
+## Step 2: Configure Snowflake CLI
+
+Install and configure the Snowflake CLI against the local endpoint:
+
+```bash
+$ pip install snowflake-cli
+# Find the Snowflake CLI config file path
+$ snow --info | grep "config_file_path" -A 1
+CONFIG=<your_config_file_path>
+cat <<'EOF' >> $CONFIG
+[connections.local]
+host = "localhost"
+region = "us-east-2"
+port = 3000
+protocol = "http"
+database = "embucket"
+schema = "public"
+warehouse = "em.wh"
+password = "embucket"
+account = "acc.local"
+user = "embucket"
+EOF
+$ snow connection test -c local
+```
+
+Expected output:
+
+```
++-----------------------------+
+| key             | value     |
+|-----------------+-----------|
+| Connection name | local     |
+| Status          | OK        |
+| Host            | localhost |
+| Account         | acc       |
+| User            | embucket  |
+| Role            | not set   |
+| Database        | embucket  |
+| Warehouse       | em.wh     |
++-----------------------------+
+```
+
+## Step 3: Run your first query
+
+Use the Snowflake CLI to run a query against the local Embucket instance:
+
+```bash
+$ snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+```
+
+Expected output:
+
+```
++----------------------------------+
+| yesterday                        |
+|----------------------------------|
+| 2025-01-02 03:04:05.040000+00:00 |
++----------------------------------+
+```
+
+Open the browser to `http://127.0.0.1:8080` to explore Embucket's web interface, query editor, and data catalog. The interface resembles Snowflake's interface.
+
+<Aside type="tip">Use `embucket` as both the username and password to log in.</Aside>
+
+
