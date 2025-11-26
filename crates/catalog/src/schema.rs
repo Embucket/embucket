@@ -160,6 +160,20 @@ impl SchemaProvider for CachingSchema {
     }
 
     fn table_exist(&self, name: &str) -> bool {
-        self.tables_cache.contains_key(name)
+        if self.tables_cache.contains_key(name) {
+            return true;
+        }
+        if let Some(catalog) = &self.iceberg_catalog {
+            let catalog = Arc::clone(catalog);
+            let namespace = vec![self.name.clone()];
+            let table_name = name.to_string();
+
+            block_on_without_deadlock(async move {
+                let ident = Identifier::new(&namespace, &table_name);
+                catalog.tabular_exists(&ident).await.unwrap_or(false)
+            })
+        } else {
+            self.schema.table_exist(name)
+        }
     }
 }
