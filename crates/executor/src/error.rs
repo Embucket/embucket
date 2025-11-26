@@ -600,6 +600,15 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("Failed to bootstrap {entity_type}: {source}"))]
+    Bootstrap {
+        entity_type: String,
+        #[snafu(source(from(catalog_metastore::error::Error, Box::new)))]
+        source: Box<catalog_metastore::error::Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Failed to get async result for query [{query_id}]: {error}"))]
     AsyncResultTaskJoin {
         #[snafu(source)]

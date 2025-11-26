@@ -8,6 +8,14 @@ use tracing_subscriber::filter::LevelFilter;
 pub struct CliOpts {
     #[arg(
         long,
+        env = "NO_BOOTSTRAP",
+        default_value = "false",
+        help = "Disable bootstrap functionality"
+    )]
+    pub no_bootstrap: bool,
+
+    #[arg(
+        long,
         env = "METASTORE_CONFIG",
         value_name = "PATH",
         help = "Path to YAML config describing volumes/databases to seed the metastore"
