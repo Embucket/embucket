@@ -118,7 +118,7 @@ impl SchemaProvider for CachingSchema {
                 Ok::<Arc<dyn TableProvider>, DataFusionError>(table_provider)
             })?
         } else {
-            table
+            return self.schema.register_table(name, Arc::clone(&table));
         };
 
         let caching_table = Arc::new(CachingTable::new(name.clone(), Arc::clone(&table_provider)));

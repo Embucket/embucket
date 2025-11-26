@@ -244,13 +244,11 @@ impl EmbucketCatalogList {
         );
 
         let catalog = DataFusionIcebergCatalog::new_sync(iceberg_catalog.clone(), None);
-        Ok(CachingCatalog::new(
-            Arc::new(catalog),
-            db.ident.to_string(),
-            Some(iceberg_catalog),
+        Ok(
+            CachingCatalog::new(Arc::new(catalog), db.ident.clone(), Some(iceberg_catalog))
+                .with_refresh(db.should_refresh)
+                .with_catalog_type(CatalogType::S3tables),
         )
-        .with_refresh(db.should_refresh)
-        .with_catalog_type(CatalogType::S3tables))
     }
 
     #[allow(clippy::as_conversions, clippy::too_many_lines)]
