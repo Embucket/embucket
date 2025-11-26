@@ -10,6 +10,7 @@ use datafusion_iceberg::DataFusionTable;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::catalog::tabular::Tabular as IcebergTabular;
 use iceberg_rust_spec::identifier::Identifier;
+use iceberg_rust_spec::namespace::Namespace;
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
@@ -39,14 +40,28 @@ impl SchemaProvider for CachingSchema {
     }
 
     fn table_names(&self) -> Vec<String> {
-        if self.tables_cache.is_empty() {
-            self.schema.table_names()
-        } else {
+        if !self.tables_cache.is_empty() {
             // Don't fill the cache since should call async table() to fill it
-            self.tables_cache
+            return self
+                .tables_cache
                 .iter()
                 .map(|entry| entry.key().clone())
-                .collect()
+                .collect();
+        }
+        match &self.iceberg_catalog {
+            Some(catalog) => {
+                let catalog = catalog.clone();
+                let Ok(namespace) = Namespace::try_new(std::slice::from_ref(&self.name)) else {
+                    return vec![];
+                };
+                block_on_without_deadlock(async move {
+                    catalog.list_tabulars(&namespace).await.map_or_else(
+                        |_| vec![],
+                        |namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect(),
+                    )
+                })
+            }
+            None => self.schema.table_names(),
         }
     }
 

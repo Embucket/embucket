@@ -1,6 +1,6 @@
 use crate::catalogs::embucket::schema::EmbucketSchema;
-use crate::df_error;
 use crate::schema::CachingSchema;
+use crate::{block_on_without_deadlock, df_error};
 use catalog_metastore::Metastore;
 use chrono::NaiveDateTime;
 use dashmap::DashMap;
@@ -108,6 +108,37 @@ impl CachingCatalog {
         self.metastore = Some(metastore);
         self
     }
+
+    #[allow(clippy::as_conversions)]
+    fn iceberg_schema_provider(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
+        let Some(iceberg_catalog) = &self.iceberg_catalog else {
+            return None;
+        };
+
+        let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string())).ok()?;
+        let namespace_to_check = namespace.clone();
+        let catalog = iceberg_catalog.clone();
+
+        // Check if schema exists
+        if !block_on_without_deadlock(async move {
+            catalog
+                .namespace_exists(&namespace_to_check)
+                .await
+                .unwrap_or(false)
+        }) {
+            return None;
+        }
+        let iceberg_catalog = self.catalog.as_any().downcast_ref::<IcebergCatalog>()?;
+        Some(
+            Arc::new(IcebergSchema::new(namespace, iceberg_catalog.mirror()))
+                as Arc<dyn SchemaProvider>,
+        )
+    }
+
+    fn lookup_schema_provider(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
+        self.iceberg_schema_provider(name)
+            .or_else(|| self.catalog.schema(name))
+    }
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -134,30 +165,24 @@ impl CatalogProvider for CachingCatalog {
         fields(schemas_names_count, catalog_name=format!("{:?}", self.name)),
     )]
     fn schema_names(&self) -> Vec<String> {
-        let schema_names = self.catalog.schema_names();
-
+        let schema_names = match &self.iceberg_catalog {
+            Some(catalog) => {
+                let catalog = catalog.clone();
+                block_on_without_deadlock(async move {
+                    catalog.list_namespaces(None).await.map_or_else(
+                        |_| vec![],
+                        |namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect(),
+                    )
+                })
+            }
+            None => self.catalog.schema_names(),
+        };
+        println!("schema_names {:?}", schema_names);
         // Remove outdated records
         let schema_names_set: std::collections::HashSet<_> = schema_names.iter().cloned().collect();
         self.schemas_cache
             .retain(|name, _| schema_names_set.contains(name));
 
-        for name in &schema_names {
-            if self.schemas_cache.contains_key(name) {
-                continue;
-            }
-
-            if let Some(schema) = self.catalog.schema(name) {
-                self.schemas_cache.insert(
-                    name.clone(),
-                    Arc::new(CachingSchema {
-                        name: name.clone(),
-                        schema,
-                        tables_cache: DashMap::new(),
-                        iceberg_catalog: self.iceberg_catalog.clone(),
-                    }),
-                );
-            }
-        }
         // Record the result as part of the current span.
         tracing::Span::current().record("schemas_names_count", schema_names.len());
 
@@ -169,7 +194,7 @@ impl CatalogProvider for CachingCatalog {
     fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
         if let Some(schema) = self.schemas_cache.get(name) {
             Some(Arc::clone(schema.value()) as Arc<dyn SchemaProvider>)
-        } else if let Some(schema) = self.catalog.schema(name) {
+        } else if let Some(schema) = self.lookup_schema_provider(name) {
             let caching_schema = Arc::new(CachingSchema {
                 name: name.to_string(),
                 schema: Arc::clone(&schema),
