@@ -15,9 +15,7 @@ export default defineConfig({
         src: './src/assets/logo.svg',
       },
       favicon: '/favicon.ico',
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/embucket/embucket-labs' },
-      ],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/embucket/embucket' }],
       sidebar: [
         {
           label: 'Essentials',
@@ -48,6 +46,6 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   redirects: {
-    '/': '/essentials/introduction/',
+    '/': '/essentials/quick-start/',
   },
 });
