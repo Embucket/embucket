@@ -55,10 +55,16 @@ impl SchemaProvider for CachingSchema {
                     return vec![];
                 };
                 block_on_without_deadlock(async move {
-                    catalog.list_tabulars(&namespace).await.map_or_else(
-                        |_| vec![],
-                        |namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect(),
-                    )
+                    catalog
+                        .list_tabulars(&namespace)
+                        .await
+                        .map(|tables| {
+                            tables
+                                .into_iter()
+                                .map(|identifier| identifier.name().to_owned())
+                                .collect()
+                        })
+                        .unwrap_or_default()
                 })
             }
             None => self.schema.table_names(),

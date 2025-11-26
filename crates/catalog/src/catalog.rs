@@ -177,7 +177,7 @@ impl CatalogProvider for CachingCatalog {
             }
             None => self.catalog.schema_names(),
         };
-        println!("schema_names {:?}", schema_names);
+
         // Remove outdated records
         let schema_names_set: std::collections::HashSet<_> = schema_names.iter().cloned().collect();
         self.schemas_cache
