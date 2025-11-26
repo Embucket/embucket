@@ -98,7 +98,6 @@ impl SchemaProvider for CachingSchema {
     ) -> datafusion_common::Result<Option<Arc<dyn TableProvider>>> {
         let table_provider: Arc<dyn TableProvider> = if let Some(catalog) = &self.iceberg_catalog
             && let Some(iceberg_builder) = table.as_any().downcast_ref::<IcebergTableBuilder>()
-            && table.table_type() != TableType::View
         {
             let catalog = Arc::clone(catalog);
             let mut builder = iceberg_builder.builder.clone();
@@ -117,8 +116,12 @@ impl SchemaProvider for CachingSchema {
                 ));
                 Ok::<Arc<dyn TableProvider>, DataFusionError>(table_provider)
             })?
+        } else if table.table_type() == TableType::View {
+            table
         } else {
-            return self.schema.register_table(name, Arc::clone(&table));
+            self.schema
+                .register_table(name.clone(), Arc::clone(&table))?;
+            table
         };
 
         let caching_table = Arc::new(CachingTable::new(name.clone(), Arc::clone(&table_provider)));
