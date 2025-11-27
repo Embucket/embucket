@@ -8,8 +8,8 @@ use object_store::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use std::fmt::Display;
 use std::sync::Arc;
+use std::{fmt::Display, fs, path::Path as StdPath};
 use validator::{Validate, ValidationError, ValidationErrors};
 
 // Enum for supported cloud providers
@@ -281,11 +281,16 @@ impl Volume {
                     .map(|s3| Arc::new(s3) as Arc<dyn ObjectStore>)
                     .context(metastore_error::ObjectStoreSnafu)
             }
-            VolumeType::File(file) => Ok(Arc::new(
-                LocalFileSystem::new_with_prefix(file.path.clone())
-                    .context(metastore_error::ObjectStoreSnafu)?
-                    .with_automatic_cleanup(true),
-            ) as Arc<dyn ObjectStore>),
+            VolumeType::File(file) => {
+                let path = StdPath::new(&file.path);
+                fs::create_dir_all(path).context(metastore_error::FilesystemSnafu)?;
+
+                Ok(Arc::new(
+                    LocalFileSystem::new_with_prefix(path)
+                        .context(metastore_error::ObjectStoreSnafu)?
+                        .with_automatic_cleanup(true),
+                ) as Arc<dyn ObjectStore>)
+            }
             VolumeType::Memory => {
                 Ok(Arc::new(object_store::memory::InMemory::new()) as Arc<dyn ObjectStore>)
             }

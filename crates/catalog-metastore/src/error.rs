@@ -161,6 +161,14 @@ pub enum Error {
         location: Location,
     },
 
+    #[snafu(display("Filesystem error: {error}"))]
+    Filesystem {
+        #[snafu(source)]
+        error: std::io::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("UrlParse Error: {error}"))]
     UrlParse {
         #[snafu(source)]
