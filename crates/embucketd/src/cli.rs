@@ -172,7 +172,7 @@ pub struct CliOpts {
     #[arg(
         long,
         env = "READ_ONLY",
-        default_value = "true",
+        default_value = "false",
         help = "If the service should only accept read only commands (selects)"
     )]
     pub read_only: bool,

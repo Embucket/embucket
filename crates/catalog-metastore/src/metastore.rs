@@ -101,13 +101,8 @@ impl InMemoryMetastore {
         format!("{}.metadata.json", Uuid::new_v4())
     }
 
-    fn metadata_path(table: &TableIdent, file_name: &str) -> String {
-        format!(
-            "{}/{}/{}",
-            table.database.to_ascii_lowercase(),
-            table.schema.to_ascii_lowercase(),
-            file_name
-        )
+    fn default_table_location(ident: &TableIdent) -> String {
+        format!("{}/{}/{}", ident.database, ident.schema, ident.table)
     }
 
     #[must_use]
@@ -130,6 +125,14 @@ impl InMemoryMetastore {
         ident.database.to_ascii_lowercase()
     }
 
+    fn ensure_database(state: &MetastoreState, name: &DatabaseIdent) -> Result<RwObject<Database>> {
+        state
+            .databases
+            .get(name)
+            .cloned()
+            .ok_or_else(|| metastore_error::DatabaseNotFoundSnafu { db: name.clone() }.build())
+    }
+
     fn ensure_volume(state: &MetastoreState, name: &VolumeIdent) -> Result<RwObject<Volume>> {
         state.volumes.get(name).cloned().ok_or_else(|| {
             metastore_error::VolumeNotFoundSnafu {
@@ -146,7 +149,8 @@ impl InMemoryMetastore {
         metadata: &iceberg_rust_spec::table_metadata::TableMetadata,
     ) -> Result<String> {
         let name = Self::metadata_file_name();
-        let path = Self::metadata_path(table, &name);
+        let location = Self::default_table_location(table);
+        let path = format!("{location}/metadata/{name}");
         let bytes =
             serde_json::to_vec(metadata).context(metastore_error::SerializeMetadataSnafu)?;
         object_store
@@ -479,13 +483,12 @@ impl Metastore for InMemoryMetastore {
         }
 
         if table.volume_ident.is_none() {
-            let database = state.databases.get(&ident.database).ok_or_else(|| {
-                metastore_error::DatabaseNotFoundSnafu {
-                    db: ident.database.clone(),
-                }
-                .build()
-            })?;
+            let database = Self::ensure_database(&state, &ident.database)?;
             table.volume_ident = Some(database.volume.clone());
+        }
+
+        if table.location.is_none() {
+            table.location = Some(Self::default_table_location(ident));
         }
 
         let schema_id = *table.schema.schema_id();
