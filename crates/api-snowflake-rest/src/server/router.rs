@@ -4,7 +4,7 @@ use axum::Router;
 use axum::routing::post;
 
 use super::layer::require_auth;
-use super::server_models::Config;
+use super::server_models::RestApiConfig;
 use super::state;
 use axum::middleware;
 use catalog_metastore::Metastore;
@@ -31,7 +31,7 @@ pub fn create_router() -> Router<AppState> {
 #[allow(clippy::needless_pass_by_value, clippy::expect_used)]
 pub async fn make_app(
     metastore: Arc<dyn Metastore>,
-    snowflake_rest_cfg: Config,
+    snowflake_rest_cfg: RestApiConfig,
     execution_cfg: UtilsConfig,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     let execution_svc = Arc::new(

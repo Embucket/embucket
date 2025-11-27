@@ -1,9 +1,4 @@
-cfg_if::cfg_if! {
-    if #[cfg(feature = "default-server")] {
-        use executor::models::ColumnInfo as ColumnInfoModel;
-    }
-}
-
+use executor::models::ColumnInfo as ColumnInfoModel;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
@@ -43,8 +38,8 @@ pub struct LoginRequestData {
     pub svn_revision: Option<String>,
     pub account_name: String,
     pub login_name: String,
-    pub client_environment: HashMap<String, serde_json::Value>,
     pub password: String,
+    pub client_environment: HashMap<String, serde_json::Value>,
     pub session_parameters: HashMap<String, serde_json::Value>,
 }
 
@@ -70,6 +65,18 @@ pub struct AbortRequestBody {
     pub request_id: Uuid, // duplicate in body, taken from snowflake connector
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct RowSet(pub Box<RawValue>);
+
+impl <'se> Serialize for RowSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseData {
@@ -78,7 +85,7 @@ pub struct ResponseData {
     #[serde(rename = "rowsetBase64")]
     pub row_set_base_64: Option<String>,
     #[serde(rename = "rowset")]
-    pub row_set: Option<Box<RawValue>>,
+    pub row_set: Option<RowSet>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -118,7 +125,6 @@ pub struct ColumnInfo {
     collation: Option<String>,
 }
 
-#[cfg(feature = "default-server")]
 impl From<ColumnInfoModel> for ColumnInfo {
     fn from(column_info: ColumnInfoModel) -> Self {
         Self {

@@ -1,0 +1,125 @@
+use crate::models::JsonResponse;
+use arrow::record_batch::RecordBatch;
+
+pub const DEMO_USER: &str = "embucket";
+pub const DEMO_PASSWORD: &str = "embucket";
+
+pub const ARROW: &str = "arrow";
+pub const JSON: &str = "json";
+
+#[must_use]
+pub fn insta_replace_filters() -> Vec<(&'static str, &'static str)> {
+    vec![(
+        r"[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}",
+        "UUID",
+    )]
+}
+
+pub fn query_id_from_snapshot(
+    snapshot: &JsonResponse,
+) -> std::result::Result<String, Box<dyn std::error::Error>> {
+    if let Some(data) = &snapshot.data {
+        if let Some(query_id) = &data.query_id {
+            Ok(query_id.clone())
+        } else {
+            Err("No query ID".into())
+        }
+    } else {
+        Err("No data".into())
+    }
+}
+
+pub fn arrow_record_batch_from_snapshot(
+    snapshot: &JsonResponse,
+) -> std::result::Result<Vec<RecordBatch>, Box<dyn std::error::Error>> {
+    if let Some(data) = &snapshot.data {
+        if let Some(row_set_base_64) = &data.row_set_base_64 {
+            Ok(crate::tests::read_arrow_data::read_record_batches_from_arrow_data(row_set_base_64))
+        } else {
+            Err("No row set base 64".into())
+        }
+    } else {
+        Err("No data".into())
+    }
+}
+
+#[derive(Debug)]
+pub struct HistoricalCodes {
+    pub sql_state: String,
+    pub error_code: String,
+}
+
+impl std::fmt::Display for HistoricalCodes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "sqlState={}; errorCode={};",
+            self.sql_state, self.error_code
+        )
+    }
+}
+
+#[macro_export]
+macro_rules! sql_test {
+    ($server_cfg:expr, $name:ident, $sqls:expr, $inline_snap_callbacks:expr) => {
+        #[tokio::test(flavor = "multi_thread")]
+        async fn $name() {
+            use $crate::tests::snow_sql::snow_sql;
+            use $crate::models::JsonResponse;
+            use $crate::tests::sql_macro::{DEMO_PASSWORD, DEMO_USER,
+                insta_replace_filters,
+                query_id_from_snapshot,
+            };
+            use $crate::tests::sql_macro::arrow_record_batch_from_snapshot;
+
+            let server_addr = run_test_rest_api_server($server_cfg);
+
+            let mut prev_response: Option<JsonResponse> = None;
+            let test_start = std::time::Instant::now();
+            let mut submitted_queries_handles = Vec::new();
+            for (idx, sql) in $sqls.iter().enumerate() {
+                let mut sql = sql.to_string();
+                let sql_start = std::time::Instant::now();
+
+                // replace $LAST_QUERY_ID by query_id from previous response
+                if sql.contains("$LAST_QUERY_ID") {
+                    let resp = prev_response.expect("No previous response");
+                    let last_query_id = query_id_from_snapshot(&resp).expect("Can't acquire value for $LAST_QUERY_ID");
+                    sql = sql.replace("$LAST_QUERY_ID", &last_query_id);
+                }
+
+                let (snapshot, task_handle) = snow_sql(&server_addr, DEMO_USER, DEMO_PASSWORD, &sql).await;
+                if let Some(handle) = task_handle {
+                    submitted_queries_handles.push(handle);
+                }
+                let test_duration = test_start.elapsed().as_millis();
+                let sql_duration = sql_start.elapsed().as_millis();
+                let async_query = sql.ends_with(";>").then(|| "Async ").unwrap_or("");
+                let query_num = idx + 1;
+                let sql_info = format!("{async_query}SQL #{query_num} [spent: {sql_duration}/{test_duration}ms]: {sql}");
+
+                println!("{sql_info}");
+                insta::with_settings!({
+                    // for debug purposes fetch query_id of current query
+                    description => format!("{sql_info}\nQuery UUID: {}{}",
+                        query_id_from_snapshot(&snapshot)
+                            .map_or_else(|_| "No query ID".to_string(), |id| id)
+                        ,
+                        arrow_record_batch_from_snapshot(&snapshot)
+                            .map_or_else(
+                                |_| String::new(),
+                                |batches| format!("\nArrow record batches:\n{batches:#?}"))
+                    ),
+                    sort_maps => true,
+                    filters => insta_replace_filters(),
+                }, {
+                    $inline_snap_callbacks[idx](&snapshot);
+                });
+
+                prev_response = Some(snapshot);
+            }
+            // wait async queries, to prevent canceling queries when test finishes
+            futures::future::join_all(submitted_queries_handles).await;
+        }
+    };
+}
