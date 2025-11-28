@@ -36,7 +36,7 @@ $ pip install snowflake-cli # Install snowflake cli if you haven't already
 $ snow --info | grep "config_file_path" -A 1
 $ CONFIG=<your_config_file_path>
 # Update the config file with the following:
-echo '
+$ echo '
 [connections.local]
 host = "localhost"
 region = "us-east-2"
@@ -264,7 +264,7 @@ Enter token file path:
 Now use it to run queries:
 
 ```bash
-snow sql -c lambda -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+$ snow sql -c lambda -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
 select dateadd(day, -1, current_timestamp()) as yesterday;
 +----------------------------------+
 | yesterday                        |
