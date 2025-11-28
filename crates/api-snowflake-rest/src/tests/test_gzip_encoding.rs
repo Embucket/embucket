@@ -5,7 +5,7 @@ mod tests {
         JsonResponse, LoginRequestBody, LoginRequestData, LoginResponse, QueryRequestBody,
     };
     use crate::tests::create_test_server::{run_test_rest_api_server, server_default_cfg};
-    use crate::tests::sql_macro::JSON;
+    use crate::tests::sql_test_macro::JSON;
     use axum::body::Bytes;
     use axum::http;
     use flate2::Compression;

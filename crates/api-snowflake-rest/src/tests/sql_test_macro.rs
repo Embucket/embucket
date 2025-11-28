@@ -61,19 +61,20 @@ impl std::fmt::Display for HistoricalCodes {
 
 #[macro_export]
 macro_rules! sql_test {
-    ($server_cfg:expr, $name:ident, $sqls:expr, $inline_snap_callbacks:expr) => {
+    ($server_cfg:expr, $name:ident, $sqls:expr) => {
         #[tokio::test(flavor = "multi_thread")]
         async fn $name() {
             use $crate::tests::snow_sql::snow_sql;
             use $crate::models::JsonResponse;
-            use $crate::tests::sql_macro::{DEMO_PASSWORD, DEMO_USER,
+            use $crate::tests::sql_test_macro::{DEMO_PASSWORD, DEMO_USER,
                 insta_replace_filters,
                 query_id_from_snapshot,
             };
-            use $crate::tests::sql_macro::arrow_record_batch_from_snapshot;
+            use $crate::tests::sql_test_macro::arrow_record_batch_from_snapshot;
 
             let server_addr = run_test_rest_api_server($server_cfg);
 
+            let mod_name = module_path!().split("::").last().unwrap();
             let mut prev_response: Option<JsonResponse> = None;
             let test_start = std::time::Instant::now();
             let mut submitted_queries_handles = Vec::new();
@@ -100,6 +101,8 @@ macro_rules! sql_test {
 
                 println!("{sql_info}");
                 insta::with_settings!({
+                    snapshot_path => format!("snapshots/{mod_name}/"),
+                    prepend_module_to_snapshot => false,
                     // for debug purposes fetch query_id of current query
                     description => format!("{sql_info}\nQuery UUID: {}{}",
                         query_id_from_snapshot(&snapshot)
@@ -111,9 +114,14 @@ macro_rules! sql_test {
                                 |batches| format!("\nArrow record batches:\n{batches:#?}"))
                     ),
                     sort_maps => true,
-                    filters => insta_replace_filters(),
+                    filters => insta_replace_filters()
                 }, {
-                    $inline_snap_callbacks[idx](&snapshot);
+                    // Converting json to string here, as for some reason when raw snapshot put to assert_snapshot
+                    // serialized data contains "$serde_json::private::Number" or "$serde_json::private::RawValue"
+                    // artifacts
+                    let snapshot = serde_json::to_string_pretty(&snapshot).expect("Failed to serialize snapshot");
+                    let snapshot = format!("{sql}\n{snapshot}");
+                    insta::assert_snapshot!(snapshot);
                 });
 
                 prev_response = Some(snapshot);

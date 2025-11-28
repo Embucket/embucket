@@ -2,7 +2,7 @@ pub mod client;
 pub mod create_test_server;
 pub mod read_arrow_data;
 pub mod snow_sql;
-pub mod sql_macro;
+pub mod sql_test_macro;
 pub mod test_rest_api;
 
 pub mod test_gzip_encoding;

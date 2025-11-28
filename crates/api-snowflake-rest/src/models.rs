@@ -1,5 +1,6 @@
 use executor::models::ColumnInfo as ColumnInfoModel;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, ser};
+use serde_json::Value;
 use serde_json::value::RawValue;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -65,16 +66,33 @@ pub struct AbortRequestBody {
     pub request_id: Uuid, // duplicate in body, taken from snowflake connector
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct RowSet(pub Box<RawValue>);
-
-impl <'se> Serialize for RowSet {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.0.serialize(serializer)
+#[allow(clippy::ref_option)]
+fn serialize_raw_json<S>(value: &Option<RowSet>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(RowSet::Raw(raw)) => {
+            let v: &RawValue = serde_json::from_str(raw).map_err(|_| {
+                ser::Error::custom("Error creating RawValue from previously serialized json")
+            })?;
+            v.serialize(s)
+        }
+        Some(RowSet::Parsed(v)) => v.serialize(s),
+        _ => s.serialize_none(),
     }
+}
+
+/// `RowSet` can be either:
+/// 1. `RowSet::Raw()` accepts previously serialized by arrow writer `&[RecordBatch]`.
+///    This data to be returned in response without further processing. Server uses it.
+/// 2. `RowSet::Parsed()` accepts parsed data, which fits to the `Vec<Vec<serde_json::Value>>`.
+///    This is used by testing client when it receives response.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum RowSet {
+    Raw(String),
+    Parsed(Vec<Vec<Value>>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -84,7 +102,7 @@ pub struct ResponseData {
     pub row_type: Vec<ColumnInfo>,
     #[serde(rename = "rowsetBase64")]
     pub row_set_base_64: Option<String>,
-    #[serde(rename = "rowset")]
+    #[serde(rename = "rowset", serialize_with = "serialize_raw_json")]
     pub row_set: Option<RowSet>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total: Option<i64>,

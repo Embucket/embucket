@@ -1,7 +1,6 @@
 pub mod models;
-pub mod sql_state;
-
 pub mod server;
+pub mod sql_state;
 
 #[cfg(test)]
 pub mod tests;

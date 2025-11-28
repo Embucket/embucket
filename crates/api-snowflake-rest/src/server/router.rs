@@ -27,7 +27,6 @@ pub fn create_router() -> Router<AppState> {
         .route("/queries/v1/abort-request", post(abort))
 }
 
-// TODO: We should consider using this by both main and tests
 #[allow(clippy::needless_pass_by_value, clippy::expect_used)]
 pub async fn make_app(
     metastore: Arc<dyn Metastore>,
