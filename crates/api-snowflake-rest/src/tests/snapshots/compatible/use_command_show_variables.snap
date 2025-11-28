@@ -1,0 +1,39 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 611/611ms]: use schema test_schema\nQuery UUID: 00000000-0000-0000-0000-000000000000"
+expression: snapshot
+---
+use schema test_schema
+{
+  "data": {
+    "rowtype": [
+      {
+        "name": "status",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": false,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      }
+    ],
+    "rowsetBase64": null,
+    "rowset": [
+      [
+        "Statement executed successfully."
+      ]
+    ],
+    "total": 1,
+    "returned": 1,
+    "queryResultFormat": "json",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": true,
+  "message": "successfully executed",
+  "code": null
+}

@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 617/617ms]: show schemas in database missing_db\nQuery UUID: 9e6e0e1f-cfff-4936-bb3b-d7c0ebcda78d"
+expression: snapshot
+---
+show schemas in database missing_db
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "002043",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "SQL compilation error: Database 'missing_db' does not exist or not authorized",
+  "code": "002043"
+}

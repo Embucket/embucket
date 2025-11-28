@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 613/613ms]: create table missing_db.public.foo(a int)\nQuery UUID: ddb9b529-0399-40f3-bb8c-2136baf25d31"
+expression: snapshot
+---
+create table missing_db.public.foo(a int)
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "002003",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "SQL compilation error: Database 'missing_db' does not exist or not authorized",
+  "code": "002003"
+}

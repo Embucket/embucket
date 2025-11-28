@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 599/599ms]: ALTER TABLE embucket.public.test ADD COLUMN new_col INT\nQuery UUID: a47ce120-bbd2-4c39-abdb-752f862deb87"
+expression: snapshot
+---
+ALTER TABLE embucket.public.test ADD COLUMN new_col INT
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "002003",
+    "sqlState": "42S02",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "SQL compilation error: Table 'embucket.public.test' does not exist or not authorized",
+  "code": "002003"
+}
