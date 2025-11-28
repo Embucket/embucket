@@ -1,5 +1,6 @@
 use crate::{
-    Database, Metastore, Schema, SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent,
+    AwsAccessKeyCredentials, AwsCredentials, Database, Metastore, S3TablesVolume, S3Volume, Schema,
+    SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent, VolumeType,
 };
 use iceberg_rust::spec::table_metadata::TableMetadata;
 use iceberg_rust::spec::util::strip_prefix;
@@ -8,6 +9,7 @@ use serde_json::Value;
 use snafu::prelude::*;
 use std::collections::HashMap;
 use std::{
+    env,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -75,6 +77,8 @@ pub enum ConfigError {
         path: PathBuf,
         source: serde_yaml::Error,
     },
+    #[snafu(display("Failed to load metastore config from environment: {reason}"))]
+    EnvConfig { reason: String },
     #[snafu(display("Metastore bootstrap error: {source}"))]
     Metastore { source: crate::error::Error },
     #[snafu(display("Database {database} not found for table {table}"))]
@@ -106,9 +110,13 @@ impl MetastoreBootstrapConfig {
         let contents = fs::read_to_string(path).await.context(ReadConfigSnafu {
             path: path.to_path_buf(),
         })?;
-        let config = serde_yaml::from_str(&contents).context(ParseConfigSnafu {
+        let mut config: Self = serde_yaml::from_str(&contents).context(ParseConfigSnafu {
             path: path.to_path_buf(),
         })?;
+
+        if let Some(volume) = load_volume_from_env()? {
+            config.volumes.push(volume);
+        }
         Ok(config)
     }
 
@@ -342,4 +350,74 @@ fn patch_missing_operation(mut value: Value) -> Result<Value, ConfigError> {
         }
     }
     Ok(value)
+}
+
+fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
+    let volume_type = match env::var("VOLUME_TYPE") {
+        Ok(v) if !v.trim().is_empty() => v.to_lowercase(),
+        _ => return Ok(None),
+    };
+
+    let ident = env::var("VOLUME_IDENT").unwrap_or_else(|_| "embucket".to_string());
+    let database = env::var("VOLUME_DATABASE")
+        .ok()
+        .filter(|db| !db.trim().is_empty());
+
+    let missing_var_error = |name: &str| ConfigError::EnvConfig {
+        reason: format!("{name} environment variable is required for volume bootstrap"),
+    };
+
+    let volume_type = match volume_type.as_str() {
+        "s3tables" | "s3_tables" | "s3-tables" => {
+            let arn = env::var("VOLUME_ARN").map_err(|_| missing_var_error("VOLUME_ARN"))?;
+            let access_key = env::var("VOLUME_ACCESS_KEY")
+                .map_err(|_| missing_var_error("VOLUME_ACCESS_KEY"))?;
+            let secret_key = env::var("VOLUME_SECRET_KEY")
+                .map_err(|_| missing_var_error("VOLUME_SECRET_KEY"))?;
+
+            let credentials = AwsCredentials::AccessKey(AwsAccessKeyCredentials {
+                aws_access_key_id: access_key,
+                aws_secret_access_key: secret_key,
+            });
+
+            VolumeType::S3Tables(S3TablesVolume {
+                endpoint: None,
+                credentials,
+                arn,
+            })
+        }
+        "s3" => {
+            let access_key = env::var("VOLUME_ACCESS_KEY")
+                .map_err(|_| missing_var_error("VOLUME_ACCESS_KEY"))?;
+            let secret_key = env::var("VOLUME_SECRET_KEY")
+                .map_err(|_| missing_var_error("VOLUME_SECRET_KEY"))?;
+
+            let credentials = AwsCredentials::AccessKey(AwsAccessKeyCredentials {
+                aws_access_key_id: access_key,
+                aws_secret_access_key: secret_key,
+            });
+
+            VolumeType::S3(S3Volume {
+                region: None,
+                bucket: Some(ident.clone()),
+                endpoint: None,
+                credentials: Some(credentials),
+            })
+        }
+        "memory" => VolumeType::Memory,
+        other => {
+            return Err(ConfigError::EnvConfig {
+                reason: format!("Unsupported VOLUME_TYPE '{other}'"),
+            });
+        }
+    };
+
+    Ok(Some(VolumeEntry {
+        volume: Volume {
+            ident,
+            volume: volume_type,
+        },
+        database,
+        should_refresh: false,
+    }))
 }
