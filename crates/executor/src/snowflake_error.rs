@@ -169,6 +169,7 @@ pub fn executor_error(error: &Error) -> SnowflakeError {
         | Error::DataFusionLogicalPlanMergeSource { error, .. }
         | Error::DataFusionLogicalPlanMergeJoin { error, .. }
         | Error::DataFusion { error, .. } => datafusion_error(error, &[]),
+        Error::SqlParser { error, .. } => datafusion_parser_error(error),
         Error::Metastore { source, .. } => metastore_error(source, &[]),
         Error::Iceberg { error, .. } => iceberg_error(error, &[]),
         Error::RefreshCatalogList { source, .. }
@@ -333,6 +334,29 @@ fn iceberg_error(error: &IcebergError, subtext: &[&str]) -> SnowflakeError {
     }
 }
 
+fn datafusion_parser_error(df_parser_error: &ParserError) -> SnowflakeError {
+    match df_parser_error {
+        ParserError::TokenizerError(error) | ParserError::ParserError(error) => {
+            // Can't produce message like this: "syntax error line 1 at position 27 unexpected 'XXXX'"
+            // since parse error is just a text and not a structure
+            let error = if error.starts_with("syntax error") {
+                CompilationGenericSnafu { error }.build()
+            } else {
+                CompilationParseSnafu { error }.build()
+            };
+            SnowflakeError::SqlCompilation {
+                error,
+                error_code: ErrorCode::DataFusionSqlParse,
+            }
+        }
+        ParserError::RecursionLimitExceeded => CustomSnafu {
+            message: df_parser_error.to_string(),
+            error_code: ErrorCode::DataFusionSqlParse,
+        }
+        .build(),
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 fn datafusion_error(df_error: &DataFusionError, subtext: &[&str]) -> SnowflakeError {
     let subtext = [subtext, &["DataFusion"]].concat();
@@ -429,22 +453,7 @@ fn datafusion_error(df_error: &DataFusionError, subtext: &[&str]) -> SnowflakeEr
             error_code,
         }
         .build(),
-        DataFusionError::SQL(sql_error, Some(_backtrace)) => match sql_error.as_ref() {
-            ParserError::TokenizerError(error) | ParserError::ParserError(error) =>
-            // Can't produce message like this: "syntax error line 1 at position 27 unexpected 'XXXX'"
-            // since parse error is just a text and not a structure
-            {
-                SnowflakeError::SqlCompilation {
-                    error: CompilationParseSnafu { error }.build(),
-                    error_code: ErrorCode::DataFusionSqlParse,
-                }
-            }
-            ParserError::RecursionLimitExceeded => CustomSnafu {
-                message,
-                error_code: ErrorCode::DataFusionSqlParse,
-            }
-            .build(),
-        },
+        DataFusionError::SQL(sql_error, Some(_backtrace)) => datafusion_parser_error(sql_error),
         DataFusionError::ExecutionJoin(join_error) => CustomSnafu {
             message: join_error.to_string(),
             error_code,
