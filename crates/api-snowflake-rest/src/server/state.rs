@@ -1,4 +1,4 @@
-use super::server_models::Config;
+use super::server_models::RestApiConfig;
 use api_snowflake_rest_sessions::session::JwtSecret;
 use executor::ExecutionAppState;
 use executor::service::ExecutionService;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub execution_svc: Arc<dyn ExecutionService>,
-    pub config: Config,
+    pub config: RestApiConfig,
 }
 
 impl ExecutionAppState for AppState {
