@@ -193,30 +193,36 @@ impl CoreExecutionService {
     #[allow(clippy::cognitive_complexity)]
     async fn bootstrap(metastore: Arc<dyn Metastore>) -> Result<()> {
         let ident = DEFAULT_CATALOG.to_string();
-        metastore
-            .create_volume(&ident, Volume::new(ident.clone(), VolumeType::Memory))
-            .await
-            .context(ex_error::BootstrapSnafu {
-                entity_type: "volume",
-            })?;
+        // if let Err(error) = metastore
+        //     .create_volume(&ident, Volume::new(ident.clone(), VolumeType::Memory))
+        //     .await {
+        //     if !matches!(error, catalog_metastore::Error::VolumeAlreadyExists { .. } | catalog_metastore::Error::ObjectAlreadyExists { .. }) {
+        //         return Err(error).context(ex_error::BootstrapSnafu {
+        //             entity_type: "volume",
+        //         });
+        //     }
+        // };
 
-        metastore
-            .create_database(
-                &ident,
-                Database {
-                    ident: ident.clone(),
-                    properties: None,
-                    volume: ident.clone(),
-                    should_refresh: false,
-                },
-            )
-            .await
-            .context(ex_error::BootstrapSnafu {
-                entity_type: "database",
-            })?;
+        // if let Err(error) = metastore
+        //     .create_database(
+        //         &ident,
+        //         Database {
+        //             ident: ident.clone(),
+        //             properties: None,
+        //             volume: ident.clone(),
+        //             should_refresh: false,
+        //         },
+        //     )
+        //     .await {
+        //     if !matches!(error, catalog_metastore::Error::DatabaseAlreadyExists { .. } | catalog_metastore::Error::ObjectAlreadyExists { .. }) {
+        //         return Err(error).context(ex_error::BootstrapSnafu {
+        //             entity_type: "database",
+        //         });
+        //     }
+        // }
 
         let schema_ident = SchemaIdent::new(ident.clone(), DEFAULT_SCHEMA.to_string());
-        metastore
+        if let Err(error) = metastore
             .create_schema(
                 &schema_ident,
                 Schema {
@@ -224,10 +230,13 @@ impl CoreExecutionService {
                     properties: None,
                 },
             )
-            .await
-            .context(ex_error::BootstrapSnafu {
-                entity_type: "schema",
-            })?;
+            .await {
+            if !matches!(error, catalog_metastore::Error::SchemaAlreadyExists { .. } | catalog_metastore::Error::ObjectAlreadyExists { .. }) {
+                return Err(error).context(ex_error::BootstrapSnafu {
+                    entity_type: "schema",
+                });
+            }
+        }
 
         Ok(())
     }
