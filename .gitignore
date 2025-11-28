@@ -16,5 +16,6 @@ metastore.yaml
 .DS_Store
 .idea/
 .cursor
+.log
 
 metastore.yaml
