@@ -61,16 +61,17 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("SerdeJson error: {error}"))]
-    SerdeJson {
-        #[snafu(source)]
-        error: serde_json::Error,
+    #[snafu(transparent)]
+    Execution { source: executor::Error },
+
+    #[snafu(display("Failed to set {variable}: {error}"))]
+    SetVariable {
+        variable: String,
+        #[snafu(source(from(executor::Error, Box::new)))]
+        error: Box<executor::Error>,
         #[snafu(implicit)]
         location: Location,
     },
-
-    #[snafu(transparent)]
-    Execution { source: executor::Error },
 
     #[snafu(display("JWT secret is not set"))]
     NoJwtSecret {
@@ -236,10 +237,14 @@ impl Error {
                 SqlState::Success,
                 ErrorCode::Other,
             ),
+            Self::SetVariable { .. } => (
+                http::StatusCode::BAD_REQUEST,
+                SqlState::FeatureNotSupported,
+                ErrorCode::Other,
+            ),
             Self::Utf8 { .. }
             | Self::RetryDisabled { .. }
             | Self::Arrow { .. }
-            | Self::SerdeJson { .. }
             | Self::NotImplemented { .. } => {
                 (http::StatusCode::OK, SqlState::Success, ErrorCode::Other)
             }

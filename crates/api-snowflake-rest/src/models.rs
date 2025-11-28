@@ -16,6 +16,7 @@ pub struct LoginRequestQueryParams {
     pub request_id: String,
     pub database_name: Option<String>,
     pub schema_name: Option<String>,
+    pub warehouse: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,8 +44,8 @@ pub struct LoginRequestData {
     pub svn_revision: Option<String>,
     pub account_name: String,
     pub login_name: String,
-    pub client_environment: HashMap<String, serde_json::Value>,
     pub password: String,
+    pub client_environment: HashMap<String, serde_json::Value>,
     pub session_parameters: HashMap<String, serde_json::Value>,
 }
 
