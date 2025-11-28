@@ -1,10 +1,10 @@
 use super::state::AppState;
 use crate::models::{
-    JsonResponse, LoginRequestData, LoginResponse, LoginResponseData, QueryRequest,
-    QueryRequestBody,
+    JsonResponse, LoginRequestData, LoginRequestQueryParams, LoginResponse, LoginResponseData,
+    QueryRequest, QueryRequestBody,
 };
 use crate::server::error::{
-    self as api_snowflake_rest_error, CreateJwtSnafu, NoJwtSecretSnafu, Result,
+    self as api_snowflake_rest_error, CreateJwtSnafu, NoJwtSecretSnafu, Result, SetVariableSnafu,
 };
 use crate::server::helpers::handle_query_ok_result;
 use api_snowflake_rest_sessions::helpers::{create_jwt, ensure_jwt_secret_is_valid, jwt_claims};
@@ -26,6 +26,8 @@ pub async fn handle_login_request(
     state: &AppState,
     host: String,
     credentials: LoginRequestData,
+    params: LoginRequestQueryParams,
+    client_ip: Option<String>,
 ) -> Result<LoginResponse> {
     let LoginRequestData {
         login_name,
@@ -50,9 +52,28 @@ pub async fn handle_login_request(
     tracing::info!("Host '{host}' for token creation");
 
     let session_id = jwt_claims.session_id.clone();
-    let _ = state.execution_svc.create_session(&session_id).await?;
+    let session = state.execution_svc.create_session(&session_id).await?;
 
     let jwt_token = create_jwt(&jwt_claims, jwt_secret).context(CreateJwtSnafu)?;
+
+    // set database, schema when provided
+    if let Some(db) = params.database_name {
+        session.set_database(&db).context(SetVariableSnafu {
+            variable: "database",
+        })?;
+    }
+    if let Some(schema) = params.schema_name {
+        session
+            .set_schema(&schema)
+            .context(SetVariableSnafu { variable: "schema" })?;
+    }
+    if let Some(warehouse) = params.warehouse {
+        session
+            .set_warehouse(&warehouse)
+            .context(SetVariableSnafu {
+                variable: "warehouse",
+            })?;
+    }
 
     Ok(LoginResponse {
         data: Option::from(LoginResponseData { token: jwt_token }),

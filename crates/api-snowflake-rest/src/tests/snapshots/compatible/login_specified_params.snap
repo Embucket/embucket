@@ -1,0 +1,39 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 176/1045ms]: select count(*) from test_table\nQuery UUID: 00000000-0000-0000-0000-000000000000"
+expression: snapshot
+---
+select count(*) from test_table
+{
+  "data": {
+    "rowtype": [
+      {
+        "name": "count(*)",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": false,
+        "type": "fixed",
+        "byteLength": null,
+        "length": null,
+        "scale": 0,
+        "precision": 38,
+        "collation": null
+      }
+    ],
+    "rowsetBase64": null,
+    "rowset": [
+      [
+        0
+      ]
+    ],
+    "total": 1,
+    "returned": 1,
+    "queryResultFormat": "json",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": true,
+  "message": "successfully executed",
+  "code": null
+}

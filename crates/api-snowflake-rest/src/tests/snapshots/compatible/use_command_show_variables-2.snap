@@ -1,0 +1,123 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #2 [spent: 366/1039ms]: SHOW VARIABLES\nQuery UUID: 00000000-0000-0000-0000-000000000000"
+expression: snapshot
+---
+SHOW VARIABLES
+{
+  "data": {
+    "rowtype": [
+      {
+        "name": "session_id",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": true,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      },
+      {
+        "name": "name",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": false,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      },
+      {
+        "name": "value",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": true,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      },
+      {
+        "name": "type",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": true,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      },
+      {
+        "name": "comment",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": true,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      },
+      {
+        "name": "created_on",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": true,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      },
+      {
+        "name": "updated_on",
+        "database": "",
+        "schema": "",
+        "table": "",
+        "nullable": true,
+        "type": "text",
+        "byteLength": 16777216,
+        "length": 16777216,
+        "scale": null,
+        "precision": null,
+        "collation": null
+      }
+    ],
+    "rowsetBase64": null,
+    "rowset": [
+      [
+        "UUID",
+        "warehouse",
+        "embucket",
+        "text",
+        "",
+        "UTC_TIME",
+        "UTC_TIME"
+      ]
+    ],
+    "total": 1,
+    "returned": 1,
+    "queryResultFormat": "json",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": true,
+  "message": "successfully executed",
+  "code": null
+}

@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 85/565ms]: select count(*) from test_table\nQuery UUID: c0f98022-c548-4670-a9a2-8ed167f90326"
+expression: snapshot
+---
+select count(*) from test_table
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "002003",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "SQL compilation error: table 'embucket.public.test_table' not found",
+  "code": "002003"
+}

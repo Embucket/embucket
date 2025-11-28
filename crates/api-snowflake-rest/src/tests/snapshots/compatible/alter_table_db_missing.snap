@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 490/490ms]: ALTER TABLE missing_db.public.test2 ADD COLUMN new_col INT\nQuery UUID: ef5a22cb-a565-461b-9439-5d3eccf1e3d6"
+expression: snapshot
+---
+ALTER TABLE missing_db.public.test2 ADD COLUMN new_col INT
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "002003",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "SQL compilation error: Database 'missing_db' does not exist or not authorized",
+  "code": "002003"
+}
