@@ -3,7 +3,7 @@ mod config;
 use crate::config::EnvConfig;
 use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::router::{create_auth_router, create_router};
-use api_snowflake_rest::server::server_models::Config as SnowflakeServerConfig;
+use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::layer::Host;
 use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};

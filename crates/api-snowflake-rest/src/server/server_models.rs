@@ -2,12 +2,12 @@ use crate::models::Auth;
 use executor::utils::DataSerializationFormat;
 
 #[derive(Clone, Default)]
-pub struct Config {
+pub struct RestApiConfig {
     pub auth: Auth,
     pub dbt_serialization_format: DataSerializationFormat,
 }
 
-impl Config {
+impl RestApiConfig {
     pub fn new(data_format: &str, jwt_secret: String) -> Result<Self, strum::ParseError> {
         Ok(Self {
             dbt_serialization_format: DataSerializationFormat::try_from(data_format)?,
