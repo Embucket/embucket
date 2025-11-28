@@ -1,5 +1,5 @@
 use crate::SqlState;
-use crate::models::{JsonResponse, ResponseData};
+use crate::models::{JsonResponse, ResponseData, RowSet};
 use crate::server::error::{self as api_snowflake_rest_error, Error, Result};
 use base64;
 use base64::engine::general_purpose::STANDARD as engine_base64;
@@ -12,7 +12,6 @@ use executor::models::QueryResult;
 use executor::utils::{
     DataSerializationFormat, convert_record_batches, convert_struct_to_timestamp,
 };
-use serde_json::value::RawValue;
 use snafu::ResultExt;
 use tracing;
 use uuid::Uuid;
@@ -90,9 +89,7 @@ pub fn handle_query_ok_result(
         // Convert struct timestamp columns to string representation
         let records = convert_struct_to_timestamp(&records)?;
         let serialized_rowset = records_to_json_string(&records)?;
-        let raw_value = RawValue::from_string(serialized_rowset)
-            .context(api_snowflake_rest_error::SerdeJsonSnafu)?;
-        Option::from(raw_value)
+        Some(RowSet::Raw(serialized_rowset))
     } else {
         None
     };
