@@ -23,7 +23,7 @@ echo "CREATE USER dev WITH PASSWORD 'dev'; ALTER USER dev CREATEDB;"  | psql -h 
 ### Create database as dev user
 
 ``` bash
-echo "CREATE DATABASE dev;" | psql -h localhost -U dev -d postgres -W
+echo "CREATE DATABASE dev;" | PGPASSWORD=dev psql -h localhost -U dev -d postgres
 ```
 
 ## Build prerequisites and Diesel setup
