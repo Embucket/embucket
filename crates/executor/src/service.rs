@@ -431,7 +431,6 @@ impl ExecutionService for CoreExecutionService {
         name = "ExecutionService::get_session",
         level = "debug",
         skip(self),
-        fields(session_id),
         err
     )]
     async fn get_session(&self, session_id: &str) -> Result<Arc<UserSession>> {
@@ -442,12 +441,7 @@ impl ExecutionService for CoreExecutionService {
         Ok(session.clone())
     }
 
-    #[tracing::instrument(
-        name = "ExecutionService::session_exists",
-        level = "debug",
-        skip(self),
-        fields(session_id)
-    )]
+    #[tracing::instrument(name = "ExecutionService::session_exists", level = "debug", skip(self))]
     async fn session_exists(&self, session_id: &str) -> bool {
         let sessions = self.df_sessions.read().await;
         sessions.contains_key(session_id)
@@ -457,7 +451,7 @@ impl ExecutionService for CoreExecutionService {
         name = "ExecutionService::delete_session",
         level = "debug",
         skip(self),
-        fields(session_id, new_sessions_count),
+        fields(new_sessions_count),
         err
     )]
     async fn delete_session(&self, session_id: &str) -> Result<()> {
