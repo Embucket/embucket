@@ -92,7 +92,7 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 uuid = { version = "1.10.0", features = ["v4", "serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
 mockall = "0.13.1"
-insta = { version = "1.42.0", features = ["json", "filters", "redactions"] }
+insta = { version = "1.44.1", features = ["json", "filters", "redactions"] }
 cfg-if = { version = "1.0.3" }
 
 [patch.crates-io]
