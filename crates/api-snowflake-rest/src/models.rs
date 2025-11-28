@@ -1,9 +1,3 @@
-cfg_if::cfg_if! {
-    if #[cfg(feature = "default-server")] {
-        use executor::models::ColumnInfo as ColumnInfoModel;
-    }
-}
-
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::collections::HashMap;
@@ -119,7 +113,6 @@ pub struct ColumnInfo {
     collation: Option<String>,
 }
 
-#[cfg(feature = "default-server")]
 impl From<ColumnInfoModel> for ColumnInfo {
     fn from(column_info: ColumnInfoModel) -> Self {
         Self {
