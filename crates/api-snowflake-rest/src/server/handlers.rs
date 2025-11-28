@@ -1,6 +1,7 @@
 use super::state::AppState;
 use crate::models::{
-    AbortRequestBody, JsonResponse, LoginRequestBody, LoginResponse, QueryRequest, QueryRequestBody,
+    AbortRequestBody, JsonResponse, LoginRequestBody, LoginRequestQueryParams, LoginResponse,
+    QueryRequest, QueryRequestBody,
 };
 use crate::server::error::Result;
 use crate::server::logic::{handle_login_request, handle_query_request};
@@ -25,10 +26,19 @@ pub struct SessionQueryParams {
 #[tracing::instrument(name = "api_snowflake_rest::login", level = "debug", skip(state), err, ret(level = tracing::Level::TRACE))]
 pub async fn login(
     Host(host): Host,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<AppState>,
+    Query(params): Query<LoginRequestQueryParams>,
     Json(login_request): Json<LoginRequestBody>,
 ) -> Result<Json<LoginResponse>> {
-    let response = handle_login_request(&state, host, login_request.data).await?;
+    let response = handle_login_request(
+        &state,
+        host,
+        login_request.data,
+        params,
+        Option::from(addr.ip().to_string()),
+    )
+    .await?;
     Ok(Json(response))
 }
 
