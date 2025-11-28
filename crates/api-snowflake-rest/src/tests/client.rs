@@ -146,6 +146,7 @@ fn login_data(login: &str, passw: &str) -> LoginRequestBody {
     }
 }
 
+#[allow(clippy::implicit_hasher)] // disabling false positive clippy warning
 pub async fn login<T>(
     client: &reqwest::Client,
     addr: &SocketAddr,

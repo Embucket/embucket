@@ -31,7 +31,7 @@ pub fn run_test_rest_api_server(
     executor_cfg: Option<UtilsConfig>,
 ) -> SocketAddr {
     let rest_cfg = rest_cfg.unwrap_or_else(|| rest_default_cfg("json"));
-    let executor_cfg = executor_cfg.unwrap_or_else(|| executor_default_cfg());
+    let executor_cfg = executor_cfg.unwrap_or_else(executor_default_cfg);
 
     let server_cond = Arc::new((Mutex::new(false), Condvar::new())); // Shared state with a condition 
     let server_cond_clone = Arc::clone(&server_cond);
