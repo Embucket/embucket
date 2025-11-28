@@ -14,6 +14,7 @@ pub const REQUEST_ID_KEY: &str = "request_id";
 pub const SESSION_ID_KEY: &str = "session_id";
 pub const ACCESS_TOKEN_KEY: &str = "access_token";
 
+#[allow(clippy::implicit_hasher)] // disabling false positive clippy warning
 pub async fn snow_sql(
     server_addr: &SocketAddr,
     sql: &str,
@@ -26,10 +27,7 @@ pub async fn snow_sql(
             .expect("Failed to login");
         assert_eq!(headers.get(header::WWW_AUTHENTICATE), None);
 
-        let access_token = login_res
-            .data
-            .clone()
-            .map_or_else(String::new, |data| data.token);
+        let access_token = login_res.data.map_or_else(String::new, |data| data.token);
         params.insert(ACCESS_TOKEN_KEY, access_token);
     }
     let access_token = params
@@ -42,7 +40,7 @@ pub async fn snow_sql(
         let query_id = sql.trim_start_matches("!result ");
 
         let (_headers, history_res) =
-            get_query_result::<JsonResponse>(&client, server_addr, &access_token, query_id)
+            get_query_result::<JsonResponse>(&client, server_addr, access_token, query_id)
                 .await
                 .expect("Failed to get query result");
         (history_res, None)
@@ -64,7 +62,7 @@ pub async fn snow_sql(
         let (_headers, res) = query::<JsonResponse>(
             &client,
             server_addr,
-            &access_token,
+            access_token,
             request_id,
             0,
             sql,
@@ -80,14 +78,11 @@ pub async fn snow_sql(
                 ..
             }) = res.data.as_ref()
             {
-                let server_addr = *server_addr;
-                let query_id = query_id.clone();
                 let async_res = spawn_task_get_query_result(
-                    server_addr.clone(),
+                    *server_addr,
                     access_token.to_string(),
                     query_id.clone(),
-                )
-                .await;
+                );
                 return (res, Some(async_res));
             }
         }
@@ -95,7 +90,7 @@ pub async fn snow_sql(
     }
 }
 
-async fn spawn_task_get_query_result(
+fn spawn_task_get_query_result(
     server_addr: SocketAddr,
     access_token: String,
     query_id: String,

@@ -69,37 +69,45 @@ impl std::fmt::Display for HistoricalCodes {
 pub struct SqlTest {
     pub server_cfg: Option<RestApiConfig>,
     pub executor_cfg: Option<UtilsConfig>,
-    pub setup_queries: Vec<&'static str>,
+    pub setup_queries: Vec<String>,
     pub params: Vec<(&'static str, String)>,
-    pub sqls: Vec<&'static str>,
+    pub sqls: Vec<String>,
 }
 
 impl SqlTest {
-    pub fn new(sqls: &[&'static str]) -> Self {
+    #[must_use]
+    pub fn new(sqls: &[&str]) -> Self {
         Self {
             server_cfg: None,
             executor_cfg: None,
             setup_queries: vec![],
             params: vec![],
-            sqls: sqls.to_vec(),
+            sqls: sqls.iter().map(|&s| s.to_string()).collect(),
         }
     }
 
-    pub fn with_setup_queries(self, setup_queries: Vec<&'static str>) -> Self {
+    #[must_use]
+    pub fn with_setup_queries(self, setup_queries: &[&str]) -> Self {
         Self {
-            setup_queries,
+            setup_queries: setup_queries.iter().map(|&s| s.to_string()).collect(),
             ..self
         }
     }
+
+    #[must_use]
     pub fn with_params(self, params: Vec<(&'static str, String)>) -> Self {
         Self { params, ..self }
     }
+
+    #[must_use]
     pub fn with_server_config(self, server_cfg: RestApiConfig) -> Self {
         Self {
             server_cfg: Some(server_cfg),
             ..self
         }
     }
+
+    #[must_use]
     pub fn with_executor_config(self, executor_cfg: UtilsConfig) -> Self {
         Self {
             executor_cfg: Some(executor_cfg),
