@@ -15,7 +15,7 @@ use std::{
 };
 use tokio::fs;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct MetastoreBootstrapConfig {
     #[serde(default)]
     volumes: Vec<VolumeEntry>,
@@ -103,7 +103,34 @@ pub enum ConfigError {
     },
 }
 
+const DEFAULT_VOLUME_NAME: &str = "embucket";
+const DEFAULT_DATABASE_NAME: &str = "embucket";
 const DEFAULT_SCHEMA_NAME: &str = "public";
+
+impl Default for MetastoreBootstrapConfig {
+    fn default() -> Self {
+        Self {
+            volumes: vec![VolumeEntry {
+                volume: Volume {
+                    ident: DEFAULT_VOLUME_NAME.to_string(),
+                    volume: VolumeType::Memory,
+                },
+                database: Some(DEFAULT_DATABASE_NAME.to_string()),
+                should_refresh: false,
+            }],
+            databases: vec![DatabaseEntry {
+                ident: DEFAULT_DATABASE_NAME.to_string(),
+                volume: DEFAULT_VOLUME_NAME.to_string(),
+                should_refresh: false,
+            }],
+            schemas: vec![SchemaEntry {
+                database: DEFAULT_DATABASE_NAME.to_string(),
+                schema: DEFAULT_SCHEMA_NAME.to_string(),
+            }],
+            tables: vec![],
+        }
+    }
+}
 
 impl MetastoreBootstrapConfig {
     pub async fn load(path: &Path) -> Result<Self, ConfigError> {
