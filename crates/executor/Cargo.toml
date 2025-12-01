@@ -12,6 +12,7 @@ arrow-schema = { version = "56.1.0", features = ["serde"] }
 async-trait = { workspace = true }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }
+aws-sdk-s3tables = "1.45.0"
 bytes = { workspace = true }
 chrono = { workspace = true }
 dashmap = { workspace = true }

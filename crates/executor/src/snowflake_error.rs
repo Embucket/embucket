@@ -2,6 +2,10 @@
 #![allow(clippy::match_same_arms)]
 use crate::error::{Error, OperationOn, OperationType};
 use crate::error_code::ErrorCode;
+use aws_sdk_s3tables::config::http::HttpResponse as AwsHttpResponse;
+use aws_sdk_s3tables::error::{
+    ProvideErrorMetadata as AwsProvideErrorMetadata, SdkError as AwsSdkError,
+};
 use catalog::df_error::DFExternalError as DFCatalogExternalDFError;
 use catalog::error::Error as CatalogError;
 use catalog_metastore::error::Error as MetastoreError;
@@ -11,6 +15,7 @@ use datafusion_common::diagnostic::DiagnosticKind;
 use datafusion_common::error::DataFusionError;
 use functions::df_error::DFExternalError as EmubucketFunctionsExternalDFError;
 use iceberg_rust::error::Error as IcebergError;
+use iceberg_s3tables_catalog::error::Error as S3TablesError;
 use snafu::GenerateImplicitData;
 use snafu::{Location, Snafu, location};
 use sqlparser::parser::ParserError;
@@ -315,6 +320,8 @@ fn iceberg_error(error: &IcebergError, subtext: &[&str]) -> SnowflakeError {
                 metastore_error(e, &subtext)
             } else if let Some(e) = err.downcast_ref::<object_store::Error>() {
                 object_store_error(e, &subtext)
+            } else if let Some(e) = err.downcast_ref::<S3TablesError>() {
+                s3tables_error(e, &subtext)
             } else {
                 // Accidently CustomSnafu can't see internal field, so create error manually!
                 SnowflakeError::Custom {
@@ -355,6 +362,119 @@ fn datafusion_parser_error(df_parser_error: &ParserError) -> SnowflakeError {
         }
         .build(),
     }
+}
+
+fn s3tables_error(error: &S3TablesError, subtext: &[&str]) -> SnowflakeError {
+    let subtext = [subtext, &["S3Tables"]].concat();
+    let message = match error {
+        S3TablesError::Text(text) => text.clone(),
+        S3TablesError::ParseError(err) => err.to_string(),
+        S3TablesError::CreateNamespace(err) => s3tables_sdk_error_message("create namespace", err),
+        S3TablesError::DeleteNamespace(err) => s3tables_sdk_error_message("delete namespace", err),
+        S3TablesError::GetNamespace(err) => s3tables_sdk_error_message("get namespace", err),
+        S3TablesError::ListTables(err) => s3tables_sdk_error_message("list tables", err),
+        S3TablesError::ListNamespaces(err) => s3tables_sdk_error_message("list namespaces", err),
+        S3TablesError::GetTable(err) => s3tables_sdk_error_message("get table", err),
+        S3TablesError::DeleteTable(err) => s3tables_sdk_error_message("delete table", err),
+        S3TablesError::SdkError(err) => {
+            s3tables_sdk_error_message("get table metadata location", err)
+        }
+        S3TablesError::GetTableMetadataLocation(err) => {
+            s3tables_modeled_error_message("get table metadata location", err)
+        }
+        S3TablesError::CreateTable(err) => s3tables_sdk_error_message("create table", err),
+        S3TablesError::UpdateTableMetadataLocation(err) => {
+            s3tables_sdk_error_message("update table metadata location", err)
+        }
+    };
+
+    CustomSnafu {
+        message: format_message(&subtext, message),
+        error_code: ErrorCode::Iceberg,
+    }
+    .build()
+}
+
+fn s3tables_sdk_error_message<E>(operation: &str, err: &AwsSdkError<E, AwsHttpResponse>) -> String
+where
+    E: std::error::Error + AwsProvideErrorMetadata,
+{
+    match err {
+        AwsSdkError::ServiceError(service_err) => {
+            let meta = service_err.err().meta();
+            let code = meta.code().unwrap_or("unknown");
+            let message = meta
+                .message()
+                .map(str::to_owned)
+                .unwrap_or_else(|| "no message returned from service".to_string());
+            let status = service_err.raw().status().as_u16();
+            tracing::warn!(
+                operation,
+                aws_code = code,
+                aws_status = status,
+                aws_message = %message,
+                service_error = ?service_err.err(),
+                "S3Tables service error"
+            );
+            format!(
+                "S3Tables {operation} failed with service error {code} (HTTP {status}): {message}"
+            )
+        }
+        AwsSdkError::ResponseError(response_err) => {
+            let status = response_err.raw().status().as_u16();
+            tracing::warn!(
+                operation,
+                aws_status = status,
+                error = ?response_err,
+                "S3Tables response error"
+            );
+            format!("S3Tables {operation} returned an unparseable response (HTTP {status})")
+        }
+        AwsSdkError::DispatchFailure(dispatch_err) => {
+            tracing::warn!(
+                operation,
+                error = ?dispatch_err,
+                "S3Tables dispatch failure"
+            );
+            format!("S3Tables {operation} request failed during dispatch: {dispatch_err:?}")
+        }
+        AwsSdkError::TimeoutError(timeout_err) => {
+            tracing::warn!(operation, error = ?timeout_err, "S3Tables timeout");
+            format!("S3Tables {operation} request timed out: {timeout_err:?}")
+        }
+        AwsSdkError::ConstructionFailure(construction_err) => {
+            tracing::warn!(
+                operation,
+                error = ?construction_err,
+                "S3Tables request construction failure"
+            );
+            format!("S3Tables {operation} request could not be built: {construction_err:?}")
+        }
+        _ => {
+            tracing::warn!(operation, error = ?err, "S3Tables unexpected SDK error");
+            format!("S3Tables {operation} failed with unexpected SDK error: {err}")
+        }
+    }
+}
+
+fn s3tables_modeled_error_message<E>(operation: &str, err: &E) -> String
+where
+    E: std::error::Error + AwsProvideErrorMetadata,
+{
+    let meta = err.meta();
+    let code = meta.code().unwrap_or("unknown");
+    let message = meta
+        .message()
+        .map(str::to_owned)
+        .unwrap_or_else(|| err.to_string());
+    tracing::warn!(
+        operation,
+        aws_code = code,
+        aws_message = %message,
+        error = ?err,
+        "S3Tables modeled error"
+    );
+    format!("S3Tables {operation} failed with service error {code}: {message}")
 }
 
 #[allow(clippy::too_many_lines)]

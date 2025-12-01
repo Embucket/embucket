@@ -21,7 +21,7 @@ use catalog::table::{CachingTable, IcebergTableBuilder};
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
     TableCreateRequest as MetastoreTableCreateRequest, TableFormat as MetastoreTableFormat,
-    TableIdent as MetastoreTableIdent, Volume, VolumeType,
+    TableIdent as MetastoreTableIdent, Volume, VolumeType, object_store_client_options,
     models::volumes::create_object_store_from_url,
 };
 use datafusion::arrow::array::{Int64Array, RecordBatch, StringArray};
@@ -88,7 +88,7 @@ use iceberg_rust::spec::types::StructType;
 use iceberg_rust::spec::values::Value as IcebergValue;
 use iceberg_rust::table::manifest_list::snapshot_partition_bounds;
 use object_store::aws::{AmazonS3Builder, resolve_bucket_region};
-use object_store::{ClientOptions, ObjectStore};
+use object_store::ObjectStore;
 use snafu::{OptionExt, ResultExt, location};
 use sqlparser::ast::helpers::key_value_options::KeyValueOptions;
 use sqlparser::ast::helpers::stmt_data_loading::StageParamsObject;
@@ -1116,6 +1116,7 @@ impl UserQuery {
         let bucket = url.host_str().unwrap_or_default();
         // TODO Replace this with the new metastore volume approach
         let s3 = AmazonS3Builder::from_env()
+            .with_client_options(object_store_client_options())
             // TODO Get region automatically from the Volume
             .with_region("eu-central-1")
             .with_bucket_name(bucket)
@@ -2837,7 +2838,9 @@ impl UserQuery {
                         .trim_start_matches("s3://")
                         .trim_end_matches('/');
 
-                    let region = resolve_bucket_region(bucket, &ClientOptions::default())
+                    let client_options = object_store_client_options();
+
+                    let region = resolve_bucket_region(bucket, &client_options)
                         .await
                         .context(ex_error::ObjectStoreSnafu)?;
 
@@ -2858,7 +2861,7 @@ impl UserQuery {
                     };
 
                     let s3 = s3_volume
-                        .get_s3_builder()
+                        .get_s3_builder_with_options(client_options)
                         .build()
                         .context(ex_error::ObjectStoreSnafu)?;
                     Ok(Arc::new(s3))

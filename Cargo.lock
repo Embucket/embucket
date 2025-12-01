@@ -3346,6 +3346,7 @@ dependencies = [
  "async-trait",
  "aws-config",
  "aws-credential-types",
+ "aws-sdk-s3tables",
  "bytes",
  "catalog",
  "catalog-metastore",

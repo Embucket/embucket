@@ -9,7 +9,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::sync::Arc;
-use std::{fmt::Display, fs, path::Path as StdPath};
+use std::{fmt::Display, fs, path::Path as StdPath, time::Duration};
+use tracing::warn;
 use validator::{Validate, ValidationError, ValidationErrors};
 
 // Enum for supported cloud providers
@@ -41,6 +42,41 @@ fn s3_endpoint_regex_func() -> Regex {
 fn s3tables_arn_regex_func() -> Regex {
     Regex::new(r"^arn:aws:s3tables:[a-z0-9-]+:\d+:bucket/[a-zA-Z0-9.\-_]+$")
         .expect("Failed to create s3tables_arn_regex")
+}
+
+const OBJECT_STORE_REQUEST_TIMEOUT_ENV: &str = "OBJECT_STORE_REQUEST_TIMEOUT_SECS";
+const OBJECT_STORE_CONNECT_TIMEOUT_ENV: &str = "OBJECT_STORE_CONNECT_TIMEOUT_SECS";
+const OBJECT_STORE_REQUEST_TIMEOUT_SECS: u64 = 30;
+const OBJECT_STORE_CONNECT_TIMEOUT_SECS: u64 = 5;
+
+fn parse_timeout_env(var: &str) -> Option<u64> {
+    match std::env::var(var) {
+        Ok(value) => match value.parse::<u64>() {
+            Ok(secs) => Some(secs),
+            Err(error) => {
+                warn!(
+                    variable = var,
+                    value = %value,
+                    error = %error,
+                    "Failed to parse object store timeout env var, using default"
+                );
+                None
+            }
+        },
+        Err(_) => None,
+    }
+}
+
+#[must_use]
+pub fn object_store_client_options() -> ClientOptions {
+    let request_timeout = parse_timeout_env(OBJECT_STORE_REQUEST_TIMEOUT_ENV)
+        .unwrap_or(OBJECT_STORE_REQUEST_TIMEOUT_SECS);
+    let connect_timeout = parse_timeout_env(OBJECT_STORE_CONNECT_TIMEOUT_ENV)
+        .unwrap_or(OBJECT_STORE_CONNECT_TIMEOUT_SECS);
+
+    ClientOptions::new()
+        .with_timeout(Duration::from_secs(request_timeout))
+        .with_connect_timeout(Duration::from_secs(connect_timeout))
 }
 
 // AWS Access Key Credentials
@@ -113,7 +149,16 @@ pub struct S3Volume {
 impl S3Volume {
     #[must_use]
     pub fn get_s3_builder(&self) -> AmazonS3Builder {
+        self.get_s3_builder_with_options(object_store_client_options())
+    }
+
+    #[must_use]
+    pub fn get_s3_builder_with_options(
+        &self,
+        client_options: ClientOptions,
+    ) -> AmazonS3Builder {
         let mut s3_builder = AmazonS3Builder::new()
+            .with_client_options(client_options)
             .with_conditional_put(object_store::aws::S3ConditionalPut::ETagMatch);
 
         if let Some(region) = &self.region {
@@ -266,7 +311,7 @@ impl Volume {
     }
 
     pub fn get_object_store(&self) -> Result<Arc<dyn ObjectStore>> {
-        match &self.volume {
+            match &self.volume {
             VolumeType::S3(volume) => {
                 let s3_builder = volume.get_s3_builder();
                 s3_builder
@@ -341,7 +386,9 @@ pub async fn create_object_store_from_url(
         "s3" => {
             let bucket = url.host_str().unwrap_or_default();
 
-            let region = resolve_bucket_region(bucket, &ClientOptions::default())
+            let client_options = object_store_client_options();
+
+            let region = resolve_bucket_region(bucket, &client_options)
                 .await
                 .context(metastore_error::ObjectStoreSnafu)?;
 
@@ -352,7 +399,7 @@ pub async fn create_object_store_from_url(
                 credentials: None,
             };
 
-            let mut builder = s3_volume.get_s3_builder();
+            let mut builder = s3_volume.get_s3_builder_with_options(client_options);
             builder = builder.with_skip_signature(true);
 
             let s3 = builder.build().context(metastore_error::ObjectStoreSnafu)?;

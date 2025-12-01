@@ -9,7 +9,7 @@ use crate::error::{
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
 use crate::utils::fetch_table_providers;
-use aws_config::{BehaviorVersion, Region};
+use aws_config::{BehaviorVersion, Region, timeout::TimeoutConfigBuilder};
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::{
@@ -231,6 +231,13 @@ impl EmbucketCatalogList {
         let creds = Credentials::from_keys(ak.unwrap_or_default(), sk.unwrap_or_default(), token);
         let config = aws_config::defaults(BehaviorVersion::latest())
             .credentials_provider(SharedCredentialsProvider::new(creds))
+            .timeout_config(
+                TimeoutConfigBuilder::new()
+                    .operation_timeout(Duration::from_secs(5))
+                    .operation_attempt_timeout(Duration::from_secs(5))
+                    .connect_timeout(Duration::from_secs(2))
+                    .build(),
+            )
             .region(Region::new(volume.region()))
             .load()
             .await;

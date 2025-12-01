@@ -458,9 +458,9 @@ impl ExecutionService for CoreExecutionService {
 
     #[tracing::instrument(
         name = "ExecutionService::submit",
-        level = "debug",
+        level = "info",
         skip(self),
-        fields(query_id, with_timeout_secs, old_queries_count = self.queries.count()),
+        fields(query_id, query, with_timeout_secs, old_queries_count = self.queries.count()),
         err
     )]
     async fn submit(
