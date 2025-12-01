@@ -2,6 +2,7 @@ use crate::models::{QueryContext, QueryResult};
 use crate::service::{CoreExecutionService, ExecutionService};
 use crate::utils::Config;
 use catalog_metastore::InMemoryMetastore;
+use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use catalog_metastore::models::table::TableIdent as MetastoreTableIdent;
 use catalog_metastore::{
     Database as MetastoreDatabase, Schema as MetastoreSchema, SchemaIdent as MetastoreSchemaIdent,
@@ -440,6 +441,12 @@ async fn test_query_timeout() {
 async fn test_execute_read_only_mode() {
     //setup
     let metastore = Arc::new(InMemoryMetastore::new());
+    let metastore_config = MetastoreBootstrapConfig::default();
+    metastore_config
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to apply config");
+
     let execution_svc = CoreExecutionService::new(metastore.clone(), Arc::new(Config::default()))
         .await
         .expect("Failed to create execution service");
