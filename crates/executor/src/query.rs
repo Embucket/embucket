@@ -1796,11 +1796,10 @@ impl UserQuery {
                         table_schema as schema_name,
                         column_name as column_name,
                         data_type as data_type,
-                        is_nullable as 'null?',
                         column_default as default,
+                        is_nullable as 'null?',
                         column_type as kind,
                         NULL as expression,
-                        NULL as comment,
                         table_catalog as database_name,
                         NULL as autoincrement
                     FROM {catalog}.information_schema.columns"
