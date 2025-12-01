@@ -2,7 +2,6 @@ use super::catalog::catalog_list::EmbucketCatalogList;
 use super::catalog::information_schema::information_schema::{
     INFORMATION_SCHEMA, InformationSchemaProvider,
 };
-use super::datafusion::planner::ExtendedSqlToRel;
 use super::error::{
     self as ex_error, Error, InvalidColumnIdentifierSnafu, MergeSourceNotSupportedSnafu,
     ObjectType as ExistingObjectType, Result,
@@ -47,7 +46,7 @@ use datafusion::physical_optimizer::PhysicalOptimizerRule;
 use datafusion::prelude::{CsvReadOptions, DataFrame};
 use datafusion::scalar::ScalarValue;
 use datafusion::sql::parser::{CreateExternalTable, Statement as DFStatement};
-use datafusion::sql::planner::ParserOptions;
+use datafusion::sql::planner::SqlToRel;
 use datafusion::sql::resolve::resolve_table_references;
 use datafusion::sql::sqlparser::ast::{
     CreateTable as CreateTableStatement, DescribeAlias, Expr, Ident, ObjectName, Query, SchemaName,
@@ -137,9 +136,7 @@ impl UserQuery {
     }
 
     pub fn parse_query(&self) -> std::result::Result<DFStatement, DataFusionError> {
-        let state = self.session.ctx.state();
-        let dialect = state.config().options().sql_parser.dialect.as_str();
-        let mut statement = state.sql_to_statement(&self.raw_query, dialect)?;
+        let mut statement = self.sql_to_df_statement(&self.raw_query)?;
         // it is designed to return DataFusionError, this is the reason why we
         // create DataFusionError manually. This is also requires manual unboxing.
         Self::postprocess_query_statement_with_validation(&mut statement).map_err(|e| match e {
@@ -577,10 +574,8 @@ impl UserQuery {
     async fn set_tuple_variables_from_sql(&self, sql: &str) -> Result<QueryResult> {
         use datafusion::sql::sqlparser::ast::{Expr as SqlExpr, Set, ValueWithSpan};
 
-        let state = self.session.ctx.state();
-        let dialect = state.config().options().sql_parser.dialect.as_str();
-        let mut stmt = state
-            .sql_to_statement(sql, dialect)
+        let mut stmt = self
+            .sql_to_df_statement(sql)
             .context(ex_error::DataFusionSnafu)?;
         let DFStatement::Statement(inner) = &mut stmt else {
             return self.status_response();
@@ -796,8 +791,8 @@ impl UserQuery {
         // Guard: if both column list and query are absent, treat as SQL parse error (syntax)
         // e.g., "create table foo" should map to Snowflake-like syntax error
         if create_table_statement.columns.is_empty() && create_table_statement.query.is_none() {
-            return Err(ex_error::Error::SqlParser {
-                error: datafusion::sql::sqlparser::parser::ParserError::ParserError(
+            return Err(Error::SqlParser {
+                error: sqlparser::parser::ParserError::ParserError(
                     "syntax error unexpected end of input".to_string(),
                 ),
                 location: location!(),
@@ -814,6 +809,7 @@ impl UserQuery {
         create_table_statement.name = new_table_ident.clone().into();
         // We don't support transient tables for now
         create_table_statement.transient = false;
+        create_table_statement.temporary = false;
         // Remove all unsupported iceberg params (we already take them into account)
         create_table_statement.iceberg = false;
         create_table_statement.base_location = None;
@@ -823,9 +819,8 @@ impl UserQuery {
         create_table_statement.storage_serialization_policy = None;
         create_table_statement.cluster_by = None;
 
-        let mut plan = self
-            .get_custom_logical_plan(&create_table_statement.to_string())
-            .await?;
+        let df_stmt = DFStatement::Statement(Box::new(statement));
+        let mut plan = Box::pin(self.get_custom_logical_plan(df_stmt)).await?;
         // Run analyzer rules to ensure the logical plan has the correct schema,
         // especially when handling CTEs used as sources for INSERT statements.
         plan = self
@@ -1005,10 +1000,8 @@ impl UserQuery {
             state: &self.session.ctx.state(),
             tables: session_context,
         };
-        let planner = ExtendedSqlToRel::new(
-            &session_context_planner,
-            self.session.ctx.state().get_parser_options(),
-        );
+
+        let planner = SqlToRel::new(&session_context_planner);
         let table_schema = planner
             .build_schema(statement.columns)
             .context(ex_error::DataFusionSnafu)?;
@@ -1204,7 +1197,7 @@ impl UserQuery {
 
         // Check if this copies from an external location
         if let Some(location) = get_external_location(&from_obj) {
-            let insert_reference: datafusion_common::TableReference = (&insert_into).into();
+            let insert_reference: TableReference = (&insert_into).into();
 
             let into_provider = self
                 .session
@@ -1352,10 +1345,7 @@ impl UserQuery {
 
                 session_context_provider.tables.extend(tables);
 
-                let sql_planner =
-                    ExtendedSqlToRel::new(&session_context_provider, ParserOptions::default());
-
-                let source_plan = sql_planner
+                let source_plan = SqlToRel::new(&session_context_provider)
                     .sql_statement_to_plan(query)
                     .context(ex_error::DataFusionLogicalPlanMergeSourceSnafu)?;
 
@@ -1447,15 +1437,11 @@ impl UserQuery {
         let target_schema = target_plan.schema().clone();
 
         // Create the LogicalPlan for the join
-
-        let sql_planner =
-            ExtendedSqlToRel::new(&session_context_provider, ParserOptions::default());
-
+        let sql_planner = SqlToRel::new(&session_context_provider);
         let schema = build_join_schema(&target_schema, &source_schema, &JoinType::Full)
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
         let on_expr = sql_planner
-            .as_ref()
             .sql_to_expr((*on).clone(), &schema, &mut planner_context)
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
@@ -2035,23 +2021,31 @@ impl UserQuery {
     }
 
     #[instrument(
+        name = "UserQuery::sql_to_df_statement",
+        level = "trace",
+        skip(self),
+        err,
+        ret
+    )]
+    pub fn sql_to_df_statement(
+        &self,
+        query: &str,
+    ) -> std::result::Result<DFStatement, DataFusionError> {
+        let state = self.session.ctx.state();
+        let dialect = state.config().options().sql_parser.dialect.as_str();
+        state.sql_to_statement(query, dialect)
+    }
+
+    #[instrument(
         name = "UserQuery::get_custom_logical_plan",
         level = "trace",
         skip(self),
         err,
         ret
     )]
-    pub async fn get_custom_logical_plan(&self, query: &str) -> Result<LogicalPlan> {
-        let state = self.session.ctx.state();
-        let dialect = state.config().options().sql_parser.dialect.as_str();
-
-        // We turn a query to SQL only to turn it back into a statement
-        // TODO: revisit this pattern
-        let mut statement = state
-            .sql_to_statement(query, dialect)
-            .context(ex_error::DataFusionSnafu)?;
-        self.update_statement_references(&mut statement)?;
-        self.statement_to_plan(&statement).await
+    pub async fn get_custom_logical_plan(&self, mut df_stmt: DFStatement) -> Result<LogicalPlan> {
+        self.update_statement_references(&mut df_stmt)?;
+        self.statement_to_plan(&df_stmt).await
     }
 
     #[instrument(
@@ -2136,8 +2130,7 @@ impl UserQuery {
             state: &self.session.ctx.state(),
             tables,
         };
-        let planner =
-            ExtendedSqlToRel::new(&ctx_provider, self.session.ctx.state().get_parser_options());
+        let planner = SqlToRel::new(&ctx_provider);
         planner
             .sql_statement_to_plan(statement)
             .context(ex_error::DataFusionSnafu)
@@ -2242,7 +2235,10 @@ impl UserQuery {
         err
     )]
     pub async fn execute_with_custom_plan(&self, query: &str) -> Result<QueryResult> {
-        let mut plan = self.get_custom_logical_plan(query).await?;
+        let statement = self
+            .sql_to_df_statement(query)
+            .context(ex_error::DataFusionSnafu)?;
+        let mut plan = self.get_custom_logical_plan(statement).await?;
         let session_params_map: HashMap<String, ScalarValue> = self
             .session
             .session_params
@@ -2486,7 +2482,7 @@ impl UserQuery {
             fn process_set_expr<'a>(
                 this: &'a UserQuery,
                 set_expr: &'a mut sqlparser::ast::SetExpr,
-            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+            ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
                 Box::pin(async move {
                     match set_expr {
                         sqlparser::ast::SetExpr::Select(select) => {
@@ -2920,7 +2916,7 @@ fn build_target_schema(base_schema: &ArrowSchema) -> ArrowSchema {
 /// # Returns
 /// Vector of expressions for each column in the target schema
 pub fn merge_clause_projection<S: ContextProvider>(
-    sql_planner: &ExtendedSqlToRel<'_, S>,
+    sql_planner: &SqlToRel<'_, S>,
     schema: &DFSchema,
     target_schema: &DFSchema,
     source_schema: &DFSchema,
@@ -2937,7 +2933,6 @@ pub fn merge_clause_projection<S: ContextProvider>(
         let op = merge_clause_expression(&merge_clause)?;
         let op = if let Some(predicate) = merge_clause.predicate {
             let predicate = sql_planner
-                .as_ref()
                 .sql_to_expr(predicate, schema, &mut planner_context)
                 .context(ex_error::DataFusionSnafu)?;
             and(op, predicate)
@@ -2960,7 +2955,6 @@ pub fn merge_clause_projection<S: ContextProvider>(
                                 })?
                                 .to_string();
                             let expr = sql_planner
-                                .as_ref()
                                 .sql_to_expr(assignment.value, schema, &mut planner_context)
                                 .context(ex_error::DataFusionSnafu)?;
                             updates
@@ -2991,7 +2985,6 @@ pub fn merge_clause_projection<S: ContextProvider>(
                 ) {
                     let column_name = column.value.clone();
                     let expr = sql_planner
-                        .as_ref()
                         .sql_to_expr(value, source_schema, &mut planner_context)
                         .context(ex_error::DataFusionSnafu)?;
                     all_columns.remove(&column_name);
