@@ -8,7 +8,7 @@ pub(crate) mod layers;
 use api_snowflake_rest::server::layer::require_auth as snowflake_require_auth;
 use api_snowflake_rest::server::router::create_auth_router as create_snowflake_auth_router;
 use api_snowflake_rest::server::router::create_router as create_snowflake_router;
-use api_snowflake_rest::server::server_models::Config;
+use api_snowflake_rest::server::server_models::RestApiConfig;
 use api_snowflake_rest::server::state::AppState as SnowflakeAppState;
 use api_snowflake_rest_sessions::layer::Host;
 use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
@@ -122,7 +122,7 @@ async fn async_main(
         .data_format
         .clone()
         .unwrap_or_else(|| "json".to_string());
-    let snowflake_rest_cfg = Config::new(&data_format, opts.jwt_secret())
+    let snowflake_rest_cfg = RestApiConfig::new(&data_format, opts.jwt_secret())
         .expect("Failed to create snowflake config")
         .with_demo_credentials(
             opts.auth_demo_user.clone().unwrap(),
@@ -143,7 +143,6 @@ async fn async_main(
         mem_pool_size_mb: opts.mem_pool_size_mb,
         mem_enable_track_consumers_pool: opts.mem_enable_track_consumers_pool,
         disk_pool_size_mb: opts.disk_pool_size_mb,
-        query_history_rows_limit: opts.query_history_rows_limit,
         read_only: opts.read_only,
         max_concurrent_table_fetches: opts.max_concurrent_table_fetches,
     };

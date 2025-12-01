@@ -1,10 +1,6 @@
-cfg_if::cfg_if! {
-    if #[cfg(feature = "default-server")] {
-        use executor::models::ColumnInfo as ColumnInfoModel;
-    }
-}
-
-use serde::{Deserialize, Serialize};
+use executor::models::ColumnInfo as ColumnInfoModel;
+use serde::{Deserialize, Serialize, Serializer, ser};
+use serde_json::Value;
 use serde_json::value::RawValue;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -16,6 +12,7 @@ pub struct LoginRequestQueryParams {
     pub request_id: String,
     pub database_name: Option<String>,
     pub schema_name: Option<String>,
+    pub warehouse: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,8 +40,8 @@ pub struct LoginRequestData {
     pub svn_revision: Option<String>,
     pub account_name: String,
     pub login_name: String,
-    pub client_environment: HashMap<String, serde_json::Value>,
     pub password: String,
+    pub client_environment: HashMap<String, serde_json::Value>,
     pub session_parameters: HashMap<String, serde_json::Value>,
 }
 
@@ -70,6 +67,35 @@ pub struct AbortRequestBody {
     pub request_id: Uuid, // duplicate in body, taken from snowflake connector
 }
 
+#[allow(clippy::ref_option)]
+fn serialize_raw_json<S>(value: &Option<RowSet>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(RowSet::Raw(raw)) => {
+            let v: &RawValue = serde_json::from_str(raw).map_err(|_| {
+                ser::Error::custom("Error creating RawValue from previously serialized json")
+            })?;
+            v.serialize(s)
+        }
+        Some(RowSet::Parsed(v)) => v.serialize(s),
+        _ => s.serialize_none(),
+    }
+}
+
+/// `RowSet` can be either:
+/// 1. `RowSet::Raw()` accepts previously serialized by arrow writer `&[RecordBatch]`.
+///    This data to be returned in response without further processing. Server uses it.
+/// 2. `RowSet::Parsed()` accepts parsed data, which fits to the `Vec<Vec<serde_json::Value>>`.
+///    This is used by testing client when it receives response.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum RowSet {
+    Raw(String),
+    Parsed(Vec<Vec<Value>>),
+}
+
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseData {
@@ -77,8 +103,8 @@ pub struct ResponseData {
     pub row_type: Vec<ColumnInfo>,
     #[serde(rename = "rowsetBase64")]
     pub row_set_base_64: Option<String>,
-    #[serde(rename = "rowset")]
-    pub row_set: Option<Box<RawValue>>,
+    #[serde(rename = "rowset", serialize_with = "serialize_raw_json")]
+    pub row_set: Option<RowSet>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -118,7 +144,6 @@ pub struct ColumnInfo {
     collation: Option<String>,
 }
 
-#[cfg(feature = "default-server")]
 impl From<ColumnInfoModel> for ColumnInfo {
     fn from(column_info: ColumnInfoModel) -> Self {
         Self {

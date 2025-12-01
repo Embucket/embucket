@@ -144,6 +144,37 @@ impl UserSession {
         Ok(session)
     }
 
+    pub fn set_database(&self, database: &str) -> Result<()> {
+        self.set_variable("database", database)
+    }
+
+    pub fn set_schema(&self, schema: &str) -> Result<()> {
+        self.set_variable("schema", schema)
+    }
+
+    pub fn set_warehouse(&self, warehouse: &str) -> Result<()> {
+        self.set_variable("warehouse", warehouse)
+    }
+
+    #[tracing::instrument(
+        name = "api_snowflake_rest::session::set_variable",
+        level = "info",
+        skip(self),
+        err
+    )]
+    fn set_variable(&self, key: &str, value: &str) -> Result<()> {
+        if key.is_empty() || value.is_empty() {
+            return ex_error::OnyUseWithVariablesSnafu.fail();
+        }
+        let session_id = self.ctx.session_id();
+        let params = HashMap::from([(
+            key.to_string(),
+            SessionProperty::from_str_value(key.to_string(), value.to_string(), Some(session_id)),
+        )]);
+        self.set_session_variable(true, params)?;
+        Ok(())
+    }
+
     pub fn query<S>(self: &Arc<Self>, query: S, query_context: QueryContext) -> UserQuery
     where
         S: Into<String>,

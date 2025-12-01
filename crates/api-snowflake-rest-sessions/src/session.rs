@@ -88,7 +88,12 @@ where
 }
 
 impl DFSessionId {
-    #[tracing::instrument(level = "info", skip(execution_svc), fields(sessions_count))]
+    #[tracing::instrument(
+        name = "DFSessionId::get_or_create_session",
+        level = "info",
+        skip(execution_svc),
+        fields(new_session, sessions_count)
+    )]
     async fn get_or_create_session(
         execution_svc: Arc<dyn ExecutionService>,
         session_id: String,
@@ -102,6 +107,7 @@ impl DFSessionId {
                 .create_session(&session_id)
                 .await
                 .context(session_error::ExecutionSnafu)?;
+            tracing::Span::current().record("new_session", true);
         }
 
         let sessions_count = execution_svc.get_sessions().read().await.len();

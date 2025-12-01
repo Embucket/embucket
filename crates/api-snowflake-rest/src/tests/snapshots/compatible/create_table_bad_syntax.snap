@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 597/597ms]: create table foo\nQuery UUID: 0f081036-fa81-42ac-99e4-d9a4d870b0cd"
+expression: snapshot
+---
+create table foo
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "001003",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "SQL compilation error: syntax error unexpected end of input",
+  "code": "001003"
+}
