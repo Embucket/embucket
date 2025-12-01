@@ -52,7 +52,7 @@ impl InformationSchemaColumns {
             Field::new("is_identity", Utf8, true),
             Field::new("comment", Utf8, true),
             Field::new("identity_start", Utf8, true),
-            Field::new("identity_increment", UInt64, true),
+            Field::new("identity_increment", Utf8, true),
         ]))
     }
     pub fn new(config: InformationSchemaConfig) -> Self {
@@ -263,6 +263,10 @@ impl InformationSchemaColumnsBuilder {
                 Arc::new(self.numeric_scales.finish()),
                 Arc::new(self.datetime_precisions.finish()),
                 Arc::new(self.interval_types.finish()),
+                Arc::new(self.is_identity.finish()),
+                Arc::new(self.comment.finish()),
+                Arc::new(self.identity_start.finish()),
+                Arc::new(self.identity_increment.finish()),
             ],
         )
     }
