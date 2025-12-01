@@ -5,14 +5,14 @@ info: "Setup queries: CREATE OR REPLACE TABLE strings (v VARCHAR(50))\nAS SELECT
 ---
 Ok(
     [
-        "+-------------------------------------+---------+",
-        "| v                                   | matches |",
-        "+-------------------------------------+---------+",
-        "| Contains embedded single \\backslash | true    |",
-        "| Sacramento                          | false   |",
-        "| San Francisco                       | false   |",
-        "| San Jose                            | false   |",
-        "| Santa Clara                         | false   |",
-        "+-------------------------------------+---------+",
+        "+--------------------------------------+---------+",
+        "| v                                    | matches |",
+        "+--------------------------------------+---------+",
+        "| Contains embedded single \\\\backslash | true    |",
+        "| Sacramento                           | false   |",
+        "| San Francisco                        | false   |",
+        "| San Jose                             | false   |",
+        "| Santa Clara                          | false   |",
+        "+--------------------------------------+---------+",
     ],
 )

@@ -574,7 +574,9 @@ impl UserQuery {
     async fn set_tuple_variables_from_sql(&self, sql: &str) -> Result<QueryResult> {
         use datafusion::sql::sqlparser::ast::{Expr as SqlExpr, Set, ValueWithSpan};
 
-        let mut stmt = self.sql_to_df_statement(sql)?;
+        let mut stmt = self
+            .sql_to_df_statement(sql)
+            .context(ex_error::DataFusionSnafu)?;
         let DFStatement::Statement(inner) = &mut stmt else {
             return self.status_response();
         };
@@ -2025,12 +2027,13 @@ impl UserQuery {
         err,
         ret
     )]
-    pub fn sql_to_df_statement(&self, query: &str) -> Result<DFStatement> {
+    pub fn sql_to_df_statement(
+        &self,
+        query: &str,
+    ) -> std::result::Result<DFStatement, DataFusionError> {
         let state = self.session.ctx.state();
         let dialect = state.config().options().sql_parser.dialect.as_str();
-        state
-            .sql_to_statement(query, dialect)
-            .context(ex_error::DataFusionSnafu)
+        state.sql_to_statement(query, dialect)
     }
 
     #[instrument(
@@ -2232,7 +2235,9 @@ impl UserQuery {
         err
     )]
     pub async fn execute_with_custom_plan(&self, query: &str) -> Result<QueryResult> {
-        let statement = self.sql_to_df_statement(query)?;
+        let statement = self
+            .sql_to_df_statement(query)
+            .context(ex_error::DataFusionSnafu)?;
         let mut plan = self.get_custom_logical_plan(statement).await?;
         let session_params_map: HashMap<String, ScalarValue> = self
             .session
