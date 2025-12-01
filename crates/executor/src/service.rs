@@ -31,11 +31,8 @@ use crate::running_queries::RunningQueryId;
 use crate::session::{SESSION_INACTIVITY_EXPIRATION_SECONDS, to_unix};
 use crate::tracing::SpanTracer;
 use crate::utils::{Config, MemPoolType};
-use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
-use catalog_metastore::{
-    Database, InMemoryMetastore, Metastore, Schema, SchemaIdent, TableIdent as MetastoreTableIdent,
-    Volume, VolumeType,
-};
+use catalog::catalog_list::EmbucketCatalogList;
+use catalog_metastore::{InMemoryMetastore, Metastore, TableIdent as MetastoreTableIdent};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::Instrument;
