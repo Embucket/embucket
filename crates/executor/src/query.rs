@@ -1782,10 +1782,11 @@ impl UserQuery {
                         table_schema as schema_name,
                         column_name as column_name,
                         data_type as data_type,
-                        column_default as default,
                         is_nullable as 'null?',
+                        column_default as default,
                         column_type as kind,
                         NULL as expression,
+                        NULL as comment,
                         table_catalog as database_name,
                         NULL as autoincrement
                     FROM {catalog}.information_schema.columns"
@@ -1806,8 +1807,20 @@ impl UserQuery {
             }
             Statement::ShowVariable { variable } => {
                 let variable = object_name_to_string(&ObjectName::from(variable));
-                format!(
+                if variable.to_uppercase().starts_with("PRIMARY.KEYS") {
                     "SELECT
+                        NULL::TIMESTAMP as created_on,
+                        NULL::VARCHAR as database_name,
+                        NULL::VARCHAR as schema_name,
+                        NULL::VARCHAR as table_name,
+                        NULL::VARCHAR as column_name,
+                        NULL::INT as key_sequence,
+                        NULL::VARCHAR as comment,
+                        NULL::VARCHAR as constraint_name"
+                        .to_string()
+                } else {
+                    format!(
+                        "SELECT
                         NULL as created_on,
                         NULL as updated_on,
                         name,
@@ -1816,9 +1829,10 @@ impl UserQuery {
                         description as comment
                     FROM {}.information_schema.df_settings
                     WHERE name = '{}'",
-                    self.current_database(),
-                    variable
-                )
+                        self.current_database(),
+                        variable
+                    )
+                }
             }
             Statement::ShowVariables { filter, .. } => {
                 let sql = format!(
