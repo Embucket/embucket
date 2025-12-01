@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use executor::utils::{DEFAULT_QUERY_HISTORY_ROWS_LIMIT, MemPoolType};
+use executor::utils::MemPoolType;
 use std::path::PathBuf;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -99,14 +99,6 @@ pub struct CliOpts {
         help = "Enable memory tracing functionality"
     )]
     pub alloc_tracing: Option<bool>,
-
-    #[arg(
-        long,
-        env = "QUERY_HISTORY_ROWS_LIMIT",
-        default_value_t = DEFAULT_QUERY_HISTORY_ROWS_LIMIT,
-        help = "Maximum number of rows in separate query record"
-    )]
-    pub query_history_rows_limit: usize,
 
     #[arg(
         long,

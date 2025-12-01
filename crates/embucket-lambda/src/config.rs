@@ -1,4 +1,4 @@
-use executor::utils::{Config as ExecutionConfig, DEFAULT_QUERY_HISTORY_ROWS_LIMIT, MemPoolType};
+use executor::utils::{Config as ExecutionConfig, MemPoolType};
 use std::{env, path::PathBuf};
 
 #[derive(Debug, Clone)]
@@ -13,7 +13,6 @@ pub struct EnvConfig {
     pub mem_pool_size_mb: Option<usize>,
     pub mem_enable_track_consumers_pool: Option<bool>,
     pub disk_pool_size_mb: Option<usize>,
-    pub query_history_rows_limit: usize,
     pub embucket_version: String,
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
@@ -35,8 +34,6 @@ impl EnvConfig {
             mem_pool_size_mb: parse_env("MEM_POOL_SIZE_MB"),
             mem_enable_track_consumers_pool: parse_env("MEM_ENABLE_TRACK_CONSUMERS_POOL"),
             disk_pool_size_mb: parse_env("DISK_POOL_SIZE_MB"),
-            query_history_rows_limit: parse_env("QUERY_HISTORY_ROWS_LIMIT")
-                .unwrap_or(DEFAULT_QUERY_HISTORY_ROWS_LIMIT),
             embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
@@ -56,7 +53,6 @@ impl EnvConfig {
             mem_pool_size_mb: self.mem_pool_size_mb,
             mem_enable_track_consumers_pool: self.mem_enable_track_consumers_pool,
             disk_pool_size_mb: self.disk_pool_size_mb,
-            query_history_rows_limit: self.query_history_rows_limit,
             read_only: self.read_only,
             max_concurrent_table_fetches: self.max_concurrent_table_fetches,
         }
