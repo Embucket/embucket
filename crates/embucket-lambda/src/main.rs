@@ -47,7 +47,6 @@ async fn main() -> Result<(), LambdaError> {
         mem_pool_type = ?env_config.mem_pool_type,
         mem_pool_size_mb = ?env_config.mem_pool_size_mb,
         disk_pool_size_mb = ?env_config.disk_pool_size_mb,
-        bootstrap_default_entities = env_config.bootstrap_default_entities,
         read_only = env_config.read_only,
         metastore_config = env_config.metastore_config.as_ref().map(|p| p.display().to_string()),
         "Loaded Lambda configuration"

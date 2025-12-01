@@ -136,7 +136,6 @@ async fn async_main(
 
     let execution_cfg = ExecutionConfig {
         embucket_version: "0.1.0".to_string(),
-        bootstrap_default_entities: !opts.no_bootstrap,
         sql_parser_dialect: opts.sql_parser_dialect.clone(),
         query_timeout_secs: opts.query_timeout_secs,
         max_concurrency_level: opts.max_concurrency_level,
