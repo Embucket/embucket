@@ -70,7 +70,7 @@ impl Default for Config {
             accelerator_endpoint: Some("http://127.0.0.1:50051".to_string()),
         }
     }
-}   
+}
 
 impl Config {
     #[must_use]

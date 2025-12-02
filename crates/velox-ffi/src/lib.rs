@@ -1,12 +1,12 @@
 //! Minimal Velox FFI facade that links to a C/C++ shim for Velox.
-use arrow::array::{make_array, ArrayRef};
-use arrow_array::ffi::{FFI_ArrowArray as ArrowArrayFFI, from_ffi, export_array_into_raw};
-use arrow_schema::ffi::FFI_ArrowSchema as ArrowSchemaFFI;
+use arrow::array::{ArrayRef, make_array};
 use arrow::record_batch::RecordBatch;
+use arrow_array::ffi::{FFI_ArrowArray as ArrowArrayFFI, export_array_into_raw, from_ffi};
 use arrow_schema::Schema;
+use arrow_schema::ffi::FFI_ArrowSchema as ArrowSchemaFFI;
 // no Pin usage after iterator refactor
-use std::sync::Arc;
 use std::ffi::{c_char, c_int, c_longlong, c_uchar, c_void};
+use std::sync::Arc;
 
 #[allow(non_camel_case_types)]
 type int32_t = c_int;
@@ -20,7 +20,8 @@ type VeloxStreamHandle = *mut c_void;
 #[allow(non_camel_case_types)]
 type c_bool = u8;
 
-type VeloxCreateSession = unsafe extern "C" fn(err: *mut c_char, err_len: usize) -> VeloxSessionHandle;
+type VeloxCreateSession =
+    unsafe extern "C" fn(err: *mut c_char, err_len: usize) -> VeloxSessionHandle;
 type VeloxFreeSession = unsafe extern "C" fn(s: VeloxSessionHandle);
 type VeloxRegisterTableArrow = unsafe extern "C" fn(
     s: VeloxSessionHandle,
@@ -53,7 +54,7 @@ type VeloxStreamFree = unsafe extern "C" fn(st: VeloxStreamHandle);
 
 #[derive(thiserror::Error, Debug)]
 pub enum VeloxError {
-    #[error("velox feature not compiled")] 
+    #[error("velox feature not compiled")]
     FeatureDisabled,
     #[error("{0}")]
     Message(String),
@@ -87,17 +88,32 @@ impl VeloxSession {
             } else {
                 Some(h)
             }
-        } else { None };
-        Ok(Self { _cfg: cfg, lib, handle })
+        } else {
+            None
+        };
+        Ok(Self {
+            _cfg: cfg,
+            lib,
+            handle,
+        })
     }
 
-    pub fn register_table_arrow(&mut self, name: &str, schema: &Schema, batches: &[RecordBatch]) -> Result<()> {
+    pub fn register_table_arrow(
+        &mut self,
+        name: &str,
+        schema: &Schema,
+        batches: &[RecordBatch],
+    ) -> Result<()> {
         let lib = self.lib.clone().ok_or(VeloxError::FeatureDisabled)?;
         let handle = self.handle.ok_or(VeloxError::FeatureDisabled)?;
         // Export schema once
         // Build a full FFI schema for the table
-        let c_schema = Box::new(ArrowSchemaFFI::try_from(schema).map_err(|e| VeloxError::Message(format!("FFI_ArrowSchema::try_from: {e}")))?);
-        let cname = std::ffi::CString::new(name).map_err(|e| VeloxError::Message(format!("bad name: {e}")))?;
+        let c_schema = Box::new(
+            ArrowSchemaFFI::try_from(schema)
+                .map_err(|e| VeloxError::Message(format!("FFI_ArrowSchema::try_from: {e}")))?,
+        );
+        let cname = std::ffi::CString::new(name)
+            .map_err(|e| VeloxError::Message(format!("bad name: {e}")))?;
 
         for batch in batches {
             let num_cols = batch.num_columns() as i32;
@@ -105,14 +121,21 @@ impl VeloxSession {
 
             // Export each column
             let mut col_boxes: Vec<Box<ArrowArrayFFI>> = Vec::with_capacity(batch.num_columns());
-            let mut col_schema_boxes: Vec<Box<ArrowSchemaFFI>> = Vec::with_capacity(batch.num_columns());
+            let mut col_schema_boxes: Vec<Box<ArrowSchemaFFI>> =
+                Vec::with_capacity(batch.num_columns());
             let mut col_ptrs: Vec<*const ArrowArrayFFI> = Vec::with_capacity(batch.num_columns());
             for i in 0..batch.num_columns() {
                 let col: ArrayRef = batch.column(i).clone();
                 let mut c_arr = std::mem::MaybeUninit::<ArrowArrayFFI>::uninit();
                 let mut c_col_schema = std::mem::MaybeUninit::<ArrowSchemaFFI>::uninit();
-                unsafe { export_array_into_raw(col.clone(), c_arr.as_mut_ptr(), c_col_schema.as_mut_ptr()) }
-                    .map_err(|e| VeloxError::Message(format!("export_array_into_raw: {e}")))?;
+                unsafe {
+                    export_array_into_raw(
+                        col.clone(),
+                        c_arr.as_mut_ptr(),
+                        c_col_schema.as_mut_ptr(),
+                    )
+                }
+                .map_err(|e| VeloxError::Message(format!("export_array_into_raw: {e}")))?;
                 let boxed_arr = unsafe { Box::new(c_arr.assume_init()) };
                 let boxed_schema = unsafe { Box::new(c_col_schema.assume_init()) };
                 col_ptrs.push(boxed_arr.as_ref() as *const ArrowArrayFFI);
@@ -138,17 +161,16 @@ impl VeloxSession {
             drop(col_boxes);
             drop(col_schema_boxes);
             if ok == 0 {
-                return Err(VeloxError::Message("velox_register_table_arrow failed".into()));
+                return Err(VeloxError::Message(
+                    "velox_register_table_arrow failed".into(),
+                ));
             }
         }
         // c_schema will drop and run release
         Ok(())
     }
 
-    pub fn execute_substrait_to_arrow_stream(
-        &mut self,
-        plan: &[u8],
-    ) -> Result<VeloxArrowStream> {
+    pub fn execute_substrait_to_arrow_stream(&mut self, plan: &[u8]) -> Result<VeloxArrowStream> {
         let lib = self.lib.clone().ok_or(VeloxError::FeatureDisabled)?;
         let handle = self.handle.ok_or(VeloxError::FeatureDisabled)?;
         // Attempt native execution. In stub builds, this produces an empty stream.
@@ -171,18 +193,33 @@ impl VeloxSession {
 
 pub struct VeloxArrowStream {
     pub schema: Arc<Schema>,
-    pub batches: Box<dyn Iterator<Item = RecordBatch> + Send + 'static>, 
+    pub batches: Box<dyn Iterator<Item = RecordBatch> + Send + 'static>,
     // Keep native resources alive for the duration of the iterator
     _native: Option<VeloxStreamNative>,
 }
 
 impl VeloxArrowStream {
-    pub fn into_batches(self) -> (Arc<Schema>, Box<dyn Iterator<Item = RecordBatch> + Send + 'static>) { (self.schema, self.batches) }
+    pub fn into_batches(
+        self,
+    ) -> (
+        Arc<Schema>,
+        Box<dyn Iterator<Item = RecordBatch> + Send + 'static>,
+    ) {
+        (self.schema, self.batches)
+    }
 
     fn new(lib: Arc<VeloxDynLib>, handle: VeloxStreamHandle) -> Self {
         let (schema, batches) = drain_native_stream(lib.clone(), handle);
-        let native = VeloxStreamNative { lib, handle, ended: true };
-        Self { schema, batches: Box::new(batches.into_iter()), _native: Some(native) }
+        let native = VeloxStreamNative {
+            lib,
+            handle,
+            ended: true,
+        };
+        Self {
+            schema,
+            batches: Box::new(batches.into_iter()),
+            _native: Some(native),
+        }
     }
 }
 
@@ -199,7 +236,10 @@ impl Drop for VeloxStreamNative {
     }
 }
 
-fn drain_native_stream(lib: Arc<VeloxDynLib>, handle: VeloxStreamHandle) -> (Arc<Schema>, Vec<RecordBatch>) {
+fn drain_native_stream(
+    lib: Arc<VeloxDynLib>,
+    handle: VeloxStreamHandle,
+) -> (Arc<Schema>, Vec<RecordBatch>) {
     let mut batches: Vec<RecordBatch> = Vec::new();
     let mut out_schema = Arc::new(Schema::empty());
     let mut have_schema = false;
@@ -238,21 +278,33 @@ fn drain_native_stream(lib: Arc<VeloxDynLib>, handle: VeloxStreamHandle) -> (Arc
             if let Some(sa) = array.as_any().downcast_ref::<arrow::array::StructArray>() {
                 out_schema = Arc::new(arrow_schema::Schema::new(sa.fields().clone()));
                 have_schema = true;
-                let cols: Vec<ArrayRef> = (0..sa.num_columns()).map(|i| sa.column(i).clone()).collect();
-                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), cols) { batches.push(rb); }
+                let cols: Vec<ArrayRef> = (0..sa.num_columns())
+                    .map(|i| sa.column(i).clone())
+                    .collect();
+                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), cols) {
+                    batches.push(rb);
+                }
             } else {
                 // Single column batch; synthesize schema
                 let f = arrow_schema::Field::new("col0", array.data_type().clone(), true);
                 out_schema = Arc::new(arrow_schema::Schema::new(vec![Arc::new(f)]));
                 have_schema = true;
-                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), vec![array.clone()]) { batches.push(rb); }
+                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), vec![array.clone()]) {
+                    batches.push(rb);
+                }
             }
         } else {
             if let Some(sa) = array.as_any().downcast_ref::<arrow::array::StructArray>() {
-                let cols: Vec<ArrayRef> = (0..sa.num_columns()).map(|i| sa.column(i).clone()).collect();
-                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), cols) { batches.push(rb); }
+                let cols: Vec<ArrayRef> = (0..sa.num_columns())
+                    .map(|i| sa.column(i).clone())
+                    .collect();
+                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), cols) {
+                    batches.push(rb);
+                }
             } else {
-                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), vec![array.clone()]) { batches.push(rb); }
+                if let Ok(rb) = RecordBatch::try_new(out_schema.clone(), vec![array.clone()]) {
+                    batches.push(rb);
+                }
             }
         }
     }
@@ -283,11 +335,21 @@ impl VeloxDynLib {
                 unsafe {
                     let create: VeloxCreateSession = *lib.get(b"velox_create_session\0").ok()?;
                     let free: VeloxFreeSession = *lib.get(b"velox_free_session\0").ok()?;
-                    let register: VeloxRegisterTableArrow = *lib.get(b"velox_register_table_arrow\0").ok()?;
-                    let exec: VeloxExecuteSubstrait = *lib.get(b"velox_execute_substrait\0").ok()?;
+                    let register: VeloxRegisterTableArrow =
+                        *lib.get(b"velox_register_table_arrow\0").ok()?;
+                    let exec: VeloxExecuteSubstrait =
+                        *lib.get(b"velox_execute_substrait\0").ok()?;
                     let next: VeloxStreamNext = *lib.get(b"velox_stream_next\0").ok()?;
                     let stream_free: VeloxStreamFree = *lib.get(b"velox_stream_free\0").ok()?;
-                    return Some(Self { lib, create, free, register, exec, next, stream_free });
+                    return Some(Self {
+                        lib,
+                        create,
+                        free,
+                        register,
+                        exec,
+                        next,
+                        stream_free,
+                    });
                 }
             }
         }
@@ -302,5 +364,3 @@ fn cstr_err_to_string(buf: &[i8]) -> String {
     let bytes: Vec<u8> = buf[..n].iter().map(|&c| c as u8).collect();
     String::from_utf8_lossy(&bytes).to_string()
 }
-
-

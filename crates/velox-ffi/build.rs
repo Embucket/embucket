@@ -4,7 +4,10 @@ use std::process::Command;
 
 fn main() {
     // 1) Explicit FFI lib dir + name
-    if let (Ok(dir), Ok(name)) = (env::var("VELOX_FFI_LIB_DIR"), env::var("VELOX_FFI_LIB_NAME")) {
+    if let (Ok(dir), Ok(name)) = (
+        env::var("VELOX_FFI_LIB_DIR"),
+        env::var("VELOX_FFI_LIB_NAME"),
+    ) {
         println!("cargo:rustc-link-search=native={}", dir);
         println!("cargo:rustc-link-lib=dylib={}", name);
         println!("cargo:rustc-cfg=velox_native");
@@ -60,8 +63,12 @@ fn main() {
     let explicit_stub = env::var("VELOX_SHIM_STUB").ok();
     let velox_build = env::var("VELOX_BUILD_DIR").ok();
     let velox_home = env::var("VELOX_HOME").ok();
-    let use_native = explicit_stub.as_deref() == Some("OFF") || (explicit_stub.is_none() && (velox_build.is_some() || velox_home.is_some()));
-    cmake_cfg.arg(format!("-DVELOX_SHIM_STUB={}", if use_native { "OFF" } else { "ON" }));
+    let use_native = explicit_stub.as_deref() == Some("OFF")
+        || (explicit_stub.is_none() && (velox_build.is_some() || velox_home.is_some()));
+    cmake_cfg.arg(format!(
+        "-DVELOX_SHIM_STUB={}",
+        if use_native { "OFF" } else { "ON" }
+    ));
     if let Some(dir) = velox_build.or(velox_home) {
         // Help CMake find Velox with a prefix path
         cmake_cfg.arg(format!("-DCMAKE_PREFIX_PATH={}", dir));
