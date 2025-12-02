@@ -101,7 +101,7 @@ impl Catalog for S3TablesCatalog {
         &self,
         namespace: &Namespace,
     ) -> Result<HashMap<String, String>, IcebergError> {
-        self.inner.load_namespace(namespace).await
+        self.rest.clone().load_namespace(namespace).await
     }
     async fn update_namespace(
         &self,
@@ -114,31 +114,31 @@ impl Catalog for S3TablesCatalog {
             .await
     }
     async fn namespace_exists(&self, namespace: &Namespace) -> Result<bool, IcebergError> {
-        self.inner.namespace_exists(namespace).await
+        self.rest.clone().namespace_exists(namespace).await
     }
     async fn list_tabulars(&self, namespace: &Namespace) -> Result<Vec<Identifier>, IcebergError> {
-        self.inner.list_tabulars(namespace).await
+        self.rest.clone().list_tabulars(namespace).await
     }
     async fn list_namespaces(&self, parent: Option<&str>) -> Result<Vec<Namespace>, IcebergError> {
-        self.inner.list_namespaces(parent).await
+        self.rest.clone().list_namespaces(parent).await
     }
     async fn tabular_exists(&self, identifier: &Identifier) -> Result<bool, IcebergError> {
-        self.inner.tabular_exists(identifier).await
+        self.rest.clone().tabular_exists(identifier).await
     }
     async fn drop_table(&self, identifier: &Identifier) -> Result<(), IcebergError> {
-        self.inner.drop_table(identifier).await
+        self.rest.clone().drop_table(identifier).await
     }
     async fn drop_view(&self, identifier: &Identifier) -> Result<(), IcebergError> {
-        self.inner.drop_view(identifier).await
+        self.rest.clone().drop_view(identifier).await
     }
     async fn drop_materialized_view(&self, identifier: &Identifier) -> Result<(), IcebergError> {
-        self.inner.drop_materialized_view(identifier).await
+        self.rest.clone().drop_materialized_view(identifier).await
     }
     async fn load_tabular(
         self: Arc<Self>,
         identifier: &Identifier,
     ) -> Result<Tabular, IcebergError> {
-        self.inner.clone().load_tabular(identifier).await
+        self.rest.clone().clone().load_tabular(identifier).await
     }
     async fn create_table(
         self: Arc<Self>,
@@ -188,7 +188,7 @@ impl Catalog for S3TablesCatalog {
         identifier: Identifier,
         metadata_location: &str,
     ) -> Result<Table, IcebergError> {
-        self.inner
+        self.rest
             .clone()
             .register_table(identifier, metadata_location)
             .await

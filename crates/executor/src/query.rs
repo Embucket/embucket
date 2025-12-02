@@ -984,7 +984,8 @@ impl UserQuery {
         let mut builder = CreateTableBuilder::default();
         builder
             .with_name(table_ref.table.to_string())
-            .with_schema(schema);
+            .with_schema(schema)
+            .with_stage_create(false);
         Ok(Some(Arc::new(IcebergTableBuilder::new(builder))))
     }
 
