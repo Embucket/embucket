@@ -108,6 +108,20 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Failed to create executor: {error}"))]
+    CreateExecutor {
+        #[snafu(source(from(executor::Error, Box::new)))]
+        error: Box<executor::Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Metastore config error: {error}"))]
+    MetastoreConfig {
+        #[snafu(source)]
+        error: catalog_metastore::metastore_config::ConfigError,
+    },
 }
 
 impl IntoResponse for Error {
@@ -243,6 +257,8 @@ impl Error {
                 ErrorCode::Other,
             ),
             Self::Utf8 { .. }
+            | Self::MetastoreConfig { .. }
+            | Self::CreateExecutor { .. }
             | Self::RetryDisabled { .. }
             | Self::Arrow { .. }
             | Self::NotImplemented { .. } => {

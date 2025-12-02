@@ -1,29 +1,21 @@
 mod config;
 
 use crate::config::EnvConfig;
-use api_snowflake_rest::server::layer::require_auth;
-use api_snowflake_rest::server::router::{create_auth_router, create_router};
+use api_snowflake_rest::server::core_state::CoreState;
+use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
-use api_snowflake_rest_sessions::layer::Host;
-use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
-use axum::Extension;
+use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
+use axum::Router;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
-use axum::{Router, middleware};
-use catalog_metastore::InMemoryMetastore;
-use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
-use executor::service::CoreExecutionService;
 use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use tokio::time::Duration;
-use tower::{ServiceBuilder, ServiceExt};
-use tower_http::compression::CompressionLayer;
-use tower_http::decompression::RequestDecompressionLayer;
+use tower::ServiceExt;
 use tracing::{error, info};
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
@@ -66,7 +58,6 @@ async fn main() -> Result<(), LambdaError> {
 
 struct LambdaApp {
     router: Router,
-    state: AppState,
 }
 
 impl LambdaApp {
@@ -84,58 +75,20 @@ impl LambdaApp {
             config.auth_demo_password.clone(),
         );
         let execution_cfg = config.execution_config();
-        let metastore = Arc::new(InMemoryMetastore::new());
+
+        let core_state = CoreState::new(execution_cfg, snowflake_cfg).await?;
 
         if let Some(config_path) = &config.metastore_config {
-            info!(
-                path = %config_path.display(),
-                "Bootstrapping metastore from config"
-            );
-            let bootstrap_cfg = MetastoreBootstrapConfig::load(config_path.as_path())
-                .await
-                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
-            bootstrap_cfg
-                .apply(metastore.clone())
-                .await
-                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?;
+            core_state.with_metastore_config(config_path).await?;
         }
+        core_state
+            .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 
-        let execution_svc = Arc::new(
-            CoreExecutionService::new(metastore, Arc::new(execution_cfg))
-                .await
-                .map_err(|err| -> Box<dyn std::error::Error + Send + Sync> { Box::new(err) })?,
-        );
-
-        let session_store = SessionStore::new(execution_svc.clone());
-        tokio::spawn(async move {
-            session_store
-                .continuously_delete_expired(Duration::from_secs(SESSION_EXPIRATION_SECONDS))
-                .await;
-        });
-
+        let appstate = AppState::from(&core_state);
+        let router = make_snowflake_router(appstate);
         info!("Initialized Lambda Snowflake REST services");
 
-        let state = AppState {
-            execution_svc,
-            config: snowflake_cfg,
-        };
-
-        let compression_layer = ServiceBuilder::new()
-            .layer(CompressionLayer::new())
-            .layer(RequestDecompressionLayer::new());
-
-        let snowflake_router = create_router()
-            .with_state(state.clone())
-            .layer(compression_layer.clone())
-            .layer(Extension(Host(String::default())))
-            .layer(middleware::from_fn_with_state(state.clone(), require_auth));
-        let snowflake_auth_router = create_auth_router()
-            .with_state(state.clone())
-            .layer(compression_layer)
-            .layer(Extension(Host(String::default())));
-        let router = Router::new().merge(snowflake_router.merge(snowflake_auth_router));
-
-        Ok(Self { router, state })
+        Ok(Self { router })
     }
 
     #[tracing::instrument(name = "lambda_handle_event", skip_all, fields(
@@ -240,54 +193,6 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
         .and_then(|ip| ip.trim().parse::<IpAddr>().ok())
         .map(|ip| SocketAddr::new(ip, 0))
 }
-
-// #[tracing::instrument(name = "ensure_session_header", skip_all)]
-// async fn ensure_session_header(
-//     headers: &mut HeaderMap,
-//     state: &AppState,
-// ) -> Result<(), SnowflakeError> {
-//     if let Some(token) = extract_token_from_auth(headers) {
-//         ensure_session(state, &token).await
-//     } else {
-//         let session_id = Uuid::new_v4().to_string();
-//         state.execution_svc.create_session(&session_id).await?;
-//         let header_value = HeaderValue::from_str(&format!("Snowflake Token=\"{session_id}\""))
-//             .map_err(|_| SnowflakeError::invalid_auth_data())?;
-//         headers.insert(AUTHORIZATION, header_value);
-//         Ok(())
-//     }
-// }
-//
-// #[tracing::instrument(name = "ensure_session", skip(state), fields(session_id = %session_id))]
-// async fn ensure_session(state: &AppState, session_id: &str) -> Result<(), SnowflakeError> {
-//     if !state
-//         .execution_svc
-//         .update_session_expiry(session_id)
-//         .await?
-//     {
-//         let _ = state.execution_svc.create_session(session_id).await?;
-//     }
-//     Ok(())
-// }
-//
-// fn snowflake_error_response(err: &SnowflakeError) -> Response<LambdaBody> {
-//     let (status, axum::Json(body)) = err.prepare_response();
-//     let payload =
-//         serde_json::to_string(&body).unwrap_or_else(|_| "{\"success\":false}".to_string());
-//     let body_preview = payload.clone();
-//     let mut response = Response::new(LambdaBody::Text(payload));
-//     *response.status_mut() = status;
-//     response
-//         .headers_mut()
-//         .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-//     info!(
-//         status = %response.status(),
-//         headers = ?response.headers(),
-//         body = %body_preview,
-//         "Sending HTTP error response"
-//     );
-//     response
-// }
 
 fn init_tracing() {
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());

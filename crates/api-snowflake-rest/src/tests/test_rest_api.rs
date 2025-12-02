@@ -86,49 +86,46 @@ mod compatible {
         SqlTest::new(&["use schema test_schema", "SHOW VARIABLES"])
     );
 
-    // These tests temporary disabled until we add support of metastore config to test server.
-    // As currently we can't create / access testing database.
+    sql_test!(
+        create_table_missing_schema,
+        SqlTest::new(&[
+            // "Snowflake:
+            // 002003 (02000): SQL compilation error:
+            // Schema 'TESTS.MISSING_SCHEMA' does not exist or not authorized."
+            "create table missing_schema.foo(a int)",
+        ])
+    );
 
-    // sql_test!(
-    //     create_table_missing_schema,
-    //     SqlTest::new(&[
-    //         // "Snowflake:
-    //         // 002003 (02000): SQL compilation error:
-    //         // Schema 'TESTS.MISSING_SCHEMA' does not exist or not authorized."
-    //         "create table missing_schema.foo(a int)",
-    //     ])
-    // );
+    sql_test!(
+        alter_missing_table,
+        SqlTest::new(&[
+            // 002003 (42S02): SQL compilation error:
+            // Table 'EMBUCKET.PUBLIC.TEST2' does not exist or not authorized.
+            "ALTER TABLE embucket.public.test ADD COLUMN new_col INT",
+        ])
+    );
 
-    // sql_test!(
-    //     alter_missing_table,
-    //     SqlTest::new(&[
-    //         // 002003 (42S02): SQL compilation error:
-    //         // Table 'EMBUCKET.PUBLIC.TEST2' does not exist or not authorized.
-    //         "ALTER TABLE embucket.public.test ADD COLUMN new_col INT",
-    //     ])
-    // );
+    sql_test!(
+        alter_table_schema_missing,
+        SqlTest::new(&[
+            // 002003 (02000): SQL compilation error:
+            // Schema 'EMBUCKET.MISSING_SCHEMA' does not exist or not authorized.
+            "ALTER TABLE embucket.missing_schema.test ADD COLUMN new_col INT",
+        ])
+    );
 
-    // sql_test!(
-    //     alter_table_schema_missing,
-    //     SqlTest::new(&[
-    //         // 002003 (02000): SQL compilation error:
-    //         // Schema 'EMBUCKET.MISSING_SCHEMA' does not exist or not authorized.
-    //         "ALTER TABLE embucket.missing_schema.test ADD COLUMN new_col INT",
-    //     ])
-    // );
-
-    // sql_test!(
-    //     login_specified_params,
-    //     SqlTest::new(&["select count(*) from test_table"])
-    //         .with_setup_queries(&[
-    //             "create schema if not exists embucket.test_schema",
-    //             "create table if not exists embucket.test_schema.test_table (id int)",
-    //         ])
-    //         .with_params(vec![
-    //             (DATABASE_QUERY_PARAM_KEY, "embucket".to_string()),
-    //             (SCHEMA_QUERY_PARAM_KEY, "test_schema".to_string()),
-    //         ])
-    // );
+    sql_test!(
+        login_specified_params,
+        SqlTest::new(&["select count(*) from test_table"])
+            .with_setup_queries(&[
+                "create schema if not exists embucket.test_schema",
+                "create table if not exists embucket.test_schema.test_table (id int)",
+            ])
+            .with_params(vec![
+                (DATABASE_QUERY_PARAM_KEY, "embucket".to_string()),
+                (SCHEMA_QUERY_PARAM_KEY, "test_schema".to_string()),
+            ])
+    );
 }
 
 mod known_issues {
@@ -171,14 +168,13 @@ mod known_issues {
         ])
     );
 
-    // Temporary disabled, until we add metastore config for test server.
-    // sql_test!(
-    //     use_command_then_select,
-    //     SqlTest::new(&["select count(*) from test_table"]).with_setup_queries(&[
-    //         "create schema if not exists embucket.test_schema",
-    //         "create table if not exists embucket.test_schema.test_table (id int)",
-    //     ])
-    // );
+    sql_test!(
+        use_command_then_select,
+        SqlTest::new(&["select count(*) from test_table"]).with_setup_queries(&[
+            "create schema if not exists embucket.test_schema",
+            "create table if not exists embucket.test_schema.test_table (id int)",
+        ])
+    );
 }
 
 mod custom_server {

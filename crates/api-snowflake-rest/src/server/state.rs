@@ -1,4 +1,5 @@
 use super::server_models::RestApiConfig;
+use crate::server::core_state::CoreState;
 use api_snowflake_rest_sessions::session::JwtSecret;
 use executor::ExecutionAppState;
 use executor::service::ExecutionService;
@@ -19,5 +20,14 @@ impl ExecutionAppState for AppState {
 impl JwtSecret for AppState {
     fn jwt_secret(&self) -> &str {
         self.config.auth.jwt_secret.as_str()
+    }
+}
+
+impl From<&CoreState> for AppState {
+    fn from(core_state: &CoreState) -> Self {
+        Self {
+            execution_svc: core_state.executor.clone(),
+            config: core_state.rest_api_config.clone(),
+        }
     }
 }
