@@ -5,24 +5,18 @@ pub(crate) mod cli;
 pub(crate) mod helpers;
 pub(crate) mod layers;
 
-use api_snowflake_rest::server::layer::require_auth as snowflake_require_auth;
-use api_snowflake_rest::server::router::create_auth_router as create_snowflake_auth_router;
-use api_snowflake_rest::server::router::create_router as create_snowflake_router;
+use api_snowflake_rest::server::core_state::CoreState;
+use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig;
-use api_snowflake_rest::server::state::AppState as SnowflakeAppState;
-use api_snowflake_rest_sessions::layer::Host;
-use api_snowflake_rest_sessions::session::{SESSION_EXPIRATION_SECONDS, SessionStore};
-use axum::Extension;
-use axum::middleware;
+use api_snowflake_rest::server::state::AppState;
+use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
 use axum::{
     Json, Router,
     routing::{get, post},
 };
-use catalog_metastore::InMemoryMetastore;
-use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use clap::Parser;
 use dotenv::dotenv;
-use executor::service::{CoreExecutionService, ExecutionService, TIMEOUT_SIGNAL_INTERVAL_SECONDS};
+use executor::service::{ExecutionService, TIMEOUT_SIGNAL_INTERVAL_SECONDS};
 use executor::utils::Config as ExecutionConfig;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
@@ -33,10 +27,7 @@ use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProces
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::signal;
-use tower::ServiceBuilder;
 use tower_http::catch_panic::CatchPanicLayer;
-use tower_http::compression::CompressionLayer;
-use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::filter::{FilterExt, LevelFilter, Targets, filter_fn};
@@ -44,7 +35,6 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-// use core_sqlite::SqliteDb;
 
 #[cfg(feature = "alloc-tracing")]
 mod alloc_tracing {
@@ -117,7 +107,7 @@ fn main() {
 async fn async_main(
     opts: cli::CliOpts,
     tracing_provider: SdkTracerProvider,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let data_format = opts
         .data_format
         .clone()
@@ -128,11 +118,6 @@ async fn async_main(
             opts.auth_demo_user.clone().unwrap(),
             opts.auth_demo_password.clone().unwrap(),
         );
-
-    // Bootstrap the service if no flag is present (`--no-bootstrap`) with:
-    // 1. Creation of a default in-memory volume named `embucket`
-    // 2. Creation of a default database `embucket` in the volume `embucket`
-    // 3. Creation of a default schema `public` in the database `embucket`
 
     let execution_cfg = ExecutionConfig {
         embucket_version: "0.1.0".to_string(),
@@ -148,59 +133,21 @@ async fn async_main(
     };
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
-    let metastore = Arc::new(InMemoryMetastore::new());
+
+    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg)
+        .await
+        .expect("Core state creation error");
 
     if let Some(config_path) = &opts.metastore_config {
-        tracing::info!(
-            path = %config_path.display(),
-            "Bootstrapping metastore from config"
-        );
-        let config = MetastoreBootstrapConfig::load(config_path.as_path()).await?;
-        config.apply(metastore.clone()).await?;
+        core_state.with_metastore_config(config_path).await?;
     }
+    core_state
+        .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 
-    tracing::info!("Creating execution service");
-    let execution_svc = Arc::new(
-        CoreExecutionService::new(metastore.clone(), Arc::new(execution_cfg))
-            .await
-            .expect("Failed to create execution service"),
-    );
-    tracing::info!("Execution service created");
+    let appstate = AppState::from(&core_state);
+    let snowflake_router = make_snowflake_router(appstate);
 
-    let session_store = SessionStore::new(execution_svc.clone());
-
-    tokio::task::spawn({
-        let session_store = session_store.clone();
-        async move {
-            session_store
-                .continuously_delete_expired(tokio::time::Duration::from_secs(
-                    SESSION_EXPIRATION_SECONDS,
-                ))
-                .await;
-        }
-    });
-
-    let snowflake_state = SnowflakeAppState {
-        execution_svc: execution_svc.clone(),
-        config: snowflake_rest_cfg,
-    };
-    let compression_layer = ServiceBuilder::new()
-        .layer(CompressionLayer::new())
-        .layer(RequestDecompressionLayer::new());
-    let snowflake_router = create_snowflake_router()
-        .with_state(snowflake_state.clone())
-        .layer(compression_layer.clone())
-        .layer(Extension(Host(String::default())))
-        .layer(middleware::from_fn_with_state(
-            snowflake_state.clone(),
-            snowflake_require_auth,
-        ));
-    let snowflake_auth_router = create_snowflake_auth_router()
-        .with_state(snowflake_state.clone())
-        .layer(compression_layer)
-        .layer(Extension(Host(String::default())));
-    let snowflake_router = snowflake_router.merge(snowflake_auth_router);
-
+    let execution_svc = core_state.executor.clone();
     // --- OpenAPI specs ---
     let swagger = SwaggerUi::new("/").url("/openapi.json", ApiDoc::openapi());
 
@@ -223,7 +170,7 @@ async fn async_main(
     tracing::info!(%addr, "Listening on http");
     let timeout = opts.timeout.unwrap();
     axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal(execution_svc.clone(), timeout))
+        .with_graceful_shutdown(shutdown_signal(execution_svc, timeout))
         .await
         .expect("Failed to start server");
 

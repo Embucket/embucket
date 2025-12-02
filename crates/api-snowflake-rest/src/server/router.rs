@@ -1,16 +1,10 @@
 use super::handlers::{abort, login, query, session};
-use super::state::AppState;
-use axum::Router;
-use axum::routing::post;
-
 use super::layer::require_auth;
-use super::server_models::RestApiConfig;
-use super::state;
+use super::state::AppState;
+use api_snowflake_rest_sessions::layer::Host;
 use axum::middleware;
-use catalog_metastore::Metastore;
-use executor::service::CoreExecutionService;
-use executor::utils::Config as UtilsConfig;
-use std::sync::Arc;
+use axum::routing::post;
+use axum::{Extension, Router};
 use tower::ServiceBuilder;
 use tower_http::compression::CompressionLayer;
 use tower_http::decompression::RequestDecompressionLayer;
@@ -27,42 +21,23 @@ pub fn create_router() -> Router<AppState> {
         .route("/queries/v1/abort-request", post(abort))
 }
 
-#[allow(clippy::needless_pass_by_value, clippy::expect_used)]
-pub async fn make_app(
-    metastore: Arc<dyn Metastore>,
-    snowflake_rest_cfg: RestApiConfig,
-    execution_cfg: UtilsConfig,
-) -> Result<Router, Box<dyn std::error::Error>> {
-    let execution_svc = Arc::new(
-        CoreExecutionService::new(metastore, Arc::new(execution_cfg))
-            .await
-            .expect("Failed to create execution service"),
-    );
-
-    // Create the application state
-
-    let snowflake_state = state::AppState {
-        execution_svc,
-        config: snowflake_rest_cfg,
-    };
-
+pub fn make_snowflake_router(app_state: AppState) -> Router {
     let compression_layer = ServiceBuilder::new()
         .layer(CompressionLayer::new())
         .layer(RequestDecompressionLayer::new());
 
     let snowflake_router = create_router()
-        .with_state(snowflake_state.clone())
+        .with_state(app_state.clone())
         .layer(compression_layer.clone())
+        .layer(Extension(Host(String::default())))
         .layer(middleware::from_fn_with_state(
-            snowflake_state.clone(),
+            app_state.clone(),
             require_auth,
         ));
     let snowflake_auth_router = create_auth_router()
-        .with_state(snowflake_state)
-        .layer(compression_layer);
-    let snowflake_router = snowflake_router.merge(snowflake_auth_router);
+        .with_state(app_state)
+        .layer(compression_layer)
+        .layer(Extension(Host(String::default())));
 
-    let router = Router::new().merge(snowflake_router);
-
-    Ok(router)
+    snowflake_router.merge(snowflake_auth_router)
 }

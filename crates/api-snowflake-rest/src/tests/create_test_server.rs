@@ -1,7 +1,8 @@
 use super::TEST_JWT_SECRET;
-use crate::server::router::make_app;
+use crate::server::core_state::CoreState;
+use crate::server::make_snowflake_router;
 use crate::server::server_models::RestApiConfig;
-use catalog_metastore::InMemoryMetastore;
+use crate::server::state::AppState;
 use executor::utils::Config as UtilsConfig;
 use std::net::SocketAddr;
 use std::net::TcpListener;
@@ -115,11 +116,15 @@ pub async fn run_test_rest_api_server_with_config(
 
     tracing::info!("Starting server at {addr}");
 
-    let metastore = Arc::new(InMemoryMetastore::new());
-
-    let app = make_app(metastore, snowflake_rest_cfg, execution_cfg)
+    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg)
         .await
-        .unwrap()
+        .expect("Core state creation error");
+    core_state
+        .with_default_metastore_config()
+        .await
+        .expect("Failed to load default metastore config");
+
+    let app = make_snowflake_router(AppState::from(&core_state))
         .into_make_service_with_connect_info::<SocketAddr>();
 
     // Lock the mutex and set the notification flag
