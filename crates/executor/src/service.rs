@@ -189,9 +189,6 @@ impl CoreExecutionService {
             .refresh()
             .await
             .context(ex_error::RefreshCatalogListSnafu)?;
-        catalog_list
-            .clone()
-            .start_refresh_internal_catalogs_task(10);
         Ok(catalog_list)
     }
 
