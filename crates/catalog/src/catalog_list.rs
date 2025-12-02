@@ -30,8 +30,6 @@ use snafu::OptionExt;
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::interval;
 use url::Url;
 
 pub const DEFAULT_CATALOG: &str = "embucket";
