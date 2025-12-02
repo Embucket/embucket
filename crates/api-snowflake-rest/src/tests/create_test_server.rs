@@ -1,5 +1,6 @@
 use super::TEST_JWT_SECRET;
 use crate::server::core_state::CoreState;
+use crate::server::core_state::MetastoreConfig;
 use crate::server::make_snowflake_router;
 use crate::server::server_models::RestApiConfig;
 use crate::server::state::AppState;
@@ -116,13 +117,10 @@ pub async fn run_test_rest_api_server_with_config(
 
     tracing::info!("Starting server at {addr}");
 
-    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg)
+    let metastore_config = MetastoreConfig::DefaultConfig;
+    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_config)
         .await
         .expect("Core state creation error");
-    core_state
-        .with_default_metastore_config()
-        .await
-        .expect("Failed to load default metastore config");
 
     let app = make_snowflake_router(AppState::from(&core_state))
         .into_make_service_with_connect_info::<SocketAddr>();

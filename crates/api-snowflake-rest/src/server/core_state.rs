@@ -9,9 +9,9 @@ use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use executor::service::CoreExecutionService;
 use executor::utils::Config as ExecutionConfig;
 use snafu::ResultExt;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::time::Duration;
+use std::path::PathBuf;
 
 pub struct CoreState {
     pub executor: Arc<CoreExecutionService>,
@@ -19,42 +19,26 @@ pub struct CoreState {
     pub rest_api_config: RestApiConfig,
 }
 
+pub enum MetastoreConfig {
+    ConfigPath(PathBuf),
+    DefaultConfig,
+    None,
+}
+
 impl CoreState {
     pub async fn new(
         execution_cfg: ExecutionConfig,
         rest_api_config: RestApiConfig,
+        metastore_config: MetastoreConfig,
     ) -> Result<Self> {
         let metastore = create_metastore();
+        apply_metastore_config(metastore.clone(), metastore_config).await?;
         let executor = create_executor(metastore.clone(), execution_cfg).await?;
         Ok(Self {
             executor,
             metastore,
             rest_api_config,
         })
-    }
-
-    pub async fn with_metastore_config(&self, config_path: &Path) -> Result<()> {
-        tracing::info!(
-            path = %config_path.display(),
-            "Bootstrapping metastore from config"
-        );
-        let config = MetastoreBootstrapConfig::load(config_path)
-            .await
-            .context(MetastoreConfigSnafu)?;
-        config
-            .apply(self.metastore.clone())
-            .await
-            .context(MetastoreConfigSnafu)?;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub async fn with_default_metastore_config(&self) -> Result<()> {
-        MetastoreBootstrapConfig::default()
-            .apply(self.metastore.clone())
-            .await
-            .context(MetastoreConfigSnafu)?;
-        Ok(())
     }
 
     pub fn with_session_timeout(&self, session_timeout: Duration) -> Result<()> {
@@ -75,6 +59,33 @@ impl CoreState {
 #[must_use]
 pub fn create_metastore() -> Arc<InMemoryMetastore> {
     Arc::new(InMemoryMetastore::new())
+}
+
+async fn apply_metastore_config(metastore: Arc<InMemoryMetastore>, metastore_config: MetastoreConfig) -> Result<()> {
+    match metastore_config {
+        MetastoreConfig::ConfigPath(path) => {
+            tracing::info!(
+                path = %path.display(),
+                "Bootstrapping metastore from config"
+            );
+            let config = MetastoreBootstrapConfig::load(&path)
+                .await
+                .context(MetastoreConfigSnafu)?;
+            config
+                .apply(metastore.clone())
+                .await
+                .context(MetastoreConfigSnafu)?;
+        }
+        MetastoreConfig::DefaultConfig => {
+            tracing::info!("Bootstrapping metastore from default config");
+            MetastoreBootstrapConfig::default()
+                .apply(metastore.clone())
+                .await
+                .context(MetastoreConfigSnafu)?;
+        }
+        MetastoreConfig::None => {},
+    }
+    Ok(())
 }
 
 pub async fn create_executor(

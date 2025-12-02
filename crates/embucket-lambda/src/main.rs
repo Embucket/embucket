@@ -2,6 +2,7 @@ mod config;
 
 use crate::config::EnvConfig;
 use api_snowflake_rest::server::core_state::CoreState;
+use api_snowflake_rest::server::core_state::MetastoreConfig;
 use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
@@ -76,11 +77,13 @@ impl LambdaApp {
         );
         let execution_cfg = config.execution_config();
 
-        let core_state = CoreState::new(execution_cfg, snowflake_cfg).await?;
+        let metastore_cfg = if let Some(config_path) = &config.metastore_config {
+            MetastoreConfig::ConfigPath(config_path.clone())
+        } else {
+            MetastoreConfig::None
+        };
 
-        if let Some(config_path) = &config.metastore_config {
-            core_state.with_metastore_config(config_path).await?;
-        }
+        let core_state = CoreState::new(execution_cfg, snowflake_cfg, metastore_cfg).await?;
         core_state
             .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 
