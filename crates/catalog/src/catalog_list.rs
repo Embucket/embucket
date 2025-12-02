@@ -316,6 +316,18 @@ impl EmbucketCatalogList {
         }
         Ok(())
     }
+
+    pub async fn refresh_internal_catalogs(&self) -> Result<()> {
+        let catalogs = self.metastore_catalogs().await?;
+        for catalog in catalogs {
+            if self.catalogs.contains_key(&catalog.name) {
+                continue;
+            }
+            self.catalogs
+                .insert(catalog.name.clone(), Arc::new(catalog));
+        }
+        Ok(())
+    }
 }
 
 impl std::fmt::Debug for EmbucketCatalogList {
