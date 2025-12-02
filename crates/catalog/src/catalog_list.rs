@@ -316,49 +316,6 @@ impl EmbucketCatalogList {
         }
         Ok(())
     }
-
-    /// Spawns a background task that periodically refreshes the list of internal catalogs
-    /// by querying the metastore for newly created databases.
-    ///
-    /// # Description
-    /// When a user creates a new database, it is not automatically available as a catalog
-    /// in the current session. This method solves that limitation by launching an asynchronous
-    /// background job that runs every 10 seconds.
-    /// - Fetches the list of databases via `internal_catalogs()`.
-    /// - Adds any new catalogs not already present in `self.catalogs`.
-    ///
-    /// If any error occurs during fetching or processing, the error is logged via `tracing::warn`
-    /// but does not interrupt the loop.
-    ///
-    /// This ensures that newly created databases are gradually recognized and integrated
-    /// into the query engine without requiring a full session restart.
-    #[tracing::instrument(
-        name = "EmbucketCatalogList::start_refresh_internal_catalogs_task",
-        level = "debug",
-        skip(self)
-    )]
-    pub fn start_refresh_internal_catalogs_task(self: Arc<Self>, interval_secs: u64) {
-        tokio::spawn(async move {
-            let mut interval = interval(Duration::from_secs(interval_secs));
-            loop {
-                interval.tick().await;
-                match self.metastore_catalogs().await {
-                    Ok(catalogs) => {
-                        for catalog in catalogs {
-                            if self.catalogs.contains_key(&catalog.name) {
-                                continue;
-                            }
-                            self.catalogs
-                                .insert(catalog.name.clone(), Arc::new(catalog));
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = ?e, "Failed to refresh internal catalogs");
-                    }
-                }
-            }
-        });
-    }
 }
 
 impl std::fmt::Debug for EmbucketCatalogList {
