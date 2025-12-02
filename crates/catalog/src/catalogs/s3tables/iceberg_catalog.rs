@@ -92,16 +92,16 @@ impl Catalog for S3TablesCatalog {
         namespace: &Namespace,
         properties: Option<HashMap<String, String>>,
     ) -> Result<HashMap<String, String>, IcebergError> {
-        self.rest.create_namespace(namespace, properties).await
+        self.inner.create_namespace(namespace, properties).await
     }
     async fn drop_namespace(&self, namespace: &Namespace) -> Result<(), IcebergError> {
-        self.rest.drop_namespace(namespace).await
+        self.inner.drop_namespace(namespace).await
     }
     async fn load_namespace(
         &self,
         namespace: &Namespace,
     ) -> Result<HashMap<String, String>, IcebergError> {
-        self.rest.clone().load_namespace(namespace).await
+        self.inner.load_namespace(namespace).await
     }
     async fn update_namespace(
         &self,
@@ -109,7 +109,7 @@ impl Catalog for S3TablesCatalog {
         updates: Option<HashMap<String, String>>,
         removals: Option<Vec<String>>,
     ) -> Result<(), IcebergError> {
-        self.rest
+        self.inner
             .update_namespace(namespace, updates, removals)
             .await
     }
@@ -117,28 +117,28 @@ impl Catalog for S3TablesCatalog {
         self.rest.clone().namespace_exists(namespace).await
     }
     async fn list_tabulars(&self, namespace: &Namespace) -> Result<Vec<Identifier>, IcebergError> {
-        self.rest.clone().list_tabulars(namespace).await
+        self.inner.list_tabulars(namespace).await
     }
     async fn list_namespaces(&self, parent: Option<&str>) -> Result<Vec<Namespace>, IcebergError> {
-        self.rest.clone().list_namespaces(parent).await
+        self.inner.list_namespaces(parent).await
     }
     async fn tabular_exists(&self, identifier: &Identifier) -> Result<bool, IcebergError> {
-        self.rest.clone().tabular_exists(identifier).await
+        self.inner.tabular_exists(identifier).await
     }
     async fn drop_table(&self, identifier: &Identifier) -> Result<(), IcebergError> {
-        self.rest.clone().drop_table(identifier).await
+        self.inner.drop_table(identifier).await
     }
     async fn drop_view(&self, identifier: &Identifier) -> Result<(), IcebergError> {
-        self.rest.clone().drop_view(identifier).await
+        self.inner.drop_view(identifier).await
     }
     async fn drop_materialized_view(&self, identifier: &Identifier) -> Result<(), IcebergError> {
-        self.rest.clone().drop_materialized_view(identifier).await
+        self.inner.drop_materialized_view(identifier).await
     }
     async fn load_tabular(
         self: Arc<Self>,
         identifier: &Identifier,
     ) -> Result<Tabular, IcebergError> {
-        self.rest.clone().clone().load_tabular(identifier).await
+        self.inner.clone().load_tabular(identifier).await
     }
     async fn create_table(
         self: Arc<Self>,
@@ -168,19 +168,19 @@ impl Catalog for S3TablesCatalog {
             .await
     }
     async fn update_table(self: Arc<Self>, commit: CommitTable) -> Result<Table, IcebergError> {
-        self.rest.clone().update_table(commit).await
+        self.inner.clone().update_table(commit).await
     }
     async fn update_view(
         self: Arc<Self>,
         commit: CommitView<Option<()>>,
     ) -> Result<View, IcebergError> {
-        self.rest.clone().clone().update_view(commit).await
+        self.inner.clone().update_view(commit).await
     }
     async fn update_materialized_view(
         self: Arc<Self>,
         commit: CommitView<FullIdentifier>,
     ) -> Result<MaterializedView, IcebergError> {
-        self.rest.clone().update_materialized_view(commit).await
+        self.inner.clone().update_materialized_view(commit).await
     }
 
     async fn register_table(
@@ -188,7 +188,7 @@ impl Catalog for S3TablesCatalog {
         identifier: Identifier,
         metadata_location: &str,
     ) -> Result<Table, IcebergError> {
-        self.rest
+        self.inner
             .clone()
             .register_table(identifier, metadata_location)
             .await

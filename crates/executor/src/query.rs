@@ -1898,6 +1898,14 @@ impl UserQuery {
                 Statement::ShowColumns { show_options, .. } => Ok(Some(
                     self.resolve_show_in_name(show_options.show_in.clone(), ShowType::Table)?,
                 )),
+                Statement::ExplainTable {
+                    describe_alias: DescribeAlias::Describe | DescribeAlias::Desc,
+                    table_name,
+                    ..
+                } => {
+                    let table_ref = &self.resolve_table_object_name(table_name.0.clone())?;
+                    Ok(Some(table_ref.into()))
+                }
                 _ => Ok(None),
             },
             _ => Ok(None),
