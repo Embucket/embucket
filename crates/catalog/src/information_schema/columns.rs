@@ -49,6 +49,10 @@ impl InformationSchemaColumns {
             Field::new("numeric_scale", UInt64, true),
             Field::new("datetime_precision", UInt64, true),
             Field::new("interval_type", Utf8, true),
+            Field::new("is_identity", Utf8, true),
+            Field::new("comment", Utf8, true),
+            Field::new("identity_start", Utf8, true),
+            Field::new("identity_increment", Utf8, true),
         ]))
     }
     pub fn new(config: InformationSchemaConfig) -> Self {
@@ -80,6 +84,10 @@ impl InformationSchemaColumns {
             numeric_scales: UInt64Builder::with_capacity(default_capacity),
             datetime_precisions: UInt64Builder::with_capacity(default_capacity),
             interval_types: StringBuilder::new(),
+            is_identity: StringBuilder::new(),
+            comment: StringBuilder::new(),
+            identity_start: StringBuilder::new(),
+            identity_increment: StringBuilder::new(),
             schema: Arc::clone(&self.schema),
         }
     }
@@ -123,6 +131,10 @@ pub struct InformationSchemaColumnsBuilder {
     numeric_scales: UInt64Builder,
     datetime_precisions: UInt64Builder,
     interval_types: StringBuilder,
+    is_identity: StringBuilder,
+    comment: StringBuilder,
+    identity_start: StringBuilder,
+    identity_increment: StringBuilder,
 }
 
 impl InformationSchemaColumnsBuilder {
@@ -222,6 +234,12 @@ impl InformationSchemaColumnsBuilder {
 
         self.datetime_precisions.append_option(None);
         self.interval_types.append_null();
+        //Added fields for columns call (not show) from SuperSet,
+        // actually more columns exist in this view, but we don't need them for the SuperSet
+        self.is_identity.append_null();
+        self.comment.append_null();
+        self.identity_start.append_null();
+        self.identity_increment.append_null();
     }
 
     fn finish(&mut self) -> Result<RecordBatch, ArrowError> {
@@ -245,6 +263,10 @@ impl InformationSchemaColumnsBuilder {
                 Arc::new(self.numeric_scales.finish()),
                 Arc::new(self.datetime_precisions.finish()),
                 Arc::new(self.interval_types.finish()),
+                Arc::new(self.is_identity.finish()),
+                Arc::new(self.comment.finish()),
+                Arc::new(self.identity_start.finish()),
+                Arc::new(self.identity_increment.finish()),
             ],
         )
     }
