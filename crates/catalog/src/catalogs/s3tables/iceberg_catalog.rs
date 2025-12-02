@@ -7,7 +7,6 @@ use aws_credential_types::Credentials;
 use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::S3TablesVolume;
 use iceberg_rest_catalog::apis::configuration::{AWSv4Key, Configuration};
-use iceberg_rest_catalog::apis::urlencode;
 use iceberg_rest_catalog::catalog::RestCatalog;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use iceberg_rust::{
@@ -42,7 +41,6 @@ impl S3TablesCatalog {
         secret_key: String,
         session_token: Option<String>,
         volume: S3TablesVolume,
-        name: String,
     ) -> CatalogResult<Self> {
         let s3_tables_creds = Credentials::from_keys(
             access_key.clone(),
@@ -77,7 +75,6 @@ impl S3TablesCatalog {
             },
             Some(ObjectStoreBuilder::S3(Box::new(volume.s3_builder()))),
         ));
-        println!("namespaces {:?}", rest_catalog.list_namespaces(None).await);
         Ok(Self {
             inner: s3_tables_catalog,
             rest: rest_catalog,
@@ -95,10 +92,10 @@ impl Catalog for S3TablesCatalog {
         namespace: &Namespace,
         properties: Option<HashMap<String, String>>,
     ) -> Result<HashMap<String, String>, IcebergError> {
-        self.inner.create_namespace(namespace, properties).await
+        self.rest.create_namespace(namespace, properties).await
     }
     async fn drop_namespace(&self, namespace: &Namespace) -> Result<(), IcebergError> {
-        self.inner.drop_namespace(namespace).await
+        self.rest.drop_namespace(namespace).await
     }
     async fn load_namespace(
         &self,
@@ -112,7 +109,7 @@ impl Catalog for S3TablesCatalog {
         updates: Option<HashMap<String, String>>,
         removals: Option<Vec<String>>,
     ) -> Result<(), IcebergError> {
-        self.inner
+        self.rest
             .update_namespace(namespace, updates, removals)
             .await
     }
@@ -148,51 +145,42 @@ impl Catalog for S3TablesCatalog {
         identifier: Identifier,
         create_table: CreateTable,
     ) -> Result<Table, IcebergError> {
-        println!("create_table {:?}", create_table);
-        let res = self
-            .rest
+        self.rest
             .clone()
             .create_table(identifier, create_table)
-            .await;
-
-        println!("res {:?}", res);
-
-        res
+            .await
     }
     async fn create_view(
         self: Arc<Self>,
         identifier: Identifier,
         create_view: CreateView<Option<()>>,
     ) -> Result<View, IcebergError> {
-        self.inner
-            .clone()
-            .create_view(identifier, create_view)
-            .await
+        self.rest.clone().create_view(identifier, create_view).await
     }
     async fn create_materialized_view(
         self: Arc<Self>,
         identifier: Identifier,
         create_view: CreateMaterializedView,
     ) -> Result<MaterializedView, IcebergError> {
-        self.inner
+        self.rest
             .clone()
             .create_materialized_view(identifier, create_view)
             .await
     }
     async fn update_table(self: Arc<Self>, commit: CommitTable) -> Result<Table, IcebergError> {
-        self.inner.clone().update_table(commit).await
+        self.rest.clone().update_table(commit).await
     }
     async fn update_view(
         self: Arc<Self>,
         commit: CommitView<Option<()>>,
     ) -> Result<View, IcebergError> {
-        self.inner.clone().clone().update_view(commit).await
+        self.rest.clone().clone().update_view(commit).await
     }
     async fn update_materialized_view(
         self: Arc<Self>,
         commit: CommitView<FullIdentifier>,
     ) -> Result<MaterializedView, IcebergError> {
-        self.inner.clone().update_materialized_view(commit).await
+        self.rest.clone().update_materialized_view(commit).await
     }
 
     async fn register_table(

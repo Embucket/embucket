@@ -228,7 +228,6 @@ impl EmbucketCatalogList {
                 sk.unwrap_or_default(),
                 token,
                 volume,
-                db.ident.clone(),
             )
             .await?,
         );
