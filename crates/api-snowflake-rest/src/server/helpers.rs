@@ -118,6 +118,8 @@ pub fn handle_query_ok_result(
         }),
         success: true,
         message: Option::from("successfully executed".to_string()),
+        error_stack_trace: None,
+        debug_error: None,
         code: None,
     };
     Ok(json_resp)
