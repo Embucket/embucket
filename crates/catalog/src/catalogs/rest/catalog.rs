@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use iceberg_rest_catalog::apis::catalog_api_api;
 use iceberg_rest_catalog::apis::configuration::Configuration;
 use iceberg_rust::catalog::commit::CommitTable;
+use iceberg_rust::object_store::{Bucket, ObjectStoreBuilder};
 use iceberg_rust::{
     catalog::{
         Catalog,
@@ -24,6 +25,7 @@ pub struct RestCatalog {
     inner: Arc<dyn Catalog>,
     name: Option<String>,
     configuration: Configuration,
+    object_store_builder: ObjectStoreBuilder,
 }
 
 impl RestCatalog {
@@ -31,11 +33,13 @@ impl RestCatalog {
         name: Option<&str>,
         configuration: Configuration,
         catalog: Arc<dyn Catalog>,
+        object_store_builder: ObjectStoreBuilder,
     ) -> Self {
         Self {
             name: name.map(ToString::to_string),
             configuration,
             inner: catalog,
+            object_store_builder,
         }
     }
 }
@@ -114,7 +118,30 @@ impl Catalog for RestCatalog {
     }
 
     async fn load_tabular(self: Arc<Self>, identifier: &Identifier) -> Result<Tabular, Error> {
-        self.inner.clone().load_tabular(identifier).await
+        let response = catalog_api_api::load_table(
+            &self.configuration,
+            self.name.as_deref(),
+            &identifier.namespace().to_string(),
+            identifier.name(),
+            None,
+            None,
+        )
+        .await
+        .map_err(|_| Error::CatalogNotFound)?;
+
+        let location = response.metadata.location.clone();
+        let bucket = Bucket::from_path(&location)?;
+        let table_metadata = response.metadata;
+        let object_store = self.object_store_builder.build(bucket)?;
+        Ok(Tabular::Table(
+            Table::new(
+                identifier.clone(),
+                self.clone(),
+                object_store,
+                table_metadata,
+            )
+            .await?,
+        ))
     }
 
     async fn create_table(
@@ -151,7 +178,21 @@ impl Catalog for RestCatalog {
     }
 
     async fn update_table(self: Arc<Self>, commit: CommitTable) -> Result<Table, Error> {
-        self.inner.clone().update_table(commit).await
+        let identifier = commit.identifier.clone();
+        let response = catalog_api_api::update_table(
+            &self.configuration,
+            self.name.as_deref(),
+            &identifier.namespace().to_string(),
+            identifier.name(),
+            commit,
+        )
+        .await
+        .map_err(Into::<Error>::into)?;
+        let location = response.metadata.location.clone();
+        let bucket = Bucket::from_path(&location)?;
+        let table_metadata = response.metadata;
+        let object_store = self.object_store_builder.build(bucket)?;
+        Table::new(identifier, self, object_store, table_metadata).await
     }
 
     async fn update_view(self: Arc<Self>, commit: CommitView<Option<()>>) -> Result<View, Error> {

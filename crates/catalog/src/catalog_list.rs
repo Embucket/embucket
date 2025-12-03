@@ -245,15 +245,17 @@ impl EmbucketCatalogList {
             }),
             ..Default::default()
         };
+        let object_store_builder = ObjectStoreBuilder::S3(Box::new(volume.s3_builder()));
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(IcebergRestCatalog::new(
             Some(volume.arn.as_str()),
             config.clone(),
-            Some(ObjectStoreBuilder::S3(Box::new(volume.s3_builder()))),
+            Some(object_store_builder.clone()),
         ));
         let rest_catalog: Arc<dyn Catalog> = Arc::new(RestCatalog::new(
             Some(volume.arn.as_str()),
             config,
             iceberg_catalog,
+            object_store_builder,
         ));
         let catalog = DataFusionIcebergCatalog::new_sync(rest_catalog.clone(), None);
         Ok(
