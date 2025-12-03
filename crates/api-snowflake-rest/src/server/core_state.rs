@@ -9,9 +9,9 @@ use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
 use executor::service::CoreExecutionService;
 use executor::utils::Config as ExecutionConfig;
 use snafu::ResultExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::time::Duration;
-use std::path::PathBuf;
 
 pub struct CoreState {
     pub executor: Arc<CoreExecutionService>,
@@ -61,7 +61,10 @@ pub fn create_metastore() -> Arc<InMemoryMetastore> {
     Arc::new(InMemoryMetastore::new())
 }
 
-async fn apply_metastore_config(metastore: Arc<InMemoryMetastore>, metastore_config: MetastoreConfig) -> Result<()> {
+async fn apply_metastore_config(
+    metastore: Arc<InMemoryMetastore>,
+    metastore_config: MetastoreConfig,
+) -> Result<()> {
     match metastore_config {
         MetastoreConfig::ConfigPath(path) => {
             tracing::info!(
@@ -83,7 +86,7 @@ async fn apply_metastore_config(metastore: Arc<InMemoryMetastore>, metastore_con
                 .await
                 .context(MetastoreConfigSnafu)?;
         }
-        MetastoreConfig::None => {},
+        MetastoreConfig::None => {}
     }
     Ok(())
 }
