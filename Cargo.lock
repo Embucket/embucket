@@ -2972,7 +2972,7 @@ dependencies = [
 [[package]]
 name = "datafusion_iceberg"
 version = "0.9.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=32965adba150158f9aa3cd7eb48942acba57dc92#32965adba150158f9aa3cd7eb48942acba57dc92"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=00bdac77dfc4026d04314a0b3d5e8cfabd0c8843#00bdac77dfc4026d04314a0b3d5e8cfabd0c8843"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4410,7 +4410,7 @@ dependencies = [
 [[package]]
 name = "iceberg-rest-catalog"
 version = "0.9.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=32965adba150158f9aa3cd7eb48942acba57dc92#32965adba150158f9aa3cd7eb48942acba57dc92"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=00bdac77dfc4026d04314a0b3d5e8cfabd0c8843#00bdac77dfc4026d04314a0b3d5e8cfabd0c8843"
 dependencies = [
  "async-trait",
  "aws-sigv4 0.3.1",
@@ -4435,7 +4435,7 @@ dependencies = [
 [[package]]
 name = "iceberg-rust"
 version = "0.9.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=32965adba150158f9aa3cd7eb48942acba57dc92#32965adba150158f9aa3cd7eb48942acba57dc92"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=00bdac77dfc4026d04314a0b3d5e8cfabd0c8843#00bdac77dfc4026d04314a0b3d5e8cfabd0c8843"
 dependencies = [
  "apache-avro",
  "arrow 56.2.0",
@@ -4471,7 +4471,7 @@ dependencies = [
 [[package]]
 name = "iceberg-rust-spec"
 version = "0.9.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=32965adba150158f9aa3cd7eb48942acba57dc92#32965adba150158f9aa3cd7eb48942acba57dc92"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=00bdac77dfc4026d04314a0b3d5e8cfabd0c8843#00bdac77dfc4026d04314a0b3d5e8cfabd0c8843"
 dependencies = [
  "apache-avro",
  "arrow-schema 56.2.0",
@@ -4496,7 +4496,7 @@ dependencies = [
 [[package]]
 name = "iceberg-s3tables-catalog"
 version = "0.9.0"
-source = "git+https://github.com/Embucket/iceberg-rust.git?rev=32965adba150158f9aa3cd7eb48942acba57dc92#32965adba150158f9aa3cd7eb48942acba57dc92"
+source = "git+https://github.com/Embucket/iceberg-rust.git?rev=00bdac77dfc4026d04314a0b3d5e8cfabd0c8843#00bdac77dfc4026d04314a0b3d5e8cfabd0c8843"
 dependencies = [
  "async-trait",
  "aws-config",
