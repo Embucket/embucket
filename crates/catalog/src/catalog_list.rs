@@ -9,9 +9,6 @@ use crate::error::{
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
 use crate::utils::fetch_table_providers;
-use aws_config::{BehaviorVersion, Region};
-use aws_credential_types::Credentials;
-use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::{
     AwsCredentials, Database, Metastore, RwObject, S3TablesVolume, VolumeType,
 };
@@ -21,11 +18,13 @@ use datafusion::{
     execution::object_store::ObjectStoreRegistry,
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
+use iceberg_rest_catalog::apis::configuration::{AWSv4Key, Configuration};
+use iceberg_rest_catalog::catalog::RestCatalog;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::object_store::ObjectStoreBuilder;
-use iceberg_s3tables_catalog::S3TablesCatalog;
 use object_store::ObjectStore;
 use object_store::local::LocalFileSystem;
+use secrecy::SecretString;
 use snafu::OptionExt;
 use snafu::ResultExt;
 use std::any::Any;
@@ -119,7 +118,10 @@ impl EmbucketCatalogList {
             VolumeType::Memory => self
                 .get_embucket_catalog(&database)?
                 .with_catalog_type(CatalogType::Memory),
-            VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &database).await?,
+            VolumeType::S3Tables(vol) => {
+                self.s3tables_iceberg_catalog(vol.clone(), &database)
+                    .await?
+            }
         };
         self.catalogs
             .insert(catalog_name.to_owned(), Arc::new(catalog));
@@ -178,7 +180,9 @@ impl EmbucketCatalogList {
                 })?;
             // Create catalog depending on the volume type
             let catalog = match &volume.volume {
-                VolumeType::S3Tables(vol) => self.s3tables_catalog(vol.clone(), &db).await?,
+                VolumeType::S3Tables(vol) => {
+                    self.s3tables_iceberg_catalog(vol.clone(), &db).await?
+                }
                 _ => self.get_embucket_catalog(&db)?,
             };
             catalogs.push(catalog);
@@ -213,7 +217,7 @@ impl EmbucketCatalogList {
         skip(self),
         err
     )]
-    pub async fn s3tables_catalog(
+    pub async fn s3tables_iceberg_catalog(
         &self,
         volume: S3TablesVolume,
         db: &RwObject<Database>,
@@ -226,21 +230,24 @@ impl EmbucketCatalogList {
             ),
             AwsCredentials::Token(ref t) => (None, None, Some(t.clone())),
         };
-        let creds = Credentials::from_keys(ak.unwrap_or_default(), sk.unwrap_or_default(), token);
-        let config = aws_config::defaults(BehaviorVersion::latest())
-            .credentials_provider(SharedCredentialsProvider::new(creds))
-            .region(Region::new(volume.region()))
-            .load()
-            .await;
-        let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
-            S3TablesCatalog::new(
-                &config,
-                volume.arn.as_str(),
-                ObjectStoreBuilder::S3(Box::new(volume.s3_builder())),
-            )
-            .context(catalog_error::S3TablesSnafu)?,
-        );
-
+        let base_path = volume.endpoint.clone().unwrap_or_else(|| {
+            format!("https://s3tables.{}.amazonaws.com/iceberg", volume.region())
+        });
+        let iceberg_catalog: Arc<dyn Catalog> = Arc::new(RestCatalog::new(
+            Some(volume.arn.as_str()),
+            Configuration {
+                base_path,
+                aws_v4_key: Some(AWSv4Key {
+                    access_key: ak.unwrap_or_default(),
+                    secret_key: SecretString::new(sk.unwrap_or_default()),
+                    session_token: token.map(SecretString::new),
+                    region: volume.region(),
+                    service: "s3tables".to_string(),
+                }),
+                ..Default::default()
+            },
+            Some(ObjectStoreBuilder::S3(Box::new(volume.s3_builder()))),
+        ));
         let catalog = DataFusionIcebergCatalog::new_sync(iceberg_catalog.clone(), None);
         Ok(
             CachingCatalog::new(Arc::new(catalog), db.ident.clone(), Some(iceberg_catalog))

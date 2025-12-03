@@ -11,6 +11,7 @@ use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
+use axum::http::StatusCode;
 use axum::{
     Json, Router,
     routing::{get, post},
@@ -160,7 +161,10 @@ async fn async_main(
         .route("/health", get(|| async { Json("OK") }))
         .route("/telemetry/send", post(|| async { Json("OK") }))
         .layer(TraceLayer::new_for_http())
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(1200)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(1200),
+        ))
         .layer(CatchPanicLayer::new())
         .into_make_service_with_connect_info::<SocketAddr>();
 
