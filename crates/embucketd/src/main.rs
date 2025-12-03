@@ -6,6 +6,7 @@ pub(crate) mod helpers;
 pub(crate) mod layers;
 
 use api_snowflake_rest::server::core_state::CoreState;
+use api_snowflake_rest::server::core_state::MetastoreConfig;
 use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig;
 use api_snowflake_rest::server::state::AppState;
@@ -134,13 +135,15 @@ async fn async_main(
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
 
-    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg)
+    let metastore_cfg = if let Some(config_path) = &opts.metastore_config {
+        MetastoreConfig::ConfigPath(config_path.clone())
+    } else {
+        MetastoreConfig::None
+    };
+    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_cfg)
         .await
         .expect("Core state creation error");
 
-    if let Some(config_path) = &opts.metastore_config {
-        core_state.with_metastore_config(config_path).await?;
-    }
     core_state
         .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 
