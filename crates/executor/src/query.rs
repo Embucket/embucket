@@ -49,8 +49,7 @@ use datafusion::sql::parser::{CreateExternalTable, Statement as DFStatement};
 use datafusion::sql::planner::SqlToRel;
 use datafusion::sql::resolve::resolve_table_references;
 use datafusion::sql::sqlparser::ast::{
-    CreateTable as CreateTableStatement, DescribeAlias, Expr, Ident, ObjectName, Query, SchemaName,
-    Statement, TableFactor,
+    DescribeAlias, Expr, Ident, ObjectName, Query, SchemaName, Statement, TableFactor,
 };
 use datafusion::sql::statement::object_name_to_string;
 use datafusion_common::config::ConfigOptions;
@@ -819,7 +818,11 @@ impl UserQuery {
         create_table_statement.storage_serialization_policy = None;
         create_table_statement.cluster_by = None;
 
-        let df_stmt = DFStatement::Statement(Box::new(statement));
+        let if_not_exists = create_table_statement.if_not_exists;
+        let or_replace = create_table_statement.or_replace;
+
+        let df_stmt =
+            DFStatement::Statement(Box::new(Statement::CreateTable(create_table_statement)));
         let mut plan = Box::pin(self.get_custom_logical_plan(df_stmt)).await?;
         // Run analyzer rules to ensure the logical plan has the correct schema,
         // especially when handling CTEs used as sources for INSERT statements.
@@ -855,7 +858,8 @@ impl UserQuery {
             table_ref,
             schema_provider.clone(),
             table_location,
-            create_table_statement,
+            if_not_exists,
+            or_replace,
             plan.clone(),
         )?;
         if let Some(provider) = table_provider {
@@ -925,15 +929,16 @@ impl UserQuery {
         table_ref: ResolvedTableReference,
         schema_provider: Arc<dyn SchemaProvider>,
         table_location: Option<String>,
-        statement: CreateTableStatement,
+        if_not_exists: bool,
+        or_replace: bool,
         plan: LogicalPlan,
     ) -> Result<Option<Arc<dyn TableProvider>>> {
         // Check if table already exists, if exists and CREATE OR REPLACE - drop it
         if schema_provider.table_exist(&table_ref.table) {
-            if statement.if_not_exists {
+            if if_not_exists {
                 return Ok(None);
             }
-            if statement.or_replace {
+            if or_replace {
                 schema_provider
                     .deregister_table(&table_ref.table)
                     .context(ex_error::DataFusionSnafu)?;

@@ -38,8 +38,6 @@ use tokio::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
 
-const DEFAULT_SCHEMA: &str = "public";
-
 pub const TIMEOUT_SIGNAL_INTERVAL_SECONDS: u64 = 60;
 
 #[async_trait::async_trait]

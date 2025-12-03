@@ -1,5 +1,6 @@
 use super::catalogs::embucket::catalog::EmbucketCatalog;
 use super::catalogs::embucket::iceberg_catalog::EmbucketIcebergCatalog;
+use super::catalogs::s3tables::iceberg_catalog::S3TablesCatalog;
 use crate::catalog::{CachingCatalog, CatalogType, Properties};
 use crate::df_error;
 use crate::error::{
@@ -9,9 +10,6 @@ use crate::error::{
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
 use crate::utils::fetch_table_providers;
-use aws_config::{BehaviorVersion, Region};
-use aws_credential_types::Credentials;
-use aws_credential_types::provider::SharedCredentialsProvider;
 use catalog_metastore::{
     AwsCredentials, Database, Metastore, RwObject, S3TablesVolume, VolumeType,
 };
@@ -22,8 +20,6 @@ use datafusion::{
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
 use iceberg_rust::catalog::Catalog;
-use iceberg_rust::object_store::ObjectStoreBuilder;
-use iceberg_s3tables_catalog::S3TablesCatalog;
 use object_store::ObjectStore;
 use object_store::local::LocalFileSystem;
 use snafu::OptionExt;
@@ -226,19 +222,15 @@ impl EmbucketCatalogList {
             ),
             AwsCredentials::Token(ref t) => (None, None, Some(t.clone())),
         };
-        let creds = Credentials::from_keys(ak.unwrap_or_default(), sk.unwrap_or_default(), token);
-        let config = aws_config::defaults(BehaviorVersion::latest())
-            .credentials_provider(SharedCredentialsProvider::new(creds))
-            .region(Region::new(volume.region()))
-            .load()
-            .await;
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
             S3TablesCatalog::new(
-                &config,
-                volume.arn.as_str(),
-                ObjectStoreBuilder::S3(Box::new(volume.s3_builder())),
+                ak.unwrap_or_default(),
+                sk.unwrap_or_default(),
+                token,
+                volume,
+                db.ident.clone(),
             )
-            .context(catalog_error::S3TablesSnafu)?,
+            .await?,
         );
 
         let catalog = DataFusionIcebergCatalog::new_sync(iceberg_catalog.clone(), None);

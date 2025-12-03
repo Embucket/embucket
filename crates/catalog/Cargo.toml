@@ -25,12 +25,15 @@ error-stack = { path = "../error-stack" }
 iceberg-rust = { workspace = true }
 iceberg-rust-spec = { workspace = true }
 iceberg-s3tables-catalog = { workspace = true }
+iceberg-rest-catalog = { workspace = true }
+
 object_store = { workspace = true }
 once_cell = { version = "1.20.2" }
 snafu = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
 tracing = { workspace = true }
+secrecy = "0.8.0"
 
 [lints]
 workspace = true
