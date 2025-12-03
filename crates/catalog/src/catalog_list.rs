@@ -1,6 +1,7 @@
 use super::catalogs::embucket::catalog::EmbucketCatalog;
 use super::catalogs::embucket::iceberg_catalog::EmbucketIcebergCatalog;
 use crate::catalog::{CachingCatalog, CatalogType, Properties};
+use crate::catalogs::rest::catalog::RestCatalog;
 use crate::df_error;
 use crate::error::{
     self as catalog_error, InvalidCacheSnafu, MetastoreSnafu, MissingVolumeSnafu,
@@ -19,7 +20,7 @@ use datafusion::{
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
 use iceberg_rest_catalog::apis::configuration::{AWSv4Key, Configuration};
-use iceberg_rest_catalog::catalog::RestCatalog;
+use iceberg_rest_catalog::catalog::RestCatalog as IcebergRestCatalog;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::object_store::ObjectStoreBuilder;
 use object_store::ObjectStore;
@@ -233,24 +234,30 @@ impl EmbucketCatalogList {
         let base_path = volume.endpoint.clone().unwrap_or_else(|| {
             format!("https://s3tables.{}.amazonaws.com/iceberg", volume.region())
         });
-        let iceberg_catalog: Arc<dyn Catalog> = Arc::new(RestCatalog::new(
+        let config = Configuration {
+            base_path,
+            aws_v4_key: Some(AWSv4Key {
+                access_key: ak.unwrap_or_default(),
+                secret_key: SecretString::new(sk.unwrap_or_default()),
+                session_token: token.map(SecretString::new),
+                region: volume.region(),
+                service: "s3tables".to_string(),
+            }),
+            ..Default::default()
+        };
+        let iceberg_catalog: Arc<dyn Catalog> = Arc::new(IcebergRestCatalog::new(
             Some(volume.arn.as_str()),
-            Configuration {
-                base_path,
-                aws_v4_key: Some(AWSv4Key {
-                    access_key: ak.unwrap_or_default(),
-                    secret_key: SecretString::new(sk.unwrap_or_default()),
-                    session_token: token.map(SecretString::new),
-                    region: volume.region(),
-                    service: "s3tables".to_string(),
-                }),
-                ..Default::default()
-            },
+            config.clone(),
             Some(ObjectStoreBuilder::S3(Box::new(volume.s3_builder()))),
         ));
-        let catalog = DataFusionIcebergCatalog::new_sync(iceberg_catalog.clone(), None);
+        let rest_catalog: Arc<dyn Catalog> = Arc::new(RestCatalog::new(
+            Some(volume.arn.as_str()),
+            config,
+            iceberg_catalog,
+        ));
+        let catalog = DataFusionIcebergCatalog::new_sync(rest_catalog.clone(), None);
         Ok(
-            CachingCatalog::new(Arc::new(catalog), db.ident.clone(), Some(iceberg_catalog))
+            CachingCatalog::new(Arc::new(catalog), db.ident.clone(), Some(rest_catalog))
                 .with_refresh(db.should_refresh)
                 .with_catalog_type(CatalogType::S3tables),
         )
