@@ -128,7 +128,11 @@ fn replace_view(args: &[ArrayRef]) -> DFResult<ColumnarValue> {
 
     let string_view_array = as_string_view_array(&casted[0])?;
     let from_array = as_string_view_array(&casted[1])?;
-    let to_array = as_string_view_array(&casted[2])?;
+    let to_array = if args.len() > 2 {
+        as_string_view_array(&casted[2])?
+    } else {
+        &StringViewArray::from(vec![""; string_view_array.len()])
+    };
 
     let result = string_view_array
         .iter()

@@ -8,11 +8,9 @@ use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use datafusion_common::DataFusionError;
 use datafusion_iceberg::catalog::catalog::IcebergCatalog;
 use datafusion_iceberg::catalog::schema::IcebergSchema;
-use futures::executor::block_on;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust_spec::namespace::Namespace;
-use snafu::OptionExt;
-use snafu::futures::TryFutureExt;
+use snafu::{OptionExt, ResultExt};
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
 
@@ -253,11 +251,13 @@ impl CatalogProvider for CachingCatalog {
                     ))
                 }
             };
-            block_on(
+            let catalog = catalog.clone();
+            block_on_without_deadlock(async move {
                 catalog
                     .create_namespace(&namespace, None)
-                    .context(df_error::IcebergSnafu),
-            )?;
+                    .await
+                    .context(df_error::IcebergSnafu)
+            })?;
             schema_provider
         } else {
             return self.catalog.register_schema(name, schema);
@@ -290,11 +290,13 @@ impl CatalogProvider for CachingCatalog {
         if let Some(catalog) = &self.iceberg_catalog {
             let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
                 .map_err(|err| DataFusionError::External(Box::new(err)))?;
-            block_on(
+            let catalog = catalog.clone();
+            block_on_without_deadlock(async move {
                 catalog
                     .drop_namespace(&namespace)
-                    .context(df_error::IcebergSnafu),
-            )?;
+                    .await
+                    .context(df_error::IcebergSnafu)
+            })?;
         } else {
             return self.catalog.deregister_schema(name, cascade);
         }

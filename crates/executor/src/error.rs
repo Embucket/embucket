@@ -4,7 +4,6 @@ use catalog::error::Error as CatalogError;
 use datafusion_common::DataFusionError;
 use error_stack_trace;
 use iceberg_rust::error::Error as IcebergError;
-use iceberg_s3tables_catalog::error::Error as S3tablesError;
 use snafu::Location;
 use snafu::prelude::*;
 use std::backtrace::Backtrace;
@@ -272,14 +271,6 @@ pub enum Error {
     CatalogNotFound {
         operation_on: OperationOn,
         catalog: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
-    #[snafu(display("S3Tables error: {error}"))]
-    S3Tables {
-        #[snafu(source(from(S3tablesError, Box::new)))]
-        error: Box<S3tablesError>,
         #[snafu(implicit)]
         location: Location,
     },

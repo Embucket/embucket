@@ -1,4 +1,4 @@
-use crate::block_in_new_runtime;
+use crate::block_on_without_deadlock;
 use crate::snowflake_table::CaseInsensitiveTable;
 use async_trait::async_trait;
 use catalog_metastore::error as metastore_error;
@@ -47,7 +47,7 @@ impl SchemaProvider for EmbucketSchema {
         let database = self.database.clone();
         let schema = self.schema.clone();
 
-        let table_names = block_in_new_runtime(async move {
+        let table_names = block_on_without_deadlock(async move {
             metastore
                 .list_tables(&SchemaIdent::new(database, schema))
                 .await
@@ -55,8 +55,7 @@ impl SchemaProvider for EmbucketSchema {
                     |_| vec![],
                     |tables| tables.into_iter().map(|s| s.ident.table.clone()).collect(),
                 )
-        })
-        .unwrap_or_else(|_| vec![]);
+        });
 
         // Record the result as part of the current span.
         tracing::Span::current().record("tables_names_count", table_names.len());
@@ -111,13 +110,12 @@ impl SchemaProvider for EmbucketSchema {
         let schema = self.schema.clone();
         let table = name.to_string();
 
-        block_in_new_runtime(async move {
+        block_on_without_deadlock(async move {
             let ident = TableIdent::new(&database, &schema, &table);
             iceberg_catalog
                 .tabular_exists(&ident.to_iceberg_ident())
                 .await
                 .unwrap_or(false)
         })
-        .unwrap_or(false)
     }
 }

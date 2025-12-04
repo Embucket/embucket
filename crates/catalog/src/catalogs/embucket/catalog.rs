@@ -1,5 +1,5 @@
 use super::schema::EmbucketSchema;
-use crate::block_in_new_runtime;
+use crate::block_on_without_deadlock;
 use catalog_metastore::{Metastore, SchemaIdent};
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use iceberg_rust::catalog::Catalog as IcebergCatalog;
@@ -50,7 +50,7 @@ impl CatalogProvider for EmbucketCatalog {
         let metastore = self.metastore.clone();
         let database = self.database.clone();
 
-        block_in_new_runtime(async move {
+        block_on_without_deadlock(async move {
             metastore.list_schemas(&database).await.map_or_else(
                 |_| vec![],
                 |schemas| {
@@ -61,7 +61,6 @@ impl CatalogProvider for EmbucketCatalog {
                 },
             )
         })
-        .unwrap_or_else(|_| vec![])
     }
 
     #[tracing::instrument(name = "EmbucketCatalog::schema", level = "debug", skip(self))]
@@ -71,7 +70,7 @@ impl CatalogProvider for EmbucketCatalog {
         let database = self.database.clone();
         let schema_name = name.to_string();
 
-        block_in_new_runtime(async move {
+        block_on_without_deadlock(async move {
             metastore
                 .get_schema(&SchemaIdent::new(database.clone(), schema_name.clone()))
                 .await
@@ -87,6 +86,5 @@ impl CatalogProvider for EmbucketCatalog {
                     schema
                 })
         })
-        .unwrap_or_default()
     }
 }

@@ -38,9 +38,9 @@ use tokio::time::Duration;
 use tracing::Instrument;
 use uuid::Uuid;
 
-const DEFAULT_SCHEMA: &str = "public";
-
 pub const TIMEOUT_SIGNAL_INTERVAL_SECONDS: u64 = 60;
+
+pub const TIMEOUT_DISCARD_INTERVAL_SECONDS: u64 = 60;
 
 #[async_trait::async_trait]
 pub trait ExecutionService: Send + Sync {
@@ -559,7 +559,7 @@ impl ExecutionService for CoreExecutionService {
 
             // Discard results after short timeout, to prevent memory leaks
             tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(TIMEOUT_DISCARD_INTERVAL_SECONDS)).await;
                 let running_query = queries_clone.remove(query_id);
                 if let Ok(RunningQuery {result_handle: Some(result_handle), ..}) = running_query {
                     tracing::debug!("Discarding '{query_status:?}' result for query {query_id}");

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::error;
+use crate::{block_on_without_deadlock, error};
 use async_trait::async_trait;
 use catalog_metastore::error::{self as metastore_error, Result as MetastoreResult};
 use catalog_metastore::{
@@ -8,7 +8,6 @@ use catalog_metastore::{
     TableCreateRequest as MetastoreTableCreateRequest, TableIdent as MetastoreTableIdent,
     TableUpdate as MetastoreTableUpdate,
 };
-use futures::executor::block_on;
 use iceberg_rust::{
     catalog::{
         Catalog as IcebergCatalog,
@@ -41,23 +40,27 @@ pub struct EmbucketIcebergCatalog {
 impl EmbucketIcebergCatalog {
     #[tracing::instrument(name = "EmbucketIcebergCatalog::new", level = "trace", skip(metastore))]
     pub fn new(metastore: Arc<dyn Metastore>, database: String) -> MetastoreResult<Self> {
-        let db = block_on(metastore.get_database(&database))?.ok_or_else(|| {
-            metastore_error::DatabaseNotFoundSnafu {
-                db: database.clone(),
-            }
-            .build()
-        })?;
-        let object_store =
-            block_on(metastore.volume_object_store(&db.volume))?.ok_or_else(|| {
-                metastore_error::VolumeNotFoundSnafu {
-                    volume: db.volume.clone(),
+        block_on_without_deadlock(async move {
+            let db = metastore.get_database(&database).await?.ok_or_else(|| {
+                metastore_error::DatabaseNotFoundSnafu {
+                    db: database.clone(),
                 }
                 .build()
             })?;
-        Ok(Self {
-            metastore,
-            database,
-            object_store,
+            let object_store = metastore
+                .volume_object_store(&db.volume)
+                .await?
+                .ok_or_else(|| {
+                    metastore_error::VolumeNotFoundSnafu {
+                        volume: db.volume.clone(),
+                    }
+                    .build()
+                })?;
+            Ok(Self {
+                metastore,
+                database,
+                object_store,
+            })
         })
     }
 
