@@ -106,7 +106,15 @@ impl Catalog for RestCatalog {
     }
 
     async fn drop_table(&self, identifier: &Identifier) -> Result<(), Error> {
-        self.inner.drop_table(identifier).await
+        catalog_api_api::drop_table(
+            &self.configuration,
+            self.name.as_deref(),
+            &identifier.namespace().to_string(),
+            identifier.name(),
+            Some(true),
+        )
+        .await
+        .map_err(Into::<Error>::into)
     }
 
     async fn drop_view(&self, identifier: &Identifier) -> Result<(), Error> {
