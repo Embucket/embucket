@@ -6,7 +6,7 @@ license-file.workspace = true
 
 [features]
 default = []
-rest_catalog = []
+rest-catalog = []
 
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }

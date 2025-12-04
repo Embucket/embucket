@@ -37,6 +37,7 @@ path = "src/main.rs"
 default = ["retry-disable"]
 retry-disable = ["api-snowflake-rest/retry-disable"]
 streaming = []
+rest-catalog = ["executor/rest-catalog"]
 
 [package.metadata.lambda]
 # Default binary to deploy

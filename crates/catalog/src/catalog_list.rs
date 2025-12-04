@@ -1,7 +1,7 @@
 use super::catalogs::embucket::catalog::EmbucketCatalog;
 use super::catalogs::embucket::iceberg_catalog::EmbucketIcebergCatalog;
 use crate::catalog::{CachingCatalog, CatalogType, Properties};
-#[cfg(feature = "rest_catalog")]
+#[cfg(feature = "rest-catalog")]
 use crate::catalogs::rest::catalog::RestCatalog;
 use crate::df_error;
 use crate::error::{
@@ -11,9 +11,9 @@ use crate::error::{
 use crate::schema::CachingSchema;
 use crate::table::CachingTable;
 use crate::utils::fetch_table_providers;
-#[cfg(not(feature = "rest_catalog"))]
+#[cfg(not(feature = "rest-catalog"))]
 use aws_config::{BehaviorVersion, Region, defaults};
-#[cfg(not(feature = "rest_catalog"))]
+#[cfg(not(feature = "rest-catalog"))]
 use aws_credential_types::{Credentials, provider::SharedCredentialsProvider};
 use catalog_metastore::{
     AwsCredentials, Database, Metastore, RwObject, S3TablesVolume, VolumeType,
@@ -24,17 +24,17 @@ use datafusion::{
     execution::object_store::ObjectStoreRegistry,
 };
 use datafusion_iceberg::catalog::catalog::IcebergCatalog as DataFusionIcebergCatalog;
-#[cfg(feature = "rest_catalog")]
+#[cfg(feature = "rest-catalog")]
 use iceberg_rest_catalog::apis::configuration::{AWSv4Key, Configuration};
-#[cfg(feature = "rest_catalog")]
+#[cfg(feature = "rest-catalog")]
 use iceberg_rest_catalog::catalog::RestCatalog as IcebergRestCatalog;
 use iceberg_rust::catalog::Catalog;
 use iceberg_rust::object_store::ObjectStoreBuilder;
-#[cfg(not(feature = "rest_catalog"))]
+#[cfg(not(feature = "rest-catalog"))]
 use iceberg_s3tables_catalog::S3TablesCatalog;
 use object_store::ObjectStore;
 use object_store::local::LocalFileSystem;
-#[cfg(feature = "rest_catalog")]
+#[cfg(feature = "rest-catalog")]
 use secrecy::SecretString;
 use snafu::OptionExt;
 use snafu::ResultExt;
@@ -241,7 +241,7 @@ impl EmbucketCatalogList {
             ),
             AwsCredentials::Token(ref t) => (None, None, Some(t.clone())),
         };
-        #[cfg(not(feature = "rest_catalog"))]
+        #[cfg(not(feature = "rest-catalog"))]
         {
             let creds =
                 Credentials::from_keys(ak.unwrap_or_default(), sk.unwrap_or_default(), token);
@@ -268,7 +268,7 @@ impl EmbucketCatalogList {
             .with_catalog_type(CatalogType::S3tables));
         }
 
-        #[cfg(feature = "rest_catalog")]
+        #[cfg(feature = "rest-catalog")]
         {
             let base_path = volume.endpoint.clone().unwrap_or_else(|| {
                 format!("https://s3tables.{}.amazonaws.com/iceberg", volume.region())
