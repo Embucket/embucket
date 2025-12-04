@@ -40,7 +40,7 @@ pub async fn create_s3_tables_df_session() -> Arc<UserSession> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-// #[ignore = "s3 tables integration"]
+#[ignore = "s3 tables integration"]
 #[allow(clippy::unwrap_used)]
 async fn run_queries() {
     let queries = [
