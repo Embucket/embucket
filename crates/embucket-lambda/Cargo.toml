@@ -25,6 +25,10 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 tower = { workspace = true }
 tower-http = { workspace = true }
 cfg-if = { workspace = true }
+opentelemetry = "0.31.0"
+opentelemetry-otlp = { version = "0.31.0", features = ["grpc-tonic"] }
+opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
+tracing-opentelemetry = "0.32.0"
 
 [lints]
 workspace = true

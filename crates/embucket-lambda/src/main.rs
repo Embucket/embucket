@@ -1,6 +1,8 @@
 mod config;
+mod tracing_setup;
 
 use crate::config::EnvConfig;
+use crate::tracing_setup::init_tracing;
 use api_snowflake_rest::server::core_state::CoreState;
 use api_snowflake_rest::server::core_state::MetastoreConfig;
 use api_snowflake_rest::server::make_snowflake_router;
@@ -18,6 +20,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
         use lambda_http::run_with_streaming_response as run;
@@ -30,7 +33,7 @@ type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
-    init_tracing();
+    let tracer_provider = init_tracing();
 
     let env_config = EnvConfig::from_env();
     info!(
@@ -53,7 +56,11 @@ async fn main() -> Result<(), LambdaError> {
         let app = Arc::clone(&app);
         async move { app.handle_event(event).await }
     }))
-    .await
+    .await?;
+
+    tracer_provider.shutdown()?;
+
+    Ok(())
 }
 
 struct LambdaApp {
@@ -194,33 +201,4 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
         .and_then(|raw| raw.split(',').next())
         .and_then(|ip| ip.trim().parse::<IpAddr>().ok())
         .map(|ip| SocketAddr::new(ip, 0))
-}
-
-fn init_tracing() {
-    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    let emit_ansi = std::io::stdout().is_terminal();
-
-    // Use json format if requested via env var, otherwise use pretty format with span events
-    let format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
-
-    if format == "json" {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .with_target(true)
-            .with_ansi(false)
-            .json()
-            .with_current_span(true)
-            .with_span_list(true)
-            .try_init();
-    } else {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .with_target(true)
-            .with_ansi(emit_ansi)
-            .with_span_events(
-                tracing_subscriber::fmt::format::FmtSpan::ENTER
-                    | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
-            )
-            .try_init();
-    }
 }
