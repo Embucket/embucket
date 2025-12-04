@@ -203,22 +203,10 @@ impl UserQuery {
     }
 
     fn session_context_expr_rewriter(&self) -> SessionContextExprRewriter {
-        let current_database = self.current_database();
-        let schemas: Vec<String> = self
-            .session
-            .ctx
-            .catalog(&current_database)
-            .map(|c| {
-                c.schema_names()
-                    .iter()
-                    .map(|schema| format!("{current_database}.{schema}"))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
         SessionContextExprRewriter {
-            database: current_database,
+            database: self.current_database(),
             schema: self.current_schema(),
-            schemas,
+            schemas: vec![],
             warehouse: "default".to_string(),
             session_id: self.session.ctx.session_id(),
             version: self.session.config.embucket_version.clone(),

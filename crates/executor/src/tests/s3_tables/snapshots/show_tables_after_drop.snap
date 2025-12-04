@@ -1,0 +1,14 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: query
+---
+Ok(
+    [
+        "+------------+-------+-------+---------------+-------------+",
+        "| created_on | name  | kind  | database_name | schema_name |",
+        "+------------+-------+-------+---------------+-------------+",
+        "|            | first | TABLE | embucket      | tests       |",
+        "|            | third | TABLE | embucket      | tests       |",
+        "+------------+-------+-------+---------------+-------------+",
+    ],
+)
