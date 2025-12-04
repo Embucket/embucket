@@ -40,7 +40,7 @@ pub async fn create_s3_tables_df_session() -> Arc<UserSession> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "s3 tables integration"]
+// #[ignore = "s3 tables integration"]
 #[allow(clippy::unwrap_used)]
 async fn run_queries() {
     let queries = [
@@ -91,6 +91,13 @@ async fn run_queries() {
     ];
 
     let session = create_s3_tables_df_session().await;
+    // cleanup BEFORE running test
+    CleanupGuard {
+        ctx: session.ctx.clone(),
+    }
+    .cleanup();
+
+    // cleanup AFTER running test (guard dropped at end of scope)
     let _guard = CleanupGuard {
         ctx: session.ctx.clone(),
     };
@@ -103,7 +110,7 @@ async fn run_queries() {
             res.unwrap();
         } else {
             let mut settings = insta::Settings::new();
-            settings.set_description(stringify!(query));
+            settings.set_description(query);
             settings.set_omit_expression(true);
             settings.set_prepend_module_to_snapshot(false);
             settings.bind(|| {
@@ -130,8 +137,8 @@ struct CleanupGuard {
     ctx: SessionContext,
 }
 
-impl Drop for CleanupGuard {
-    fn drop(&mut self) {
+impl CleanupGuard {
+    fn cleanup(&self) {
         if let Some(catalog) = self.ctx.state().catalog_list().catalog("embucket") {
             for schema_name in catalog.schema_names() {
                 if let Some(schema) = catalog.schema(&schema_name) {
@@ -142,5 +149,11 @@ impl Drop for CleanupGuard {
                 let _ = catalog.deregister_schema(&schema_name, true);
             }
         }
+    }
+}
+
+impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+        self.cleanup();
     }
 }

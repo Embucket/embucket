@@ -1,6 +1,6 @@
 ---
 source: crates/executor/src/tests/s3_tables/query.rs
-description: query
+description: SHOW COLUMNS IN embucket.tests.first
 ---
 Ok(
     [
