@@ -16,7 +16,6 @@ pub struct EnvConfig {
     pub embucket_version: String,
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
-    pub read_only: bool,
     pub max_concurrent_table_fetches: usize,
 }
 
@@ -37,7 +36,6 @@ impl EnvConfig {
             embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
-            read_only: parse_env("READ_ONLY").unwrap_or(true),
             max_concurrent_table_fetches: parse_env("MAX_CONCURRENT_TABLE_FETCHES").unwrap_or(5),
         }
     }
@@ -53,7 +51,6 @@ impl EnvConfig {
             mem_pool_size_mb: self.mem_pool_size_mb,
             mem_enable_track_consumers_pool: self.mem_enable_track_consumers_pool,
             disk_pool_size_mb: self.disk_pool_size_mb,
-            read_only: self.read_only,
             max_concurrent_table_fetches: self.max_concurrent_table_fetches,
         }
     }
@@ -61,12 +58,6 @@ impl EnvConfig {
 
 fn env_or_default(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
-}
-
-fn env_bool(name: &str) -> bool {
-    env::var(name)
-        .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
 }
 
 fn parse_mem_pool_type() -> Option<MemPoolType> {

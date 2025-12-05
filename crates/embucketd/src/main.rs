@@ -130,7 +130,6 @@ async fn async_main(
         mem_pool_size_mb: opts.mem_pool_size_mb,
         mem_enable_track_consumers_pool: opts.mem_enable_track_consumers_pool,
         disk_pool_size_mb: opts.disk_pool_size_mb,
-        read_only: opts.read_only,
         max_concurrent_table_fetches: opts.max_concurrent_table_fetches,
     };
     let host = opts.host.clone().unwrap();

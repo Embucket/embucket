@@ -39,7 +39,6 @@ pub struct Config {
     pub mem_pool_size_mb: Option<usize>,
     pub mem_enable_track_consumers_pool: Option<bool>,
     pub disk_pool_size_mb: Option<usize>,
-    pub read_only: bool,
     pub max_concurrent_table_fetches: usize,
 }
 
@@ -62,7 +61,6 @@ impl Default for Config {
             mem_pool_size_mb: None,
             mem_enable_track_consumers_pool: None,
             disk_pool_size_mb: None,
-            read_only: false,
             max_concurrent_table_fetches: 5,
         }
     }
@@ -78,12 +76,6 @@ impl Config {
     #[must_use]
     pub const fn with_query_timeout(mut self, timeout_secs: u64) -> Self {
         self.query_timeout_secs = timeout_secs;
-        self
-    }
-
-    #[must_use]
-    pub const fn with_read_only(mut self, read_only: bool) -> Self {
-        self.read_only = read_only;
         self
     }
 }
