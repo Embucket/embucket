@@ -1,0 +1,15 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: SELECT * FROM embucket.tests.first
+---
+Ok(
+    [
+        "+----+----------+----------+",
+        "| id | name     | category |",
+        "+----+----------+----------+",
+        "| 1  | updated  | A        |",
+        "| 3  | inserted | C        |",
+        "| 2  | keep     | B        |",
+        "+----+----------+----------+",
+    ],
+)

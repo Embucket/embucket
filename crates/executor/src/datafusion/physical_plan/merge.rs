@@ -158,11 +158,10 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
             let schema = schema.clone();
             async move {
                 #[allow(clippy::unwrap_used)]
-                let value = tabular.write().unwrap().clone();
-                let mut table = if let Tabular::Table(table) = value {
-                    Ok(table)
-                } else {
-                    Err(IcebergError::InvalidFormat("database entity".to_string()))
+                let value = tabular.read().unwrap().clone();
+                let mut table = match value {
+                    Tabular::Table(table) => Ok(table),
+                    _ => Err(IcebergError::InvalidFormat("database entity".to_string())),
                 }
                 .map_err(DataFusionIcebergError::from)?;
 
@@ -200,7 +199,11 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                             .context(error::IcebergSnafu)?;
                     }
                 }
-
+                // Refresh the cached table with the latest snapshot so subsequent scans
+                // see the results of this MERGE operation.
+                #[allow(clippy::unwrap_used)]
+                let mut lock = tabular.write().unwrap();
+                *lock = Tabular::Table(table);
                 Ok(RecordBatch::new_empty(schema))
             }
         })

@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: SHOW DATABASES
+---
+Ok(
+    [
+        "+------------+----------+----------+---------------+-------------+",
+        "| created_on | name     | kind     | database_name | schema_name |",
+        "+------------+----------+----------+---------------+-------------+",
+        "|            | embucket | STANDARD |               |             |",
+        "+------------+----------+----------+---------------+-------------+",
+    ],
+)

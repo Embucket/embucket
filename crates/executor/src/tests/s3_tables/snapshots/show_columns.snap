@@ -1,0 +1,15 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: SHOW COLUMNS IN embucket.tests.first
+---
+Ok(
+    [
+        "+------------+-------------+-------------+-----------+-------+---------+--------+------------+---------+---------------+---------------+",
+        "| table_name | schema_name | column_name | data_type | null? | default | kind   | expression | comment | database_name | autoincrement |",
+        "+------------+-------------+-------------+-----------+-------+---------+--------+------------+---------+---------------+---------------+",
+        "| first      | tests       | id          | Int64     | YES   |         | COLUMN |            |         | embucket      |               |",
+        "| first      | tests       | name        | Utf8      | YES   |         | COLUMN |            |         | embucket      |               |",
+        "| first      | tests       | category    | Utf8      | YES   |         | COLUMN |            |         | embucket      |               |",
+        "+------------+-------------+-------------+-----------+-------+---------+--------+------------+---------+---------------+---------------+",
+    ],
+)

@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: "CREATE TABLE embucket.tests.third (id INT, name VARCHAR)"
+---
+Ok(
+    [
+        "+-------+",
+        "| count |",
+        "+-------+",
+        "| 0     |",
+        "+-------+",
+    ],
+)

@@ -441,7 +441,7 @@ async fn test_query_timeout() {
 async fn test_execute_read_only_mode() {
     //setup
     let metastore = Arc::new(InMemoryMetastore::new());
-    let metastore_config = MetastoreBootstrapConfig::default();
+    let metastore_config = MetastoreBootstrapConfig::bootstrap();
     metastore_config
         .apply(metastore.clone())
         .await

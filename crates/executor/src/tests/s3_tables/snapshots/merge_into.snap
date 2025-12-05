@@ -1,0 +1,12 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: "MERGE INTO embucket.tests.first AS tgt USING embucket.tests.second AS src\n            ON tgt.id = src.id\n            WHEN MATCHED THEN UPDATE SET name = src.name, category = src.category\n            WHEN NOT MATCHED THEN INSERT (id, name, category) VALUES (src.id, src.name, src.category)"
+---
+Ok(
+    [
+        "+------------------------+",
+        "| number of rows updated |",
+        "+------------------------+",
+        "+------------------------+",
+    ],
+)
