@@ -120,11 +120,14 @@ pub struct ResponseData {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct JsonResponse {
     pub data: Option<ResponseData>,
     pub success: bool,
     pub message: Option<String>,
     pub code: Option<String>,
+    pub error_stack_trace: Option<String>,
+    pub debug_error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

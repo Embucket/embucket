@@ -282,6 +282,8 @@ impl Error {
         let body = Json(JsonResponse {
             success: false,
             message: Some(display_error),
+            error_stack_trace: Some(self.output_msg()),
+            debug_error: Some(self.debug_error_message()),
             // TODO: On error data field contains details about actual error
             // {'data': {'internalError': False, 'unredactedFromSecureObject': False, 'errorCode': '002043', 'age': 0, 'sqlState': '02000', 'queryId': '01be8b7b-0003-6429-0004-d66e02e60096', 'line': -1, 'pos': -1, 'type': 'COMPILATION'}, 'code': '002043', 'message': 'SQL compilation error:\nObject does not exist, or operation cannot be performed.', 'success': False, 'headers': None}
             // {'data': {'rowtype': [], 'rowsetBase64': None, 'rowset': None, 'total': None, 'queryResultFormat': None, 'errorCode': '002043', 'sqlState': '02000'}, 'success': False, 'message': "8244114031572: SQL compilation error: Schema 'embucket.no' does not exist or not authorized", 'code': '002043'}
