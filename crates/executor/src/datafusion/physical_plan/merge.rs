@@ -200,7 +200,11 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                             .context(error::IcebergSnafu)?;
                     }
                 }
-
+                // Refresh the cached table with the latest snapshot so subsequent scans
+                // see the results of this MERGE operation.
+                #[allow(clippy::unwrap_used)]
+                let mut lock = tabular.write().unwrap();
+                *lock = Tabular::Table(table);
                 Ok(RecordBatch::new_empty(schema))
             }
         })
