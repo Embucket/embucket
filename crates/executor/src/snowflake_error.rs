@@ -321,7 +321,7 @@ fn iceberg_error(error: &IcebergError, subtext: &[&str]) -> SnowflakeError {
                     message: err.to_string(),
                     error_code,
                     // Add downcast warning separately as this is internal message
-                    internal: InternalMessage(format!("Warning: Didn't downcast error: {err}")),
+                    internal: InternalMessage(format!("Warning: Didn't downcast error: {err:?}")),
                     location: location!(),
                 }
             }
@@ -371,7 +371,7 @@ fn datafusion_error(df_error: &DataFusionError, subtext: &[&str]) -> SnowflakeEr
                         message: err.to_string(),
                         error_code: ErrorCode::Arrow,
                         // Add downcast warning separately as this is internal message
-                        internal: InternalMessage(format!("Warning: Didn't downcast error: {err}")),
+                        internal: InternalMessage(format!("Warning: Didn't downcast error: {err:?}")),
                         location: location!(),
                     }
                 }
@@ -548,7 +548,7 @@ fn datafusion_error(df_error: &DataFusionError, subtext: &[&str]) -> SnowflakeEr
                     message,
                     error_code: ErrorCode::Other,
                     // Add downcast warning separately as this is internal message
-                    internal: InternalMessage(format!("Warning: Didn't downcast error: {err}")),
+                    internal: InternalMessage(format!("Warning: Didn't downcast error: {err:?}")),
                     location: location!(),
                 }
             }

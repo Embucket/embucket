@@ -97,6 +97,7 @@ impl InMemoryMetastore {
         }
     }
 
+    #[instrument(name = "InMemoryMetastore::metadata_file_name", level = "trace", ret)]
     fn metadata_file_name() -> String {
         format!("{}.metadata.json", Uuid::new_v4())
     }
@@ -125,6 +126,7 @@ impl InMemoryMetastore {
         ident.database.to_ascii_lowercase()
     }
 
+    #[instrument(name = "InMemoryMetastore::ensure_database", level = "trace", ret)]
     fn ensure_database(state: &MetastoreState, name: &DatabaseIdent) -> Result<RwObject<Database>> {
         state
             .databases
@@ -133,6 +135,7 @@ impl InMemoryMetastore {
             .ok_or_else(|| metastore_error::DatabaseNotFoundSnafu { db: name.clone() }.build())
     }
 
+    #[instrument(name = "InMemoryMetastore::ensure_volume", level = "trace", ret)]
     fn ensure_volume(state: &MetastoreState, name: &VolumeIdent) -> Result<RwObject<Volume>> {
         state.volumes.get(name).cloned().ok_or_else(|| {
             metastore_error::VolumeNotFoundSnafu {
@@ -142,6 +145,7 @@ impl InMemoryMetastore {
         })
     }
 
+    #[instrument(name = "InMemoryMetastore::put_metadata", level = "trace", ret)]
     async fn put_metadata(
         &self,
         table: &TableIdent,
@@ -166,6 +170,7 @@ impl InMemoryMetastore {
 
 #[async_trait]
 impl Metastore for InMemoryMetastore {
+    #[instrument(name = "InMemoryMetastore::list_volumes", level = "trace", ret)]
     async fn list_volumes(&self) -> Result<Vec<RwObject<Volume>>> {
         let state = self.state.read().await;
         Ok(state.volumes.values().cloned().collect())
@@ -268,6 +273,7 @@ impl Metastore for InMemoryMetastore {
         Ok(())
     }
 
+    #[instrument(name = "InMemoryMetastore::volume_object_store", level = "trace", ret)]
     async fn volume_object_store(
         &self,
         name: &VolumeIdent,
@@ -286,6 +292,7 @@ impl Metastore for InMemoryMetastore {
         }
     }
 
+    #[instrument(name = "InMemoryMetastore::list_databases", level = "trace", ret)]
     async fn list_databases(&self) -> Result<Vec<RwObject<Database>>> {
         let state = self.state.read().await;
         Ok(state.databases.values().cloned().collect())
@@ -312,11 +319,13 @@ impl Metastore for InMemoryMetastore {
         Ok(row)
     }
 
+    #[instrument(name = "InMemoryMetastore::get_database", level = "trace", ret)]
     async fn get_database(&self, name: &DatabaseIdent) -> Result<Option<RwObject<Database>>> {
         let state = self.state.read().await;
         Ok(state.databases.get(name).cloned())
     }
 
+    #[instrument(name = "InMemoryMetastore::update_database", level = "debug", skip(self, database), err)]
     async fn update_database(
         &self,
         name: &DatabaseIdent,
@@ -331,6 +340,7 @@ impl Metastore for InMemoryMetastore {
         Ok(entry.clone())
     }
 
+    #[instrument(name = "InMemoryMetastore::delete_database", level = "debug", skip(self), err)]
     async fn delete_database(&self, name: &DatabaseIdent, cascade: bool) -> Result<()> {
         let mut state = self.state.write().await;
         let schema_keys: Vec<_> = state
@@ -366,6 +376,7 @@ impl Metastore for InMemoryMetastore {
         Ok(())
     }
 
+    #[instrument(name = "InMemoryMetastore::list_schemas", level = "trace", ret)]
     async fn list_schemas(&self, database: &DatabaseIdent) -> Result<Vec<RwObject<Schema>>> {
         let state = self.state.read().await;
 
@@ -382,6 +393,7 @@ impl Metastore for InMemoryMetastore {
         Ok(items)
     }
 
+    #[instrument(name = "InMemoryMetastore::create_schema", level = "debug", skip(self, schema), err)]
     async fn create_schema(&self, ident: &SchemaIdent, schema: Schema) -> Result<RwObject<Schema>> {
         let mut state = self.state.write().await;
         if state.schemas.contains_key(&Self::schema_key(ident)) {
@@ -402,11 +414,13 @@ impl Metastore for InMemoryMetastore {
         Ok(row)
     }
 
+    #[instrument(name = "InMemoryMetastore::get_schema", level = "trace", ret)]
     async fn get_schema(&self, ident: &SchemaIdent) -> Result<Option<RwObject<Schema>>> {
         let state = self.state.read().await;
         Ok(state.schemas.get(&Self::schema_key(ident)).cloned())
     }
 
+    #[instrument(name = "InMemoryMetastore::update_schema", level = "debug", skip(self, schema), err)]
     async fn update_schema(&self, ident: &SchemaIdent, schema: Schema) -> Result<RwObject<Schema>> {
         let mut state = self.state.write().await;
         let entry = state
@@ -423,6 +437,7 @@ impl Metastore for InMemoryMetastore {
         Ok(entry.clone())
     }
 
+    #[instrument(name = "InMemoryMetastore::delete_schema", level = "debug", skip(self), err)]
     async fn delete_schema(&self, ident: &SchemaIdent, cascade: bool) -> Result<()> {
         let mut state = self.state.write().await;
         let tables: Vec<_> = state
@@ -445,6 +460,7 @@ impl Metastore for InMemoryMetastore {
         Ok(())
     }
 
+    #[instrument(name = "InMemoryMetastore::list_tables", level = "trace", ret)]
     async fn list_tables(&self, schema: &SchemaIdent) -> Result<Vec<RwObject<Table>>> {
         let state = self.state.read().await;
         Ok(state
@@ -455,6 +471,7 @@ impl Metastore for InMemoryMetastore {
             .collect())
     }
 
+    #[instrument(name = "InMemoryMetastore::create_table", level = "debug", skip(self, table), err)]
     #[allow(clippy::too_many_lines)]
     async fn create_table(
         &self,
@@ -562,6 +579,7 @@ impl Metastore for InMemoryMetastore {
         Ok(row)
     }
 
+    #[instrument(name = "InMemoryMetastore::register_table", level = "debug", skip(self, table), err)]
     async fn register_table(&self, ident: &TableIdent, table: Table) -> Result<RwObject<Table>> {
         let mut state = self.state.write().await;
         let row = RwObject::new(table);
@@ -569,11 +587,13 @@ impl Metastore for InMemoryMetastore {
         Ok(row)
     }
 
+    #[instrument(name = "InMemoryMetastore::get_table", level = "trace", ret)]
     async fn get_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Table>>> {
         let state = self.state.read().await;
         Ok(state.tables.get(&Self::table_key(ident)).cloned())
     }
 
+    #[instrument(name = "InMemoryMetastore::update_table", level = "debug", skip(self, update), err)]
     async fn update_table(
         &self,
         ident: &TableIdent,
@@ -619,12 +639,14 @@ impl Metastore for InMemoryMetastore {
         Ok(table_entry.clone())
     }
 
+    #[instrument(name = "InMemoryMetastore::delete_table", level = "debug", skip(self), err)]
     async fn delete_table(&self, ident: &TableIdent, _cascade: bool) -> Result<()> {
         let mut state = self.state.write().await;
         state.tables.remove(&Self::table_key(ident));
         Ok(())
     }
 
+    #[instrument(name = "InMemoryMetastore::table_object_store", level = "trace", ret)]
     async fn table_object_store(&self, ident: &TableIdent) -> Result<Option<Arc<dyn ObjectStore>>> {
         if let Some(volume) = self.volume_for_table(ident).await? {
             self.volume_object_store(&volume.ident).await
@@ -633,11 +655,13 @@ impl Metastore for InMemoryMetastore {
         }
     }
 
+    #[instrument(name = "InMemoryMetastore::table_exists", level = "trace", ret)]
     async fn table_exists(&self, ident: &TableIdent) -> Result<bool> {
         let state = self.state.read().await;
         Ok(state.tables.contains_key(&Self::table_key(ident)))
     }
 
+    #[instrument(name = "InMemoryMetastore::url_for_table", level = "trace", ret)]
     async fn url_for_table(&self, ident: &TableIdent) -> Result<String> {
         let state = self.state.read().await;
         if let Some(table) = state.tables.get(&Self::table_key(ident)) {
@@ -655,6 +679,7 @@ impl Metastore for InMemoryMetastore {
         }
     }
 
+    #[instrument(name = "InMemoryMetastore::volume_for_table", level = "trace", ret)]
     async fn volume_for_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Volume>>> {
         let state = self.state.read().await;
         if let Some(volume_ident) = state
@@ -676,6 +701,7 @@ impl Metastore for InMemoryMetastore {
 }
 
 impl InMemoryMetastore {
+    #[instrument(name = "InMemoryMetastore::table_object_store_from_request", level = "trace", ret)]
     async fn table_object_store_from_request(
         &self,
         state: &MetastoreState,
@@ -699,6 +725,7 @@ impl InMemoryMetastore {
             })
     }
 
+    #[instrument(name = "InMemoryMetastore::update_properties_timestamps", level = "trace")]
     fn update_properties_timestamps(properties: &mut HashMap<String, String>) {
         let utc_now = Utc::now();
         let utc_now_str = utc_now.to_rfc3339();
@@ -721,6 +748,7 @@ fn max_field_id(schema: &IcebergSchema) -> i32 {
     schema.fields().iter().map(recurse).max().unwrap_or(0)
 }
 
+#[instrument(name = "InMemoryMetastore::convert_add_schema_update_to_lowercase", level = "trace")]
 fn convert_add_schema_update_to_lowercase(updates: &mut Vec<IcebergTableUpdate>) -> Result<()> {
     for update in updates {
         if let IcebergTableUpdate::AddSchema {
@@ -738,6 +766,7 @@ fn convert_add_schema_update_to_lowercase(updates: &mut Vec<IcebergTableUpdate>)
     Ok(())
 }
 
+#[instrument(name = "InMemoryMetastore::convert_schema_fields_to_lowercase", level = "trace")]
 fn convert_schema_fields_to_lowercase(schema: &IcebergSchema) -> Result<IcebergSchema> {
     let converted_fields: Vec<StructField> = schema
         .fields()

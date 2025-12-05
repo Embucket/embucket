@@ -51,7 +51,8 @@ impl CatalogProvider for EmbucketCatalog {
         let database = self.database.clone();
 
         block_on_without_deadlock(async move {
-            metastore.list_schemas(&database).await.map_or_else(
+            tracing::info!("schema_names");
+            let schemas = metastore.list_schemas(&database).await.map_or_else(
                 |_| vec![],
                 |schemas| {
                     schemas
@@ -59,7 +60,9 @@ impl CatalogProvider for EmbucketCatalog {
                         .map(|s| s.ident.schema.clone())
                         .collect()
                 },
-            )
+            );
+            tracing::info!("schema_names result: {schemas:?}");
+            schemas
         })
     }
 
@@ -71,7 +74,8 @@ impl CatalogProvider for EmbucketCatalog {
         let schema_name = name.to_string();
 
         block_on_without_deadlock(async move {
-            metastore
+            tracing::info!("schema");
+            let schema = metastore
                 .get_schema(&SchemaIdent::new(database.clone(), schema_name.clone()))
                 .await
                 .ok()
@@ -84,7 +88,9 @@ impl CatalogProvider for EmbucketCatalog {
                         iceberg_catalog,
                     });
                     schema
-                })
+                });
+            tracing::info!("schema result: {schema:?}");
+            schema
         })
     }
 }

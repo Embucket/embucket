@@ -48,13 +48,16 @@ impl SchemaProvider for EmbucketSchema {
         let schema = self.schema.clone();
 
         let table_names = block_on_without_deadlock(async move {
-            metastore
+            tracing::info!("table_names");
+            let t = metastore
                 .list_tables(&SchemaIdent::new(database, schema))
                 .await
                 .map_or_else(
                     |_| vec![],
                     |tables| tables.into_iter().map(|s| s.ident.table.clone()).collect(),
-                )
+                );
+            tracing::info!("table_names result: {t:?}");
+            t
         });
 
         // Record the result as part of the current span.
@@ -111,11 +114,14 @@ impl SchemaProvider for EmbucketSchema {
         let table = name.to_string();
 
         block_on_without_deadlock(async move {
+            tracing::info!("table_exist");
             let ident = TableIdent::new(&database, &schema, &table);
-            iceberg_catalog
+            let exists = iceberg_catalog
                 .tabular_exists(&ident.to_iceberg_ident())
                 .await
-                .unwrap_or(false)
+                .unwrap_or(false);
+            tracing::info!("table_exist result: {exists}");
+            exists
         })
     }
 }

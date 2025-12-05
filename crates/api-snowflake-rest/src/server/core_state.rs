@@ -19,6 +19,7 @@ pub struct CoreState {
     pub rest_api_config: RestApiConfig,
 }
 
+#[derive(Clone)]
 pub enum MetastoreConfig {
     ConfigPath(PathBuf),
     DefaultConfig,

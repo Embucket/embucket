@@ -5,13 +5,14 @@ use crate::server::make_snowflake_router;
 use crate::server::server_models::RestApiConfig;
 use crate::server::state::AppState;
 use executor::utils::Config as UtilsConfig;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::net::TcpListener;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Builder;
 use tracing_subscriber::fmt::format::FmtSpan;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 
 #[allow(clippy::expect_used)]
 #[must_use]
@@ -31,6 +32,7 @@ pub fn executor_default_cfg() -> UtilsConfig {
 pub fn run_test_rest_api_server(
     rest_cfg: Option<RestApiConfig>,
     executor_cfg: Option<UtilsConfig>,
+    metastore_cfg: MetastoreConfig,
 ) -> SocketAddr {
     let rest_cfg = rest_cfg.unwrap_or_else(|| rest_default_cfg("json"));
     let executor_cfg = executor_cfg.unwrap_or_else(executor_default_cfg);
@@ -45,6 +47,7 @@ pub fn run_test_rest_api_server(
     let _handle = std::thread::spawn(move || {
         // Create the Tokio runtime
         let rt = Builder::new_current_thread()
+            .worker_threads(16)
             .enable_all()
             .build()
             .expect("Failed to create Tokio runtime");
@@ -54,6 +57,7 @@ pub fn run_test_rest_api_server(
             let () = run_test_rest_api_server_with_config(
                 rest_cfg,
                 executor_cfg,
+                metastore_cfg,
                 listener,
                 server_cond_clone,
             )
@@ -83,15 +87,83 @@ pub fn run_test_rest_api_server(
     addr
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-pub async fn run_test_rest_api_server_with_config(
-    snowflake_rest_cfg: RestApiConfig,
-    execution_cfg: UtilsConfig,
-    listener: std::net::TcpListener,
-    server_cond: Arc<(Mutex<bool>, Condvar)>,
-) {
-    let addr = listener.local_addr().unwrap();
+fn setup_tracing_otlp() -> SdkTracerProvider {
+    use opentelemetry::trace::TracerProvider;
+    use opentelemetry_sdk::Resource;
+    use opentelemetry_sdk::trace::BatchSpanProcessor;
+    use opentelemetry_sdk::trace::SdkTracerProvider;
+    use tracing_subscriber::filter::{LevelFilter, Targets};
+    use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};    
 
+    // const TARGETS: [&str; 10] = [
+    //     "embucketd",
+    //     "api_snowflake_rest",
+    //     "executor",
+    //     "catalog_metastore",
+    //     "catalog",
+    //     "datafusion",
+    //     "iceberg_rust",
+    //     "datafusion_iceberg",
+    //     "tower",
+    //     "tower_http",
+    // ];
+
+    // Initialize OTLP exporter using gRPC (Tonic)
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()
+        .expect("Failed to create OTLP exporter");
+
+    let resource = Resource::builder().with_service_name("Em").build();
+
+    // Since BatchSpanProcessor and BatchSpanProcessorAsyncRuntime are not compatible with each other
+    // we just create TracerProvider with different span processors
+    let tracing_provider =  SdkTracerProvider::builder()
+        .with_span_processor(BatchSpanProcessor::builder(exporter).build())
+        .with_resource(resource)
+        .build();
+
+    // let targets_with_level =
+    //     |targets: &[&'static str], level: LevelFilter| -> Vec<(&str, LevelFilter)> {
+    //         // let default_log_targets: Vec<(String, LevelFilter)> =
+    //         targets.iter().map(|t| ((*t), level)).collect()
+    //     };
+
+    let registry = tracing_subscriber::registry()
+        // Telemetry filtering
+        .with(
+        tracing_opentelemetry::OpenTelemetryLayer::new(tracing_provider.tracer("embucket"))
+            .with_level(true)
+            .with_filter(LevelFilter::TRACE)
+            // .with_filter(Targets::default().with_targets(targets_with_level(
+            //     &TARGETS,
+            //     LevelFilter::TRACE,
+            // ))),
+        )
+        // Logs filtering
+        .with(
+        tracing_subscriber::fmt::layer()
+            .with_target(true)
+            .with_level(true)
+            .with_span_events(FmtSpan::NONE)
+            .json()
+            .with_filter(LevelFilter::TRACE)
+            // .with_filter(Targets::default().with_default(LevelFilter::TRACE))
+            // .with_filter(
+            //     Targets::default()
+            //         .with_targets(targets_with_level(
+            //             &["tower_sessions", "tower_sessions_core", "tower_http"],
+            //             LevelFilter::OFF,
+            //         ))
+            //         .with_default(LevelFilter::TRACE)
+            // )
+        );
+
+    registry.init();
+    tracing_provider
+}
+
+fn setup_tracing_file() {
     let traces_writer = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -114,11 +186,23 @@ pub async fn run_test_rest_api_server_with_config(
     // ignoring error: as with parralel tests execution, just first thread is able to set it successfully
     // since all tests run in a single process
     let _ = tracing::subscriber::set_global_default(subscriber);
+}
 
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+pub async fn run_test_rest_api_server_with_config(
+    snowflake_rest_cfg: RestApiConfig,
+    execution_cfg: UtilsConfig,
+    metastore_cfg: MetastoreConfig,
+    listener: std::net::TcpListener,
+    server_cond: Arc<(Mutex<bool>, Condvar)>,
+) {
+    let addr = listener.local_addr().unwrap();
+
+    // setup_tracing_file();
+    let tracing_provider = setup_tracing_otlp();
     tracing::info!("Starting server at {addr}");
 
-    let metastore_config = MetastoreConfig::DefaultConfig;
-    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_config)
+    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_cfg)
         .await
         .expect("Core state creation error");
 
@@ -137,4 +221,8 @@ pub async fn run_test_rest_api_server_with_config(
 
     // Serve the application
     axum_server::from_tcp(listener).serve(app).await.unwrap();
+
+    tracing_provider
+        .shutdown()
+        .expect("TracerProvider should shutdown successfully");
 }

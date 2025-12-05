@@ -107,6 +107,7 @@ impl CachingCatalog {
         self
     }
 
+    #[tracing::instrument(name = "CachingCatalog::iceberg_schema_provider", level = "debug", skip(self))]
     #[allow(clippy::as_conversions)]
     fn iceberg_schema_provider(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
         let Some(iceberg_catalog) = &self.iceberg_catalog else {
@@ -133,6 +134,7 @@ impl CachingCatalog {
         )
     }
 
+    #[tracing::instrument(name = "CachingCatalog::lookup_schema_provider", level = "debug", skip(self))]
     fn lookup_schema_provider(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
         self.iceberg_schema_provider(name)
             .or_else(|| self.catalog.schema(name))
@@ -167,10 +169,13 @@ impl CatalogProvider for CachingCatalog {
             Some(catalog) => {
                 let catalog = catalog.clone();
                 block_on_without_deadlock(async move {
-                    catalog.list_namespaces(None).await.map_or_else(
+                    tracing::info!("list_namespaces");
+                    let l = catalog.list_namespaces(None).await.map_or_else(
                         |_| vec![],
                         |namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect(),
-                    )
+                    );
+                    tracing::info!("list_namespaces result: {l:?}");
+                    l
                 })
             }
             None => self.catalog.schema_names(),
@@ -253,10 +258,13 @@ impl CatalogProvider for CachingCatalog {
             };
             let catalog = catalog.clone();
             block_on_without_deadlock(async move {
-                catalog
+                tracing::info!("create_namespace");
+                let c = catalog
                     .create_namespace(&namespace, None)
                     .await
-                    .context(df_error::IcebergSnafu)
+                    .context(df_error::IcebergSnafu);
+                tracing::info!("create_namespace result: {c:?}");
+                c
             })?;
             schema_provider
         } else {
@@ -292,10 +300,13 @@ impl CatalogProvider for CachingCatalog {
                 .map_err(|err| DataFusionError::External(Box::new(err)))?;
             let catalog = catalog.clone();
             block_on_without_deadlock(async move {
-                catalog
+                tracing::info!("drop_namespace");
+                let c = catalog
                     .drop_namespace(&namespace)
                     .await
-                    .context(df_error::IcebergSnafu)
+                    .context(df_error::IcebergSnafu);
+                tracing::info!("drop_namespace result: {c:?}");
+                c
             })?;
         } else {
             return self.catalog.deregister_schema(name, cascade);

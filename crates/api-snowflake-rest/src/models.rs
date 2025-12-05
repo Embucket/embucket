@@ -9,7 +9,7 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequestQueryParams {
     #[serde(rename = "request_id")]
-    pub request_id: String,
+    pub request_id: Option<String>,
     pub database_name: Option<String>,
     pub schema_name: Option<String>,
     pub warehouse: Option<String>,

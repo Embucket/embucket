@@ -210,6 +210,11 @@ impl Error {
             Self::Execution { source } => {
                 let error_code = source.to_snowflake_error().error_code();
                 match error_code {
+                    ErrorCode::Iceberg => (
+                        http::StatusCode::OK,
+                        SqlState::Success,
+                        error_code,
+                    ),
                     ErrorCode::Internal => (
                         http::StatusCode::INTERNAL_SERVER_ERROR,
                         SqlState::Success,

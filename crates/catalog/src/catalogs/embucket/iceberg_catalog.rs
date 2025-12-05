@@ -41,12 +41,14 @@ impl EmbucketIcebergCatalog {
     #[tracing::instrument(name = "EmbucketIcebergCatalog::new", level = "trace", skip(metastore))]
     pub fn new(metastore: Arc<dyn Metastore>, database: String) -> MetastoreResult<Self> {
         block_on_without_deadlock(async move {
+            tracing::info!("new EmbucketIcebergCatalog");
             let db = metastore.get_database(&database).await?.ok_or_else(|| {
                 metastore_error::DatabaseNotFoundSnafu {
                     db: database.clone(),
                 }
                 .build()
             })?;
+            tracing::info!("new EmbucketIcebergCatalog result: {db:?}");
             let object_store = metastore
                 .volume_object_store(&db.volume)
                 .await?
@@ -56,6 +58,7 @@ impl EmbucketIcebergCatalog {
                     }
                     .build()
                 })?;
+            tracing::info!("new EmbucketIcebergCatalog result: {object_store:?}");
             Ok(Self {
                 metastore,
                 database,

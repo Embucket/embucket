@@ -79,11 +79,16 @@ where
         };
 
         // Record the result as part of the current span.
+        // keep it last possible instruction so we know if it fails
         tracing::Span::current()
             .record("located_at", located_at)
             .record("session_id", session_id.clone());
 
-        Self::get_or_create_session(execution_svc, session_id).await
+        tracing::debug!("before get_or_create_session");
+        let session = Self::get_or_create_session(execution_svc, session_id.clone()).await?;
+        tracing::debug!("after get_or_create_session");
+
+        Ok(session)
     }
 }
 

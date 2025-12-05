@@ -47,7 +47,8 @@ impl SchemaProvider for CachingSchema {
                     return vec![];
                 };
                 block_on_without_deadlock(async move {
-                    catalog
+                    tracing::info!("list_tabulars");
+                    let n = catalog
                         .list_tabulars(&namespace)
                         .await
                         .map(|tables| {
@@ -56,7 +57,9 @@ impl SchemaProvider for CachingSchema {
                                 .map(|identifier| identifier.name().to_owned())
                                 .collect()
                         })
-                        .unwrap_or_default()
+                        .unwrap_or_default();
+                    tracing::info!("list_tabulars result: {n:?}");
+                    n
                 })
             }
             None => self.schema.table_names(),
@@ -105,11 +108,13 @@ impl SchemaProvider for CachingSchema {
             let table_name = name.clone();
 
             block_on_without_deadlock(async move {
+                tracing::info!("register_table");
                 let ident = Identifier::new(&namespace, &table_name);
                 let iceberg_table = builder
                     .build(ident.namespace(), catalog)
                     .await
                     .context(df_error::IcebergSnafu)?;
+                tracing::info!("register_table result: {iceberg_table:?}");
                 let tabular = IcebergTabular::Table(iceberg_table);
                 let table_provider: Arc<dyn TableProvider> = Arc::new(CaseInsensitiveTable::new(
                     Arc::new(DataFusionTable::new(tabular, None, None, None)),
@@ -144,11 +149,14 @@ impl SchemaProvider for CachingSchema {
                     let table_name = name.to_string();
 
                     block_on_without_deadlock(async move {
+                        tracing::info!("deregister_table");
                         let ident = Identifier::new(&namespace, &table_name);
-                        catalog
+                        let t = catalog
                             .drop_table(&ident)
                             .await
-                            .context(df_error::IcebergSnafu)
+                            .context(df_error::IcebergSnafu);
+                        tracing::info!("deregister_table result: {t:?}");
+                        t
                     })?;
                 } else {
                     return self.schema.deregister_table(name);
@@ -169,8 +177,11 @@ impl SchemaProvider for CachingSchema {
             let table_name = name.to_string();
 
             block_on_without_deadlock(async move {
+                tracing::info!("table_exist");
                 let ident = Identifier::new(&namespace, &table_name);
-                catalog.tabular_exists(&ident).await.unwrap_or(false)
+                let t = catalog.tabular_exists(&ident).await.unwrap_or(false);
+                tracing::info!("table_exist result: {t:?}");
+                t
             })
         } else {
             self.schema.table_exist(name)

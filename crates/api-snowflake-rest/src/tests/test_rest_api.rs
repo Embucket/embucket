@@ -2,7 +2,8 @@ use super::TEST_JWT_SECRET;
 use super::run_test_rest_api_server;
 use crate::sql_test;
 use crate::tests::snow_sql::*;
-use crate::tests::sql_test_macro::SqlTest;
+use crate::tests::sql_test_macro::{SqlTest, sql_test_wrapper};
+use crate::server::core_state::MetastoreConfig;
 
 mod compatible {
     use super::*;
@@ -94,6 +95,7 @@ mod compatible {
             // Schema 'TESTS.MISSING_SCHEMA' does not exist or not authorized."
             "create table missing_schema.foo(a int)",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 
     sql_test!(
@@ -103,6 +105,7 @@ mod compatible {
             // Table 'EMBUCKET.PUBLIC.TEST2' does not exist or not authorized.
             "ALTER TABLE embucket.public.test ADD COLUMN new_col INT",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 
     sql_test!(
@@ -112,6 +115,7 @@ mod compatible {
             // Schema 'EMBUCKET.MISSING_SCHEMA' does not exist or not authorized.
             "ALTER TABLE embucket.missing_schema.test ADD COLUMN new_col INT",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 
     sql_test!(
@@ -125,6 +129,7 @@ mod compatible {
                 (DATABASE_QUERY_PARAM_KEY, "embucket".to_string()),
                 (SCHEMA_QUERY_PARAM_KEY, "test_schema".to_string()),
             ])
+            .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 }
 
@@ -174,6 +179,7 @@ mod known_issues {
             "create schema if not exists embucket.test_schema",
             "create table if not exists embucket.test_schema.test_table (id int)",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 }
 
@@ -193,4 +199,57 @@ mod custom_server {
                 .with_demo_credentials("embucket".to_string(), "embucket".to_string()),
         )
     );
+}
+
+mod stress {
+    use super::*;
+    
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrency_test_memory_database() {
+        let handles = (0..50).map(|idx| {
+            tokio::spawn(async move {
+                sql_test_wrapper(
+                    SqlTest::new(&[
+                        "create table if not exists embucket.public.test_table (id int)",
+                        "drop table if exists embucket.public.test_table",
+                    ])
+                //.with_metastore_config(MetastoreConfig::DefaultConfig)
+                .with_metastore_config(MetastoreConfig::ConfigPath("/home/yaroslav/git/embucket/config/metastore.yaml".into()))
+                .with_skip_login(),
+                move |sql_info, response| {
+                    let sql = sql_info.0;
+                    let err_msg = response.message.clone().unwrap_or_default();
+                    let err_code = response.code.clone().unwrap_or_default();
+                    println!("{idx}: {sql} = {err_msg} {err_code}");
+                    response.code.is_none()
+                }).await;
+            })
+        }).collect::<Vec<_>>();
+        futures::future::join_all(handles).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrency_test_s3tables_database() {
+        let handles = (0..1).map(|idx| {
+            tokio::spawn(async move {
+                sql_test_wrapper(
+                    SqlTest::new(&[
+                        "create table if not exists my_s3_table_bucket.schema1.test_table (id int)",
+                        "drop table if exists my_s3_table_bucket.schema1.test_table",
+                    ])
+                //.with_metastore_config(MetastoreConfig::DefaultConfig)
+                .with_metastore_config(MetastoreConfig::ConfigPath("/home/yaroslav/git/embucket/config/metastore.yaml".into())),
+                move |sql_info, response| {
+                    let sql = sql_info.0;
+                    let err_msg = response.message.clone().unwrap_or_default();
+                    let err_code = response.code.clone().unwrap_or_default();
+                    println!("{idx}: {sql} = {err_msg} {err_code}");
+                    true
+                }).await;
+            })
+        }).collect::<Vec<_>>();
+        futures::future::join_all(handles).await;
+
+        assert!(false);
+    }    
 }
