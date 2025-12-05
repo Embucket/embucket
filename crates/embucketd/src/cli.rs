@@ -155,14 +155,6 @@ pub struct CliOpts {
 
     #[arg(
         long,
-        env = "READ_ONLY",
-        default_value = "true",
-        help = "If the service should only accept read only commands (selects)"
-    )]
-    pub read_only: bool,
-
-    #[arg(
-        long,
         env = "MAX_CONCURRENT_TABLE_FETCHES",
         default_value = "2",
         help = "The maximum number of concurrent requests to get tables details"
