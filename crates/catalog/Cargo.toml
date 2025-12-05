@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 license-file.workspace = true
 
+[features]
+default = []
+rest-catalog = []
+
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }
 functions = { path = "../functions" }

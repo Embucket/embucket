@@ -15,7 +15,7 @@ use std::{
 };
 use tokio::fs;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct MetastoreBootstrapConfig {
     #[serde(default)]
     volumes: Vec<VolumeEntry>,
@@ -107,8 +107,9 @@ const DEFAULT_VOLUME_NAME: &str = "embucket";
 const DEFAULT_DATABASE_NAME: &str = "embucket";
 const DEFAULT_SCHEMA_NAME: &str = "public";
 
-impl Default for MetastoreBootstrapConfig {
-    fn default() -> Self {
+impl MetastoreBootstrapConfig {
+    #[must_use]
+    pub fn bootstrap() -> Self {
         Self {
             volumes: vec![VolumeEntry {
                 volume: Volume {
@@ -145,6 +146,21 @@ impl MetastoreBootstrapConfig {
             config.volumes.push(volume);
         }
         Ok(config)
+    }
+
+    pub fn load_from_env() -> Result<Self, ConfigError> {
+        let mut config = Self::default();
+        if let Some(volume) = load_volume_from_env()? {
+            config.volumes.push(volume);
+        }
+        Ok(config)
+    }
+
+    #[must_use]
+    pub fn contains_s3_tables_volume(&self) -> bool {
+        self.volumes
+            .iter()
+            .any(|v| matches!(v.volume.volume, VolumeType::S3Tables(_)))
     }
 
     pub async fn apply(&self, metastore: Arc<dyn Metastore>) -> Result<(), ConfigError> {

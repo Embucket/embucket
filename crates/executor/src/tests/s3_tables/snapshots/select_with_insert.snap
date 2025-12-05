@@ -1,0 +1,13 @@
+---
+source: crates/executor/src/tests/s3_tables/query.rs
+description: SELECT count(*) FROM embucket.tests.first
+---
+Ok(
+    [
+        "+----------+",
+        "| count(*) |",
+        "+----------+",
+        "| 2        |",
+        "+----------+",
+    ],
+)

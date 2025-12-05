@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 license-file.workspace = true
 
+[features]
+rest-catalog = ["catalog/rest-catalog"]
+
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }
 catalog = { path = "../catalog" }
@@ -28,6 +31,9 @@ sqlparser = { git = "https://github.com/Embucket/datafusion-sqlparser-rs.git", r
   "visitor",
 ] }
 iceberg-rust = { workspace = true }
+iceberg-rust-spec = { workspace = true }
+iceberg-s3tables-catalog = { workspace = true }
+aws-sdk-s3tables = "1.45.0"
 error-stack-trace = { path = "../error-stack-trace" }
 error-stack = { path = "../error-stack" }
 

@@ -82,7 +82,7 @@ async fn apply_metastore_config(
         }
         MetastoreConfig::DefaultConfig => {
             tracing::info!("Bootstrapping metastore from default config");
-            MetastoreBootstrapConfig::default()
+            MetastoreBootstrapConfig::bootstrap()
                 .apply(metastore.clone())
                 .await
                 .context(MetastoreConfigSnafu)?;
