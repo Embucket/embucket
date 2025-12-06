@@ -26,7 +26,7 @@ where
 {
     let handle = std::thread::spawn(move || {
         // Try to create a dedicated Tokio runtime
-        let rt = Builder::new_current_thread()
+        let rt = Builder::new_multi_thread()
             .enable_all()
             .build()
             .context(error::CreateTokioRuntimeSnafu)?;
