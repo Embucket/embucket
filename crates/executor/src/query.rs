@@ -2152,96 +2152,132 @@ impl UserQuery {
             .context(ex_error::DataFusionSnafu)
     }
 
+    async fn _execute_sql(session: Arc<UserSession>, query: &str) -> Result<QueryResult> {
+        let query = query.to_string();
+        let df = session
+            .ctx
+            .sql(&query)
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        let mut schema = df.schema().as_arrow().clone();
+        let records = df.collect().await.context(ex_error::DataFusionSnafu)?;
+        if !records.is_empty() {
+            schema = records[0].schema().as_ref().clone();
+        }
+        Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
+    }
+
+    #[instrument(name = "UserQuery::execute_sql", level = "debug", skip(self), err, ret)]
     async fn execute_sql(&self, query: &str) -> Result<QueryResult> {
         let session = self.session.clone();
-        let query = query.to_string();
-        let stream = self
-            .session
-            .executor
-            .spawn(async move {
-                let df = session
-                    .ctx
-                    .sql(&query)
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "dedicated-executor")] {
+                let query = query.to_string();
+                let stream = self
+                    .session
+                    .executor
+                    .spawn(async move {
+                        UserQuery::_execute_sql(session, &query).await
+                    })
                     .await
-                    .context(ex_error::DataFusionSnafu)?;
-                let mut schema = df.schema().as_arrow().clone();
-                let records = df.collect().await.context(ex_error::DataFusionSnafu)?;
-                if !records.is_empty() {
-                    schema = records[0].schema().as_ref().clone();
-                }
-                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
-            })
+                    .context(ex_error::JobSnafu)??;
+                Ok(stream)
+            } else {
+                UserQuery::_execute_sql(session, query).await
+            }
+        }
+    }
+
+    async fn _execute_logical_plan(session: Arc<UserSession>, plan: LogicalPlan, span: tracing::Span) -> Result<QueryResult> {
+        let mut schema = plan.schema().as_arrow().clone();
+        let records = session
+            .ctx
+            .execute_logical_plan(plan)
             .await
-            .context(ex_error::JobSnafu)??;
-        Ok(stream)
+            .context(ex_error::DataFusionSnafu)?
+            .collect()
+            .instrument(span)
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        if !records.is_empty() {
+            schema = records[0].schema().as_ref().clone();
+        }
+        Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
     }
 
     async fn execute_logical_plan(&self, plan: LogicalPlan) -> Result<QueryResult> {
         let session = self.session.clone();
-
         let span = tracing::debug_span!("UserQuery::execute_logical_plan");
 
-        let stream = self
-            .session
-            .executor
-            .spawn(async move {
-                let mut schema = plan.schema().as_arrow().clone();
-                let records = session
-                    .ctx
-                    .execute_logical_plan(plan)
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "dedicated-executor")] {
+                let stream = self
+                    .session
+                    .executor
+                    .spawn(async move {
+                        UserQuery::_execute_logical_plan(session, plan, span).await
+                    })
                     .await
-                    .context(ex_error::DataFusionSnafu)?
-                    .collect()
-                    .instrument(span)
-                    .await
-                    .context(ex_error::DataFusionSnafu)?;
-                if !records.is_empty() {
-                    schema = records[0].schema().as_ref().clone();
-                }
-                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
-            })
-            .await
-            .context(ex_error::JobSnafu)??;
-        Ok(stream)
+                    .context(ex_error::JobSnafu)??;
+                Ok(stream)        
+            } else {
+                UserQuery::_execute_logical_plan(session, plan, span).await
+            }
+        }
     }
 
+    async fn _execute_logical_plan_with_custom_rules(
+        session: Arc<UserSession>,
+        plan: LogicalPlan,
+        rules: Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>>,
+    ) -> Result<QueryResult> {
+        let mut schema = plan.schema().as_arrow().clone();
+        let df = session
+            .ctx
+            .execute_logical_plan(plan)
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        let task_ctx = df.task_ctx();
+        let mut physical_plan = df
+            .create_physical_plan()
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        for rule in rules {
+            physical_plan = rule
+                .optimize(physical_plan, &ConfigOptions::new())
+                .context(ex_error::DataFusionSnafu)?;
+        }
+        let records = collect(physical_plan, Arc::new(task_ctx))
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        if !records.is_empty() {
+            schema = records[0].schema().as_ref().clone();
+        }
+        Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))    
+    }
+
+    #[instrument(name = "UserQuery::execute_logical_plan_with_custom_rules", level = "debug", skip(self), err, ret)]
     async fn execute_logical_plan_with_custom_rules(
         &self,
         plan: LogicalPlan,
         rules: Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>>,
     ) -> Result<QueryResult> {
-        let session = self.session.clone();
-        let stream = self
-            .session
-            .executor
-            .spawn(async move {
-                let mut schema = plan.schema().as_arrow().clone();
-                let df = session
-                    .ctx
-                    .execute_logical_plan(plan)
+        let session = self.session.clone();  
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "dedicated-executor")] {
+                let stream = self
+                    .session
+                    .executor
+                    .spawn(async move {
+                        UserQuery::_execute_logical_plan_with_custom_rules(session, plan, rules).await
+                    })
                     .await
-                    .context(ex_error::DataFusionSnafu)?;
-                let task_ctx = df.task_ctx();
-                let mut physical_plan = df
-                    .create_physical_plan()
-                    .await
-                    .context(ex_error::DataFusionSnafu)?;
-                for rule in rules {
-                    physical_plan = rule
-                        .optimize(physical_plan, &ConfigOptions::new())
-                        .context(ex_error::DataFusionSnafu)?;
-                }
-                let records = collect(physical_plan, Arc::new(task_ctx))
-                    .await
-                    .context(ex_error::DataFusionSnafu)?;
-                if !records.is_empty() {
-                    schema = records[0].schema().as_ref().clone();
-                }
-                Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
-            })
-            .await
-            .context(ex_error::JobSnafu)??;
-        Ok(stream)
+                    .context(ex_error::JobSnafu)??;
+                Ok(stream)
+            } else {
+                UserQuery::_execute_logical_plan_with_custom_rules(session, plan, rules).await        
+            }
+        }       
     }
 
     #[instrument(
