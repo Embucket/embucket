@@ -1625,7 +1625,6 @@ impl UserQuery {
         };
 
         let catalog = self.get_catalog(&schema_ref.catalog)?;
-        println!("dddd {:?}", catalog.schema(&schema_ref.schema));
         if catalog.schema(&schema_ref.schema).is_some() {
             if if_not_exists {
                 return self.created_entity_response();

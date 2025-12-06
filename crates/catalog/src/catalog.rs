@@ -13,7 +13,7 @@ use iceberg_rust_spec::namespace::Namespace;
 use snafu::{OptionExt, ResultExt};
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
-use tracing::{error, warn};
+use tracing::error;
 
 #[derive(Clone)]
 pub struct CachingCatalog {
