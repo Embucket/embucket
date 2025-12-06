@@ -1,6 +1,6 @@
 use crate::catalogs::embucket::schema::EmbucketSchema;
 use crate::schema::CachingSchema;
-use crate::{block_on_without_deadlock, df_error};
+use crate::{block_in_new_runtime, df_error, error};
 use catalog_metastore::Metastore;
 use chrono::NaiveDateTime;
 use dashmap::DashMap;
@@ -13,6 +13,7 @@ use iceberg_rust_spec::namespace::Namespace;
 use snafu::{OptionExt, ResultExt};
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
+use tracing::{error, warn};
 
 #[derive(Clone)]
 pub struct CachingCatalog {
@@ -118,12 +119,18 @@ impl CachingCatalog {
         let catalog = iceberg_catalog.clone();
 
         // Check if schema exists
-        if !block_on_without_deadlock(async move {
+        let schema_exists = block_in_new_runtime(async move {
             catalog
                 .namespace_exists(&namespace_to_check)
                 .await
-                .unwrap_or(false)
-        }) {
+                .context(error::IcebergSnafu)
+        })
+        .unwrap_or_else(|error| {
+            error!(?error, "Failed to check schema");
+            false
+        });
+
+        if !schema_exists {
             return None;
         }
         let iceberg_catalog = self.catalog.as_any().downcast_ref::<IcebergCatalog>()?;
@@ -166,11 +173,16 @@ impl CatalogProvider for CachingCatalog {
         let schema_names = match &self.iceberg_catalog {
             Some(catalog) => {
                 let catalog = catalog.clone();
-                block_on_without_deadlock(async move {
-                    catalog.list_namespaces(None).await.map_or_else(
-                        |_| vec![],
-                        |namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect(),
-                    )
+                block_in_new_runtime(async move {
+                    catalog
+                        .list_namespaces(None)
+                        .await
+                        .context(error::IcebergSnafu)
+                        .map(|namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect())
+                })
+                .unwrap_or_else(|error| {
+                    error!(?error, "Failed to list schema names; returning empty list");
+                    vec![]
                 })
             }
             None => self.catalog.schema_names(),
@@ -252,12 +264,13 @@ impl CatalogProvider for CachingCatalog {
                 }
             };
             let catalog = catalog.clone();
-            block_on_without_deadlock(async move {
+            block_in_new_runtime(async move {
                 catalog
                     .create_namespace(&namespace, None)
                     .await
-                    .context(df_error::IcebergSnafu)
-            })?;
+                    .context(error::IcebergSnafu)
+            })
+            .map_err(|err| DataFusionError::External(Box::new(err)))?;
             schema_provider
         } else {
             return self.catalog.register_schema(name, schema);
@@ -291,12 +304,13 @@ impl CatalogProvider for CachingCatalog {
             let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
                 .map_err(|err| DataFusionError::External(Box::new(err)))?;
             let catalog = catalog.clone();
-            block_on_without_deadlock(async move {
+            block_in_new_runtime(async move {
                 catalog
                     .drop_namespace(&namespace)
                     .await
-                    .context(df_error::IcebergSnafu)
-            })?;
+                    .context(error::IcebergSnafu)
+            })
+            .map_err(|err| DataFusionError::External(Box::new(err)))?;
         } else {
             return self.catalog.deregister_schema(name, cascade);
         }

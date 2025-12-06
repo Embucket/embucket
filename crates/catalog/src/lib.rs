@@ -1,9 +1,6 @@
 use error::Result;
-use futures::TryFutureExt;
-use futures::executor::block_on;
 use snafu::ResultExt;
-use tokio::runtime::{Builder, Handle, RuntimeFlavor};
-use tokio::task;
+use tokio::runtime::Builder;
 
 #[allow(clippy::module_inception)]
 pub mod catalog;
@@ -24,34 +21,23 @@ pub mod tests;
 // of what we have in the functions crate.
 pub fn block_in_new_runtime<F, R>(future: F) -> Result<R>
 where
-    F: Future<Output = R> + Send + 'static,
+    F: Future<Output = Result<R>> + Send + 'static,
     R: Send + 'static,
 {
-    std::thread::spawn(move || {
-        Builder::new_current_thread()
+    let handle = std::thread::spawn(move || {
+        // Try to create a dedicated Tokio runtime
+        let rt = Builder::new_current_thread()
             .enable_all()
             .build()
-            .context(error::CreateTokioRuntimeSnafu)
-            .map(|rt| rt.block_on(future))
-    })
-    .join()
-    .unwrap_or_else(|_| error::ThreadPanickedWhileExecutingFutureSnafu.fail()?)
-}
+            .context(error::CreateTokioRuntimeSnafu)?;
 
-fn block_on_without_deadlock<F>(future: F) -> F::Output
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    match Handle::try_current() {
-        Ok(handle) => match handle.runtime_flavor() {
-            RuntimeFlavor::CurrentThread => block_on(
-                task::spawn_blocking(|| block_on(future))
-                    .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic())),
-            ),
-            _ => task::block_in_place(|| handle.block_on(future)),
-        },
-        Err(_) => block_on(future),
+        // Execute the future and map its error
+        rt.block_on(future)
+    });
+
+    match handle.join() {
+        Ok(inner) => inner, // inner: Result<R, error::Error>
+        Err(_) => error::ThreadPanickedWhileExecutingFutureSnafu.fail()?,
     }
 }
 
