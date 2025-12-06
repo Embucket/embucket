@@ -1,5 +1,6 @@
 use datafusion_common::DataFusionError;
 use error_stack_trace;
+use iceberg_rust::error::Error as IcebergError;
 use iceberg_s3tables_catalog::error::Error as S3TablesError;
 use snafu::Location;
 use snafu::prelude::*;
@@ -66,6 +67,14 @@ pub enum Error {
     #[snafu(display("Missing volume with ident: '{name:?}'"))]
     MissingVolume {
         name: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Iceberg error: {error}"))]
+    Iceberg {
+        #[snafu(source(from(IcebergError, Box::new)))]
+        error: Box<IcebergError>,
         #[snafu(implicit)]
         location: Location,
     },

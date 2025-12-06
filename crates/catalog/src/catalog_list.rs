@@ -125,9 +125,10 @@ impl EmbucketCatalogList {
             .context(MetastoreSnafu)?;
 
         let catalog = match &volume.volume {
-            VolumeType::S3(_) | VolumeType::File(_) => self.get_embucket_catalog(&database)?,
+            VolumeType::S3(_) | VolumeType::File(_) => self.get_embucket_catalog(&database).await?,
             VolumeType::Memory => self
-                .get_embucket_catalog(&database)?
+                .get_embucket_catalog(&database)
+                .await?
                 .with_catalog_type(CatalogType::Memory),
             VolumeType::S3Tables(vol) => {
                 self.s3tables_iceberg_catalog(vol.clone(), &database)
@@ -194,16 +195,17 @@ impl EmbucketCatalogList {
                 VolumeType::S3Tables(vol) => {
                     self.s3tables_iceberg_catalog(vol.clone(), &db).await?
                 }
-                _ => self.get_embucket_catalog(&db)?,
+                _ => self.get_embucket_catalog(&db).await?,
             };
             catalogs.push(catalog);
         }
         Ok(catalogs)
     }
 
-    fn get_embucket_catalog(&self, db: &RwObject<Database>) -> Result<CachingCatalog> {
+    async fn get_embucket_catalog(&self, db: &RwObject<Database>) -> Result<CachingCatalog> {
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
             EmbucketIcebergCatalog::new(self.metastore.clone(), db.ident.clone())
+                .await
                 .context(MetastoreSnafu)?,
         );
         let catalog_provider: Arc<dyn CatalogProvider> = Arc::new(EmbucketCatalog::new(

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{block_on_without_deadlock, error};
+use crate::error;
 use async_trait::async_trait;
 use catalog_metastore::error::{self as metastore_error, Result as MetastoreResult};
 use catalog_metastore::{
@@ -39,28 +39,26 @@ pub struct EmbucketIcebergCatalog {
 
 impl EmbucketIcebergCatalog {
     #[tracing::instrument(name = "EmbucketIcebergCatalog::new", level = "trace", skip(metastore))]
-    pub fn new(metastore: Arc<dyn Metastore>, database: String) -> MetastoreResult<Self> {
-        block_on_without_deadlock(async move {
-            let db = metastore.get_database(&database).await?.ok_or_else(|| {
-                metastore_error::DatabaseNotFoundSnafu {
-                    db: database.clone(),
+    pub async fn new(metastore: Arc<dyn Metastore>, database: String) -> MetastoreResult<Self> {
+        let db = metastore.get_database(&database).await?.ok_or_else(|| {
+            metastore_error::DatabaseNotFoundSnafu {
+                db: database.clone(),
+            }
+            .build()
+        })?;
+        let object_store = metastore
+            .volume_object_store(&db.volume)
+            .await?
+            .ok_or_else(|| {
+                metastore_error::VolumeNotFoundSnafu {
+                    volume: db.volume.clone(),
                 }
                 .build()
             })?;
-            let object_store = metastore
-                .volume_object_store(&db.volume)
-                .await?
-                .ok_or_else(|| {
-                    metastore_error::VolumeNotFoundSnafu {
-                        volume: db.volume.clone(),
-                    }
-                    .build()
-                })?;
-            Ok(Self {
-                metastore,
-                database,
-                object_store,
-            })
+        Ok(Self {
+            metastore,
+            database,
+            object_store,
         })
     }
 

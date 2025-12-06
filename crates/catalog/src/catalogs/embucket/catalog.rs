@@ -1,9 +1,11 @@
 use super::schema::EmbucketSchema;
-use crate::block_on_without_deadlock;
+use crate::{block_in_new_runtime, error};
 use catalog_metastore::{Metastore, SchemaIdent};
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use iceberg_rust::catalog::Catalog as IcebergCatalog;
+use snafu::ResultExt;
 use std::{any::Any, sync::Arc};
+use tracing::error;
 
 pub struct EmbucketCatalog {
     pub database: String,
@@ -50,16 +52,24 @@ impl CatalogProvider for EmbucketCatalog {
         let metastore = self.metastore.clone();
         let database = self.database.clone();
 
-        block_on_without_deadlock(async move {
-            metastore.list_schemas(&database).await.map_or_else(
-                |_| vec![],
-                |schemas| {
+        block_in_new_runtime(async move {
+            metastore
+                .list_schemas(&database)
+                .await
+                .map(|schemas| {
                     schemas
                         .into_iter()
                         .map(|s| s.ident.schema.clone())
                         .collect()
-                },
-            )
+                })
+                .context(error::MetastoreSnafu)
+        })
+        .unwrap_or_else(|error| {
+            error!(
+                ?error,
+                "Failed to list Iceberg namespaces; returning empty list"
+            );
+            vec![]
         })
     }
 
@@ -70,21 +80,26 @@ impl CatalogProvider for EmbucketCatalog {
         let database = self.database.clone();
         let schema_name = name.to_string();
 
-        block_on_without_deadlock(async move {
-            metastore
+        block_in_new_runtime(async move {
+            let schema_opt = metastore
                 .get_schema(&SchemaIdent::new(database.clone(), schema_name.clone()))
                 .await
-                .ok()
-                .flatten()
-                .map(|_| {
-                    let schema: Arc<dyn SchemaProvider> = Arc::new(EmbucketSchema {
-                        database,
-                        schema: schema_name,
-                        metastore,
-                        iceberg_catalog,
-                    });
-                    schema
-                })
+                .context(error::MetastoreSnafu)?;
+
+            let provider = schema_opt.map(|_| {
+                let schema: Arc<dyn SchemaProvider> = Arc::new(EmbucketSchema {
+                    database,
+                    schema: schema_name,
+                    metastore,
+                    iceberg_catalog,
+                });
+                schema
+            });
+            Ok(provider)
+        })
+        .unwrap_or_else(|error| {
+            error!(?error, "Failed to get schema; assuming missing");
+            None
         })
     }
 }
