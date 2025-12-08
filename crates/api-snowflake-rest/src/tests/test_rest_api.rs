@@ -1,8 +1,8 @@
 use super::TEST_JWT_SECRET;
-use super::run_test_rest_api_server;
+use crate::server::core_state::MetastoreConfig;
 use crate::sql_test;
 use crate::tests::snow_sql::*;
-use crate::tests::sql_test_macro::SqlTest;
+use crate::tests::sql_test_macro::{SqlTest, sql_test_wrapper};
 
 mod compatible {
     use super::*;
@@ -94,6 +94,7 @@ mod compatible {
             // Schema 'TESTS.MISSING_SCHEMA' does not exist or not authorized."
             "create table missing_schema.foo(a int)",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 
     sql_test!(
@@ -103,6 +104,7 @@ mod compatible {
             // Table 'EMBUCKET.PUBLIC.TEST2' does not exist or not authorized.
             "ALTER TABLE embucket.public.test ADD COLUMN new_col INT",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 
     sql_test!(
@@ -112,6 +114,7 @@ mod compatible {
             // Schema 'EMBUCKET.MISSING_SCHEMA' does not exist or not authorized.
             "ALTER TABLE embucket.missing_schema.test ADD COLUMN new_col INT",
         ])
+        .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 
     sql_test!(
@@ -125,6 +128,7 @@ mod compatible {
                 (DATABASE_QUERY_PARAM_KEY, "embucket".to_string()),
                 (SCHEMA_QUERY_PARAM_KEY, "test_schema".to_string()),
             ])
+            .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 }
 
@@ -170,10 +174,12 @@ mod known_issues {
 
     sql_test!(
         use_command_then_select,
-        SqlTest::new(&["select count(*) from test_table"]).with_setup_queries(&[
-            "create schema if not exists embucket.test_schema",
-            "create table if not exists embucket.test_schema.test_table (id int)",
-        ])
+        SqlTest::new(&["select count(*) from test_table"])
+            .with_setup_queries(&[
+                "create schema if not exists embucket.test_schema",
+                "create table if not exists embucket.test_schema.test_table (id int)",
+            ])
+            .with_metastore_config(MetastoreConfig::DefaultConfig)
     );
 }
 
@@ -192,5 +198,16 @@ mod custom_server {
                 .expect("Failed to create server config")
                 .with_demo_credentials("embucket".to_string(), "embucket".to_string()),
         )
+    );
+
+    sql_test!(
+        test_query_timeout,
+        SqlTest::new(&["SELECT SLEEP(2)",])
+            .with_server_config(
+                RestApiConfig::new(ARROW, TEST_JWT_SECRET.to_string())
+                    .expect("Failed to create server config")
+                    .with_demo_credentials("embucket".to_string(), "embucket".to_string()),
+            )
+            .with_executor_config(executor::utils::Config::default().with_query_timeout(1))
     );
 }

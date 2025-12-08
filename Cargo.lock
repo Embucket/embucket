@@ -208,6 +208,9 @@ dependencies = [
  "indexmap 2.12.1",
  "insta",
  "jsonwebtoken",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "reqwest",
  "serde",
  "serde_json",
@@ -219,6 +222,8 @@ dependencies = [
  "tower-http",
  "tower-sessions",
  "tracing",
+ "tracing-core",
+ "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
 ]

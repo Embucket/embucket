@@ -1,4 +1,11 @@
+use super::run_test_rest_api_server;
+use crate::server::core_state::MetastoreConfig;
+use crate::server::logic::JWT_TOKEN_EXPIRATION_SECONDS;
+use crate::tests::TEST_JWT_SECRET;
+use crate::tests::snow_sql::{ACCESS_TOKEN_KEY, snow_sql};
+use crate::tests::snow_sql::{PASSWORD_KEY, REQUEST_ID_KEY, USER_KEY};
 use crate::{models::JsonResponse, server::server_models::RestApiConfig};
+use api_snowflake_rest_sessions::helpers::{create_jwt, jwt_claims};
 use arrow::record_batch::RecordBatch;
 use executor::utils::Config as UtilsConfig;
 
@@ -69,9 +76,11 @@ impl std::fmt::Display for HistoricalCodes {
 pub struct SqlTest {
     pub server_cfg: Option<RestApiConfig>,
     pub executor_cfg: Option<UtilsConfig>,
+    pub metastore_cfg: MetastoreConfig,
     pub setup_queries: Vec<String>,
     pub params: Vec<(&'static str, String)>,
     pub sqls: Vec<String>,
+    pub skip_login: bool,
 }
 
 impl SqlTest {
@@ -80,9 +89,11 @@ impl SqlTest {
         Self {
             server_cfg: None,
             executor_cfg: None,
+            metastore_cfg: MetastoreConfig::None,
             setup_queries: vec![],
             params: vec![],
             sqls: sqls.iter().map(|&s| s.to_string()).collect(),
+            skip_login: false,
         }
     }
 
@@ -114,92 +125,153 @@ impl SqlTest {
             ..self
         }
     }
+
+    #[must_use]
+    pub fn with_skip_login(self) -> Self {
+        Self {
+            skip_login: true,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_metastore_config(self, metastore_cfg: MetastoreConfig) -> Self {
+        Self {
+            metastore_cfg,
+            ..self
+        }
+    }
+
+    fn create_access_token(&self, addr: std::net::SocketAddr) -> String {
+        // host is required to check token audience claim
+        let host = addr.to_string();
+        let jwt_secret = &self.server_cfg.as_ref().map_or_else(
+            || TEST_JWT_SECRET.to_string(),
+            |cfg| cfg.auth.jwt_secret.clone(),
+        );
+        let jwt_claims = jwt_claims(
+            DEMO_USER,
+            &host,
+            time::Duration::seconds(JWT_TOKEN_EXPIRATION_SECONDS.into()),
+        );
+
+        let jwt_token = create_jwt(&jwt_claims, jwt_secret).expect("Failed to create JWT token");
+
+        jwt_token
+    }
 }
 
-impl SqlTest {}
+pub async fn sql_test_wrapper<F>(sql_test: SqlTest, check_response_cb: F) -> bool
+where
+    F: Fn((String, String), &JsonResponse) -> bool,
+{
+    let mut result = true;
+    let server_addr = run_test_rest_api_server(
+        sql_test.server_cfg.clone(),
+        sql_test.executor_cfg.clone(),
+        sql_test.metastore_cfg.clone(),
+    );
+    let skip_login_token = sql_test
+        .skip_login
+        .then(|| sql_test.create_access_token(server_addr));
+
+    let mut prev_response: Option<JsonResponse> = None;
+    let test_start = std::time::Instant::now();
+    let mut submitted_queries_handles = Vec::new();
+
+    // run setup queries
+    let mut setup_queries_params = std::collections::HashMap::from([
+        (USER_KEY, DEMO_USER.to_string()),
+        (PASSWORD_KEY, DEMO_PASSWORD.to_string()),
+        (REQUEST_ID_KEY, uuid::Uuid::new_v4().to_string()),
+    ]);
+    if let Some(access_token) = &skip_login_token {
+        setup_queries_params.insert(ACCESS_TOKEN_KEY, access_token.clone());
+    }
+
+    for setup_query in &sql_test.setup_queries {
+        eprintln!("Setup: {setup_query}");
+        // on login we add access_token to params
+        let (res, task_handle) =
+            snow_sql(&server_addr, setup_query, &mut setup_queries_params).await;
+        if let Some(handle) = task_handle {
+            let _resp = handle.await;
+        }
+        assert_eq!(res.success, true);
+    }
+
+    for (idx, sql) in sql_test.sqls.iter().enumerate() {
+        let mut sql = sql.to_string();
+        let sql_start = std::time::Instant::now();
+
+        // replace $LAST_QUERY_ID by query_id from previous response
+        if sql.contains("$LAST_QUERY_ID") {
+            let resp = prev_response.expect("No previous response");
+            let last_query_id =
+                query_id_from_snapshot(&resp).expect("Can't acquire value for $LAST_QUERY_ID");
+            sql = sql.replace("$LAST_QUERY_ID", &last_query_id);
+        }
+
+        let mut params = std::collections::HashMap::from([
+            (USER_KEY, DEMO_USER.to_string()),
+            (PASSWORD_KEY, DEMO_PASSWORD.to_string()),
+            (REQUEST_ID_KEY, uuid::Uuid::new_v4().to_string()),
+        ]);
+        params.extend(sql_test.params.clone());
+        if let Some(access_token) = &skip_login_token {
+            params.insert(ACCESS_TOKEN_KEY, access_token.clone());
+        }
+
+        // on login we add access_token to params
+        let (snapshot, task_handle) = snow_sql(&server_addr, &sql, &mut params).await;
+        if let Some(handle) = task_handle {
+            submitted_queries_handles.push(handle);
+        }
+
+        let test_duration = test_start.elapsed().as_millis();
+        let sql_duration = sql_start.elapsed().as_millis();
+        let async_query = sql.ends_with(";>").then(|| "Async ").unwrap_or("");
+        let query_num = idx + 1;
+        let sql_info = format!(
+            "{async_query}SQL #{query_num} [spent: {sql_duration}/{test_duration}ms]: {sql}"
+        );
+
+        if !check_response_cb((sql, sql_info), &snapshot) {
+            result = false;
+        }
+
+        prev_response = Some(snapshot);
+    }
+    // wait async queries, to prevent canceling queries when test finishes
+    futures::future::join_all(submitted_queries_handles).await;
+    result
+}
 
 #[macro_export]
 macro_rules! sql_test {
     ($name:ident, $sql_test:expr) => {
         #[tokio::test(flavor = "multi_thread")]
         async fn $name() {
-            use $crate::tests::snow_sql::snow_sql;
-            use $crate::models::JsonResponse;
-            use $crate::tests::sql_test_macro::{DEMO_PASSWORD, DEMO_USER,
-                insta_replace_filters,
-                query_id_from_snapshot,
-            };
             use $crate::tests::sql_test_macro::arrow_record_batch_from_snapshot;
-            use $crate::tests::snow_sql::{USER_KEY, PASSWORD_KEY, REQUEST_ID_KEY};
-
-            let server_addr = run_test_rest_api_server(
-                $sql_test.server_cfg,
-                $sql_test.executor_cfg,
-            );
-
-            let setup_queries = $sql_test.setup_queries;
-            let sqls = $sql_test.sqls;
+            use $crate::tests::sql_test_macro::{ insta_replace_filters, query_id_from_snapshot };
+            use $crate::models::JsonResponse;
 
             let mod_name = module_path!().split("::").last().unwrap();
-            let mut prev_response: Option<JsonResponse> = None;
-            let test_start = std::time::Instant::now();
-            let mut submitted_queries_handles = Vec::new();
 
-            // run setup queries
-            let mut setup_queries_params = std::collections::HashMap::from([
-                (USER_KEY, DEMO_USER.to_string()),
-                (PASSWORD_KEY, DEMO_PASSWORD.to_string()),
-                (REQUEST_ID_KEY, uuid::Uuid::new_v4().to_string()),
-            ]);
-            for setup_query in &setup_queries {
-                eprintln!("Setup: {setup_query}");
-                // on login we add access_token to params
-                let (res, task_handle) = snow_sql(&server_addr, setup_query, &mut setup_queries_params).await;
-                if let Some(handle) = task_handle {
-                    let _resp = handle.await;
-                }
-                assert_eq!(res.success, true);
-            }
-
-            for (idx, sql) in sqls.iter().enumerate() {
-                let mut sql = sql.to_string();
-                let sql_start = std::time::Instant::now();
-
-                // replace $LAST_QUERY_ID by query_id from previous response
-                if sql.contains("$LAST_QUERY_ID") {
-                    let resp = prev_response.expect("No previous response");
-                    let last_query_id = query_id_from_snapshot(&resp).expect("Can't acquire value for $LAST_QUERY_ID");
-                    sql = sql.replace("$LAST_QUERY_ID", &last_query_id);
-                }
-
-
-                let mut params = std::collections::HashMap::from([
-                    (USER_KEY, DEMO_USER.to_string()),
-                    (PASSWORD_KEY, DEMO_PASSWORD.to_string()),
-                    (REQUEST_ID_KEY, uuid::Uuid::new_v4().to_string()),
-                ]);
-                params.extend($sql_test.params);
-                // on login we add access_token to params
-                let (snapshot, task_handle) = snow_sql(&server_addr, &sql, &mut params).await;
-                if let Some(handle) = task_handle {
-                    submitted_queries_handles.push(handle);
-                }
-                let test_duration = test_start.elapsed().as_millis();
-                let sql_duration = sql_start.elapsed().as_millis();
-                let async_query = sql.ends_with(";>").then(|| "Async ").unwrap_or("");
-                let query_num = idx + 1;
-                let sql_info = format!("{async_query}SQL #{query_num} [spent: {sql_duration}/{test_duration}ms]: {sql}");
+            let snapshot_cb = move |sql_info: (String, String), response: &JsonResponse| {
+                let (sql, sql_info) = sql_info;
 
                 println!("{sql_info}");
                 insta::with_settings!({
                     snapshot_path => format!("snapshots/{mod_name}/"),
                     prepend_module_to_snapshot => false,
                     // for debug purposes fetch query_id of current query
-                    description => format!("{sql_info}\nQuery UUID: {}{}",
-                        query_id_from_snapshot(&snapshot)
+                    description => format!("{}\nQuery UUID: {}{}",
+                        sql_info,
+                        query_id_from_snapshot(response)
                             .map_or_else(|_| "No query ID".to_string(), |id| id)
                         ,
-                        arrow_record_batch_from_snapshot(&snapshot)
+                        arrow_record_batch_from_snapshot(response)
                             .map_or_else(
                                 |_| String::new(),
                                 |batches| format!("\nArrow record batches:\n{batches:#?}"))
@@ -210,15 +282,14 @@ macro_rules! sql_test {
                     // Converting json to string here, as for some reason when raw snapshot put to assert_snapshot
                     // serialized data contains "$serde_json::private::Number" or "$serde_json::private::RawValue"
                     // artifacts
-                    let snapshot = serde_json::to_string_pretty(&snapshot).expect("Failed to serialize snapshot");
-                    let snapshot = format!("{sql}\n{snapshot}");
+                    let snapshot = serde_json::to_string_pretty(response).expect("Failed to serialize snapshot");
+                    let snapshot = format!("{}\n{snapshot}", sql);
                     insta::assert_snapshot!(snapshot);
-                });
+                    true
+                })
+            };
 
-                prev_response = Some(snapshot);
-            }
-            // wait async queries, to prevent canceling queries when test finishes
-            futures::future::join_all(submitted_queries_handles).await;
+            sql_test_wrapper($sql_test, snapshot_cb).await;
         }
     };
 }
