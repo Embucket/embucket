@@ -1,7 +1,9 @@
+mod case_insensitive_schema;
 mod eliminate_empty_datasource_exec;
 pub mod list_field_metadata;
 mod remove_exec_above_empty;
 
+use super::physical_optimizer::case_insensitive_schema::CaseInsensitiveSchemaDataSourceExec;
 use super::physical_optimizer::eliminate_empty_datasource_exec::EliminateEmptyDataSourceExec;
 use super::physical_optimizer::list_field_metadata::ListFieldMetadataRule;
 use super::physical_optimizer::remove_exec_above_empty::RemoveExecAboveEmpty;
@@ -13,6 +15,7 @@ use std::sync::Arc;
 #[must_use]
 pub fn physical_optimizer_rules() -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
     let mut rules: Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> = vec![
+        Arc::new(CaseInsensitiveSchemaDataSourceExec::new()),
         Arc::new(EliminateEmptyDataSourceExec::new()),
         Arc::new(RemoveExecAboveEmpty::new()),
     ];

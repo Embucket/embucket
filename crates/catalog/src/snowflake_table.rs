@@ -39,17 +39,7 @@ impl CaseInsensitiveTable {
             .fields()
             .iter()
             .any(|field| field.name().eq(&field.name().to_ascii_uppercase()));
-        let normalized_schema = Arc::new(Schema::new(
-            original_schema
-                .fields()
-                .iter()
-                .map(|field| {
-                    let mut cloned = field.as_ref().clone();
-                    cloned.set_name(field.name().to_ascii_lowercase());
-                    cloned
-                })
-                .collect::<Vec<_>>(),
-        ));
+        let normalized_schema = Arc::new(normalize_schema_case(&original_schema));
         Self {
             inner,
             original_schema,
@@ -164,4 +154,18 @@ impl TableProvider for CaseInsensitiveTable {
     ) -> datafusion_common::Result<Arc<dyn ExecutionPlan>> {
         self.inner.insert_into(state, input, insert_op).await
     }
+}
+
+#[must_use]
+pub fn normalize_schema_case(schema: &Schema) -> Schema {
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            let mut cloned = field.as_ref().clone();
+            cloned.set_name(field.name().to_ascii_lowercase());
+            cloned
+        })
+        .collect::<Vec<_>>();
+    Schema::new(fields)
 }
