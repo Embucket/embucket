@@ -92,12 +92,11 @@ where
 
 pub async fn trace_flusher(
     State(state): State<SdkTracerProvider>,
-    Host(host): Host,
     req: Request,
     next: Next,
 ) -> error::Result<impl IntoResponse> {
     let response = next.run(req).await;
-    
+
     let flush_result = state.force_flush();
 
     tracing::Span::current().record("flush_result", format!("{:#?}", flush_result));
