@@ -7,7 +7,6 @@ use iceberg_rust::error::Error as IcebergError;
 use iceberg_s3tables_catalog::error::Error as S3tablesError;
 use snafu::Location;
 use snafu::prelude::*;
-use std::backtrace::Backtrace;
 use std::fmt::Display;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -300,11 +299,12 @@ pub enum Error {
         location: Location,
     },
 
+    #[cfg(feature = "dedicated-executor")]
     #[snafu(display("Threaded Job error: {error}: {backtrace}"))]
     JobError {
         #[snafu(source)]
         error: crate::dedicated_executor::JobError,
-        backtrace: Backtrace,
+        backtrace: std::backtrace::Backtrace,
         #[snafu(implicit)]
         location: Location,
     },

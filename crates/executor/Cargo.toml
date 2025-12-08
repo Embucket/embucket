@@ -6,6 +6,7 @@ license-file.workspace = true
 
 [features]
 rest-catalog = ["catalog/rest-catalog"]
+dedicated-executor = []
 
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }
