@@ -130,7 +130,7 @@ mod tests {
     use datafusion_common::config::TableParquetOptions;
 
     fn schema() -> SchemaRef {
-        Arc::new(Schema::new(vec![Field::new("ID", DataType::Int32, false)]))
+        Arc::new(Schema::new(vec![Field::new("Id", DataType::Int32, false)]))
     }
 
     #[tokio::test]

@@ -1,6 +1,5 @@
 ---
 source: crates/executor/src/tests/sql/commands/explain.rs
-assertion_line: 20
 description: "\"EXPLAIN VERBOSE SELECT dateadd(day, 30, '20-12-2022');\""
 ---
 Ok(
@@ -83,6 +82,7 @@ Ok(
         "|                                                            |   PlaceholderRowExec                                                                                                    |",
         "|                                                            |                                                                                                    |",
         "| physical_plan after RemoveExecAboveEmpty                   | SAME TEXT AS ABOVE                                                                                                    |",
+        "| physical_plan after CaseInsensitiveSchemaDataSourceExec    | SAME TEXT AS ABOVE                                                                                                    |",
         "| physical_plan after OutputRequirements                     | OutputRequirementExec: order_by=[], dist_by=Unspecified                                                                                                    |",
         "|                                                            |   ProjectionExec: expr=[1674086400000000000 as dateadd(Utf8(\"day\"),Int64(30),Utf8(\"20-12-2022\"))]                                                                                       |",
         "|                                                            |     PlaceholderRowExec                                                                                                    |",

@@ -15,9 +15,9 @@ use std::sync::Arc;
 #[must_use]
 pub fn physical_optimizer_rules() -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
     let mut rules: Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> = vec![
-        Arc::new(CaseInsensitiveSchemaDataSourceExec::new()),
         Arc::new(EliminateEmptyDataSourceExec::new()),
         Arc::new(RemoveExecAboveEmpty::new()),
+        Arc::new(CaseInsensitiveSchemaDataSourceExec::new()),
     ];
 
     // Append the default DataFusion optimizer rules
