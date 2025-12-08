@@ -2,23 +2,26 @@ mod config;
 mod tracing_setup;
 
 use crate::config::EnvConfig;
-use crate::tracing_setup::init_tracing;
+use crate::tracing_setup::{init_tracing, trace_flusher};
 use api_snowflake_rest::server::core_state::CoreState;
 use api_snowflake_rest::server::core_state::MetastoreConfig;
 use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
-use axum::Router;
+use axum::{middleware, Router};
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use http::HeaderMap;
 use http_body_util::BodyExt;
-use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
+use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn, tracing};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use axum::middleware::from_fn_with_state;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use tower::ServiceExt;
 use tracing::{error, info};
+use api_snowflake_rest::server::layer::require_auth;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
@@ -32,7 +35,10 @@ type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
+    //Has `Arc` inside
     let tracer_provider = init_tracing();
+
+    // tracing::init_default_subscriber();
 
     let env_config = EnvConfig::from_env();
     info!(
@@ -46,7 +52,7 @@ async fn main() -> Result<(), LambdaError> {
         "Loaded Lambda configuration"
     );
 
-    let app = Arc::new(LambdaApp::initialize(env_config).await.map_err(|err| {
+    let app = Arc::new(LambdaApp::initialize(env_config, tracer_provider.clone()).await.map_err(|err| {
         error!(error = %err, "Failed to initialize Lambda services");
         err
     })?);
@@ -71,7 +77,7 @@ impl LambdaApp {
         data_format = %config.data_format,
         max_concurrency = config.max_concurrency_level
     ))]
-    async fn initialize(config: EnvConfig) -> InitResult<Self> {
+    async fn initialize(config: EnvConfig, trace_provider: SdkTracerProvider) -> InitResult<Self> {
         let snowflake_cfg = SnowflakeServerConfig::new(
             &config.data_format,
             config.jwt_secret.clone().unwrap_or_default(),
@@ -93,7 +99,12 @@ impl LambdaApp {
             .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 
         let appstate = AppState::from(&core_state);
-        let router = make_snowflake_router(appstate);
+        let router = make_snowflake_router(appstate)
+            // .layer(tower_http::trace::TraceLayer::new_for_http())
+            .layer(middleware::from_fn_with_state(
+                trace_provider.clone(),
+                trace_flusher,
+            ));
         info!("Initialized Lambda Snowflake REST services");
 
         Ok(Self { router })
@@ -146,6 +157,7 @@ impl LambdaApp {
 
         // Record response status in the current span
         tracing::Span::current().record("http.status_code", lambda_response.status().as_u16());
+        tracing::Span::current().record("yes", "no");
 
         Ok(lambda_response)
     }
