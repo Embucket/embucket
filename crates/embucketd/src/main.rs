@@ -52,17 +52,9 @@ mod alloc_tracing {
 #[global_allocator]
 static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-const TARGETS: [&str; 10] = [
-    "embucketd",
-    "api_snowflake_rest",
-    "executor",
-    "catalog_metastore",
-    "catalog",
-    "datafusion",
-    "iceberg_rust",
-    "datafusion_iceberg",
-    "tower",
-    "tower_http",
+const DISABLED_TARGETS: [&str; 2] = [
+    "h2",
+    "aws_smithy_runtime",
 ];
 
 #[allow(
@@ -236,10 +228,11 @@ fn setup_tracing(opts: &cli::CliOpts) -> SdkTracerProvider {
         .with(
             tracing_opentelemetry::OpenTelemetryLayer::new(tracing_provider.tracer("embucket"))
                 .with_level(true)
-                .with_filter(Targets::default().with_targets(targets_with_level(
-                    &TARGETS,
-                    opts.tracing_level.clone().into(),
-                ))),
+                .with_filter(
+                    Targets::default()
+                        .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
+                        .with_default(opts.tracing_level.clone()),
+                ),
         )
         // Logs filtering
         .with({
@@ -249,16 +242,12 @@ fn setup_tracing(opts: &cli::CliOpts) -> SdkTracerProvider {
                     Err(err) => {
                         eprintln!("Failed to parse RUST_LOG: {err:?}");
                         Targets::default()
-                            .with_targets(targets_with_level(&TARGETS, LevelFilter::DEBUG))
+                            .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
                             .with_default(LevelFilter::DEBUG)
                     }
                 },
                 _ => Targets::default()
-                    .with_targets(targets_with_level(&TARGETS, LevelFilter::INFO))
-                    .with_targets(targets_with_level(
-                        &["tower_sessions", "tower_sessions_core", "tower_http"],
-                        LevelFilter::OFF,
-                    ))
+                    .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
                     .with_default(LevelFilter::INFO),
             };
             // Skip memory allocations spans
