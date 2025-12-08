@@ -1,4 +1,3 @@
-use crate::snowflake_table::CaseInsensitiveTable;
 use crate::{block_in_new_runtime, error};
 use async_trait::async_trait;
 use catalog_metastore::error as metastore_error;
@@ -95,10 +94,8 @@ impl SchemaProvider for EmbucketSchema {
                 .await
                 .map_err(|e| DataFusionError::External(Box::new(e)))?;
                 let tabular = IcebergTabular::Table(iceberg_table);
-
-                let table_provider: Arc<dyn TableProvider> = Arc::new(CaseInsensitiveTable::new(
-                    Arc::new(IcebergDataFusionTable::new(tabular, None, None, None)),
-                ));
+                let table_provider: Arc<dyn TableProvider> =
+                    Arc::new(IcebergDataFusionTable::new(tabular, None, None, None));
                 Ok(Some(table_provider))
             }
             Ok(None) => Ok(None),

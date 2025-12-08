@@ -1,4 +1,3 @@
-use crate::snowflake_table::CaseInsensitiveTable;
 use crate::table::{CachingTable, IcebergTableBuilder};
 use crate::{block_in_new_runtime, error};
 use async_trait::async_trait;
@@ -116,9 +115,8 @@ impl SchemaProvider for CachingSchema {
                     .await
                     .context(error::IcebergSnafu)?;
                 let tabular = IcebergTabular::Table(iceberg_table);
-                let table_provider: Arc<dyn TableProvider> = Arc::new(CaseInsensitiveTable::new(
-                    Arc::new(DataFusionTable::new(tabular, None, None, None)),
-                ));
+                let table_provider: Arc<dyn TableProvider> =
+                    Arc::new(DataFusionTable::new(tabular, None, None, None));
                 Ok(table_provider)
             })
             .map_err(|err| DataFusionError::External(Box::new(err)))?

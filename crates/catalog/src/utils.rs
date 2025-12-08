@@ -1,3 +1,4 @@
+use datafusion::arrow::datatypes::Schema;
 use datafusion::catalog::{SchemaProvider, TableProvider};
 use datafusion_common::Result as DataFusionResult;
 use futures::stream::{self, StreamExt};
@@ -46,4 +47,18 @@ pub async fn fetch_table_providers(
     }
 
     Ok(tables)
+}
+
+#[must_use]
+pub fn normalize_schema_case(schema: &Schema) -> Schema {
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            let mut cloned = field.as_ref().clone();
+            cloned.set_name(field.name().to_ascii_lowercase());
+            cloned
+        })
+        .collect::<Vec<_>>();
+    Schema::new(fields)
 }

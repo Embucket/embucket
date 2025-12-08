@@ -75,6 +75,7 @@ Ok(
         "| physical_plan after EliminateEmptyDataSourceExec           | DataSourceExec: file_groups={1 group: [[/[PATH]/testing/data/[HEX]/[UUID].parquet]]}, projection=[name], file_type=parquet                                                                                                    |",
         "|                                                            |                                                                                                    |",
         "| physical_plan after RemoveExecAboveEmpty                   | SAME TEXT AS ABOVE                                                                                                    |",
+        "| physical_plan after CaseInsensitiveSchemaDataSourceExec    | SAME TEXT AS ABOVE                                                                                                    |",
         "| physical_plan after OutputRequirements                     | OutputRequirementExec: order_by=[], dist_by=Unspecified                                                                                                    |",
         "|                                                            |   DataSourceExec: file_groups={1 group: [[/[PATH]/testing/data/[HEX]/[UUID].parquet]]}, projection=[name], file_type=parquet                                                                                                    |",
         "|                                                            |                                                                                                    |",
