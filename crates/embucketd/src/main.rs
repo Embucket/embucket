@@ -52,10 +52,7 @@ mod alloc_tracing {
 #[global_allocator]
 static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-const DISABLED_TARGETS: [&str; 2] = [
-    "h2",
-    "aws_smithy_runtime",
-];
+const DISABLED_TARGETS: [&str; 2] = ["h2", "aws_smithy_runtime"];
 
 #[allow(
     clippy::expect_used,
