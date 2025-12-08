@@ -1,6 +1,6 @@
 use crate::snowflake_table::CaseInsensitiveTable;
 use crate::table::{CachingTable, IcebergTableBuilder};
-use crate::{block_on_without_deadlock, df_error};
+use crate::{block_in_new_runtime, error};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
@@ -14,6 +14,7 @@ use iceberg_rust_spec::namespace::Namespace;
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
+use tracing::error;
 
 pub struct CachingSchema {
     pub schema: Arc<dyn SchemaProvider>,
@@ -46,7 +47,7 @@ impl SchemaProvider for CachingSchema {
                 let Ok(namespace) = Namespace::try_new(std::slice::from_ref(&self.name)) else {
                     return vec![];
                 };
-                block_on_without_deadlock(async move {
+                block_in_new_runtime(async move {
                     catalog
                         .list_tabulars(&namespace)
                         .await
@@ -56,7 +57,11 @@ impl SchemaProvider for CachingSchema {
                                 .map(|identifier| identifier.name().to_owned())
                                 .collect()
                         })
-                        .unwrap_or_default()
+                        .context(error::IcebergSnafu)
+                })
+                .unwrap_or_else(|error| {
+                    error!(?error, "Failed to list tables; returning empty list");
+                    vec![]
                 })
             }
             None => self.schema.table_names(),
@@ -104,18 +109,19 @@ impl SchemaProvider for CachingSchema {
             let namespace = vec![self.name.clone()];
             let table_name = name.clone();
 
-            block_on_without_deadlock(async move {
+            block_in_new_runtime(async move {
                 let ident = Identifier::new(&namespace, &table_name);
                 let iceberg_table = builder
                     .build(ident.namespace(), catalog)
                     .await
-                    .context(df_error::IcebergSnafu)?;
+                    .context(error::IcebergSnafu)?;
                 let tabular = IcebergTabular::Table(iceberg_table);
                 let table_provider: Arc<dyn TableProvider> = Arc::new(CaseInsensitiveTable::new(
                     Arc::new(DataFusionTable::new(tabular, None, None, None)),
                 ));
-                Ok::<Arc<dyn TableProvider>, DataFusionError>(table_provider)
-            })?
+                Ok(table_provider)
+            })
+            .map_err(|err| DataFusionError::External(Box::new(err)))?
         } else if table.table_type() == TableType::View {
             table
         } else {
@@ -143,13 +149,14 @@ impl SchemaProvider for CachingSchema {
                     let namespace = vec![self.name.clone()];
                     let table_name = name.to_string();
 
-                    block_on_without_deadlock(async move {
+                    block_in_new_runtime(async move {
                         let ident = Identifier::new(&namespace, &table_name);
                         catalog
                             .drop_table(&ident)
                             .await
-                            .context(df_error::IcebergSnafu)
-                    })?;
+                            .context(error::IcebergSnafu)
+                    })
+                    .map_err(|err| DataFusionError::External(Box::new(err)))?;
                 } else {
                     return self.schema.deregister_table(name);
                 }
@@ -167,10 +174,23 @@ impl SchemaProvider for CachingSchema {
             let catalog = Arc::clone(catalog);
             let namespace = vec![self.name.clone()];
             let table_name = name.to_string();
+            let ident = Identifier::new(&namespace, &table_name);
+            let ident_for_runtime = ident.clone();
 
-            block_on_without_deadlock(async move {
-                let ident = Identifier::new(&namespace, &table_name);
-                catalog.tabular_exists(&ident).await.unwrap_or(false)
+            block_in_new_runtime(async move {
+                catalog
+                    .tabular_exists(&ident_for_runtime)
+                    .await
+                    .context(error::IcebergSnafu)
+            })
+            .unwrap_or_else(|error| {
+                error!(
+                    ?error,
+                    schema_name = %ident.namespace(),
+                    table_name = %ident.name(),
+                    "Failed to check table existence; assuming missing",
+                );
+                false
             })
         } else {
             self.schema.table_exist(name)
