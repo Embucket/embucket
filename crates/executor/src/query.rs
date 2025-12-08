@@ -266,69 +266,6 @@ impl UserQuery {
         // 3. Single place to construct Logical plan from this AST
         // 4. Single place to rewrite-optimize-adjust logical plan
         // etc
-        if self.session.config.read_only {
-            match statement {
-                DFStatement::Statement(s) => match *s {
-                    Statement::Query(subquery) => {
-                        return self.execute_query_statement(subquery).await;
-                    }
-                    Statement::Use(entity) => {
-                        return self.execute_use_statement(entity).await;
-                    }
-                    Statement::ShowDatabases { .. }
-                    | Statement::ShowSchemas { .. }
-                    | Statement::ShowTables { .. }
-                    | Statement::ShowColumns { .. }
-                    | Statement::ShowViews { .. }
-                    | Statement::ShowFunctions { .. }
-                    | Statement::ShowObjects { .. }
-                    | Statement::ShowVariables { .. }
-                    | Statement::ShowVariable { .. } => return Box::pin(self.show_query(*s)).await,
-                    other => {
-                        return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
-                            statement: other.to_string(),
-                        }
-                        .fail();
-                    }
-                },
-                DFStatement::Explain(explain) => match *explain.statement {
-                    DFStatement::Statement(s) => match *s {
-                        Statement::Query(..)
-                        | Statement::Use(..)
-                        | Statement::ShowDatabases { .. }
-                        | Statement::ShowSchemas { .. }
-                        | Statement::ShowTables { .. }
-                        | Statement::ShowColumns { .. }
-                        | Statement::ShowViews { .. }
-                        | Statement::ShowFunctions { .. }
-                        | Statement::ShowObjects { .. }
-                        | Statement::ShowVariables { .. }
-                        | Statement::ShowVariable { .. } => {
-                            return self.execute_sql(&self.query).await;
-                        }
-                        other => {
-                            return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
-                                statement: other.to_string(),
-                            }
-                            .fail();
-                        }
-                    },
-                    other => {
-                        return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
-                            statement: other.to_string(),
-                        }
-                        .fail();
-                    }
-                },
-                other => {
-                    return ex_error::NotSupportedStatementInReadOnlyModeSnafu {
-                        statement: other.to_string(),
-                    }
-                    .fail();
-                }
-            }
-        }
-
         if let DFStatement::Statement(s) = statement {
             match *s {
                 Statement::AlterSession {
