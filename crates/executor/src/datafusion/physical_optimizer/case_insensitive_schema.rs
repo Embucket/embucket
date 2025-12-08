@@ -1,5 +1,5 @@
 use arrow_schema::SchemaRef;
-use catalog::snowflake_table::normalize_schema_case;
+use catalog::utils::normalize_schema_case;
 use datafusion::arrow::datatypes::Schema as ArrowSchema;
 use datafusion::datasource::physical_plan::{
     FileScanConfig, FileScanConfigBuilder, FileSource, ParquetSource,
@@ -41,6 +41,11 @@ impl PhysicalOptimizerRule for CaseInsensitiveSchemaDataSourceExec {
                     .downcast_ref::<FileScanConfig>()
                 && let Some(parquet_source) =
                     config.file_source.as_any().downcast_ref::<ParquetSource>()
+                && !config
+                    .file_schema
+                    .fields()
+                    .iter()
+                    .any(|field| field.name().eq(&field.name().to_ascii_uppercase()))
             {
                 let schema_adapter_factory: Arc<dyn SchemaAdapterFactory> =
                     Arc::new(CaseInsensitiveSchemaAdapterFactory);
