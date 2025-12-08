@@ -5,24 +5,26 @@ use crate::config::EnvConfig;
 use crate::tracing_setup::{init_tracing, trace_flusher};
 use api_snowflake_rest::server::core_state::CoreState;
 use api_snowflake_rest::server::core_state::MetastoreConfig;
+use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
-use axum::{middleware, Router};
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
+use axum::middleware::from_fn_with_state;
+use axum::{Router, middleware};
 use http::HeaderMap;
 use http_body_util::BodyExt;
-use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn, tracing};
+use lambda_http::{
+    Body as LambdaBody, Error as LambdaError, Request, Response, service_fn, tracing,
+};
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use axum::middleware::from_fn_with_state;
-use opentelemetry_sdk::trace::SdkTracerProvider;
 use tower::ServiceExt;
 use tracing::{error, info};
-use api_snowflake_rest::server::layer::require_auth;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
@@ -58,10 +60,14 @@ async fn main() -> Result<(), LambdaError> {
         "Loaded Lambda configuration"
     );
 
-    let app = Arc::new(LambdaApp::initialize(env_config, tracer_provider.clone()).await.map_err(|err| {
-        error!(error = %err, "Failed to initialize Lambda services");
-        err
-    })?);
+    let app = Arc::new(
+        LambdaApp::initialize(env_config, tracer_provider.clone())
+            .await
+            .map_err(|err| {
+                error!(error = %err, "Failed to initialize Lambda services");
+                err
+            })?,
+    );
 
     run(service_fn(move |event: Request| {
         let app = Arc::clone(&app);

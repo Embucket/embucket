@@ -1,3 +1,5 @@
+use api_snowflake_rest::server::error;
+use api_snowflake_rest_sessions::layer::Host;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
@@ -13,8 +15,6 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, Registry};
-use api_snowflake_rest::server::error;
-use api_snowflake_rest_sessions::layer::Host;
 
 /// Configures and initializes tracing, returning a provider for graceful shutdown
 ///
