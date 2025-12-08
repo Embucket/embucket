@@ -1,3 +1,6 @@
+use axum::extract::{Request, State};
+use axum::middleware::Next;
+use axum::response::IntoResponse;
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::WithExportConfig;
@@ -10,6 +13,8 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, Registry};
+use api_snowflake_rest::server::error;
+use api_snowflake_rest_sessions::layer::Host;
 
 /// Configures and initializes tracing, returning a provider for graceful shutdown
 ///
@@ -83,4 +88,19 @@ where
             .with_filter(span_events_filter.or(log_events_filter.and(fmt_filter)))
             .boxed()
     }
+}
+
+pub async fn trace_flusher(
+    State(state): State<SdkTracerProvider>,
+    Host(host): Host,
+    req: Request,
+    next: Next,
+) -> error::Result<impl IntoResponse> {
+    let response = next.run(req).await;
+    
+    let flush_result = state.force_flush();
+
+    tracing::Span::current().record("flush_result", format!("{:#?}", flush_result));
+
+    Ok(response)
 }
