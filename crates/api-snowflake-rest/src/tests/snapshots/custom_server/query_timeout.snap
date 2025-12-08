@@ -1,0 +1,20 @@
+---
+source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
+description: "SQL #1 [spent: 1449/1449ms]: SELECT SLEEP(2)\nQuery UUID: b017f706-3d29-4588-8691-33e31b2ab94f"
+expression: snapshot
+---
+SELECT SLEEP(2)
+{
+  "data": {
+    "rowtype": [],
+    "rowsetBase64": null,
+    "rowset": null,
+    "queryResultFormat": null,
+    "errorCode": "010001",
+    "sqlState": "02000",
+    "queryId": "UUID"
+  },
+  "success": false,
+  "message": "Query execution exceeded timeout",
+  "code": "010001"
+}

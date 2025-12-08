@@ -9,10 +9,10 @@ mod stress {
         let handles = (0..50).map(|idx| {
             tokio::spawn(async move {
                 sql_test_wrapper(
-                    SqlTest::new(&[
-                        "create table if not exists embucket.public.test_table (id int)",
-                        "drop table if exists embucket.public.test_table",
-                    ])
+                SqlTest::new(&[
+                    "create table if not exists embucket.public.test_table (id int)",
+                    "drop table if exists embucket.public.test_table",
+                ])
                 //.with_metastore_config(MetastoreConfig::DefaultConfig)
                 .with_metastore_config(MetastoreConfig::ConfigPath("/home/yaroslav/git/embucket/config/metastore.yaml".into()))
                 .with_skip_login(),
@@ -30,15 +30,15 @@ mod stress {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrency_test_s3tables_database() {
-        let handles = (0..50).map(|idx| {
+        let handles = (0..100).map(|idx| {
             tokio::spawn(async move {
                 sql_test_wrapper(
-                    SqlTest::new(&[
-                        "create table if not exists my_s3_table_bucket.schema1.test_table (id int)",
-                        // "drop table if exists my_s3_table_bucket.schema1.test_table",
-                    ])
-                //.with_metastore_config(MetastoreConfig::DefaultConfig)
-                .with_metastore_config(MetastoreConfig::ConfigPath("/home/yaroslav/git/embucket/config/metastore.yaml".into())),
+                SqlTest::new(&[
+                    "create table if not exists my_s3_table_bucket.schema1.test_table (id int)",
+                    // "drop table if exists my_s3_table_bucket.schema1.test_table",
+                ])
+                .with_metastore_config(MetastoreConfig::ConfigPath("/home/yaroslav/git/embucket/config/metastore.yaml".into()))
+                .with_skip_login(),
                 move |sql_info, response| {
                     let sql = sql_info.0;
                     let err_msg = response.message.clone().unwrap_or_default();

@@ -1,6 +1,7 @@
+use crate::error;
 use crate::catalogs::embucket::schema::EmbucketSchema;
 use crate::schema::CachingSchema;
-use crate::{block_on_without_deadlock, df_error};
+use crate::{block_on_without_deadlock, block_on_with_timeout, df_error};
 use catalog_metastore::Metastore;
 use chrono::NaiveDateTime;
 use dashmap::DashMap;
@@ -13,6 +14,9 @@ use iceberg_rust_spec::namespace::Namespace;
 use snafu::{OptionExt, ResultExt};
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
+use tokio::time::{timeout, Duration};
+
+pub const CATALOG_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct CachingCatalog {
@@ -119,12 +123,12 @@ impl CachingCatalog {
         let catalog = iceberg_catalog.clone();
 
         // Check if schema exists
-        if !block_on_without_deadlock(async move {
+        if !block_on_with_timeout(async move {
             catalog
                 .namespace_exists(&namespace_to_check)
                 .await
                 .unwrap_or(false)
-        }) {
+        }, CATALOG_TIMEOUT).expect("Failed to check if namespace exists") {
             return None;
         }
         let iceberg_catalog = self.catalog.as_any().downcast_ref::<IcebergCatalog>()?;
@@ -168,15 +172,12 @@ impl CatalogProvider for CachingCatalog {
         let schema_names = match &self.iceberg_catalog {
             Some(catalog) => {
                 let catalog = catalog.clone();
-                block_on_without_deadlock(async move {
-                    tracing::info!("list_namespaces");
-                    let l = catalog.list_namespaces(None).await.map_or_else(
+                block_on_with_timeout(async move {
+                    catalog.list_namespaces(None).await.map_or_else(
                         |_| vec![],
                         |namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect(),
-                    );
-                    tracing::info!("list_namespaces result: {l:?}");
-                    l
-                })
+                    )
+                }, CATALOG_TIMEOUT).expect("Failed to list namespaces")
             }
             None => self.catalog.schema_names(),
         };
@@ -257,15 +258,16 @@ impl CatalogProvider for CachingCatalog {
                 }
             };
             let catalog = catalog.clone();
+            // in case we want use generic timeout for different async methods
+            // and not just block_on
             block_on_without_deadlock(async move {
-                tracing::info!("create_namespace");
-                let c = catalog
-                    .create_namespace(&namespace, None)
-                    .await
-                    .context(df_error::IcebergSnafu);
-                tracing::info!("create_namespace result: {c:?}");
-                c
-            })?;
+                timeout(CATALOG_TIMEOUT, catalog.create_namespace(&namespace, None))
+                .await
+                .context(error::TimeoutSnafu)
+                .context(error::CreateNamespaceSnafu)
+            })
+            .context(df_error::CatalogSnafu)?
+            .context(df_error::IcebergSnafu)?;
             schema_provider
         } else {
             return self.catalog.register_schema(name, schema);

@@ -69,6 +69,22 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Timeout occured: {error:?}"))]
+    Timeout {
+        #[snafu(source(from(tokio::time::error::Elapsed, std::io::Error::from)))]
+        error: std::io::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Failed to create namespace: {source:?}"))]
+    CreateNamespace {
+        #[snafu(source(from(Error, Box::new)))]
+        source: Box<Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }
 
 #[derive(Debug)]

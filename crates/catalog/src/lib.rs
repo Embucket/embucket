@@ -38,6 +38,29 @@ where
     .unwrap_or_else(|_| error::ThreadPanickedWhileExecutingFutureSnafu.fail()?)
 }
 
+fn block_on_with_timeout<F>(future: F, timeout_duration: tokio::time::Duration) -> Result<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let future_with_timeout = async move {
+        tokio::time::timeout(timeout_duration, future)
+            .await
+            .context(error::TimeoutSnafu)
+    };
+
+    match Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            RuntimeFlavor::CurrentThread => block_on(
+                task::spawn_blocking(|| block_on(future_with_timeout))
+                    .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic())),
+            ),
+            _ => task::block_in_place(|| handle.block_on(future_with_timeout)),
+        },
+        Err(_) => block_on(future_with_timeout),
+    }
+}
+
 fn block_on_without_deadlock<F>(future: F) -> F::Output
 where
     F: Future + Send + 'static,

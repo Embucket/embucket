@@ -199,4 +199,19 @@ mod custom_server {
                 .with_demo_credentials("embucket".to_string(), "embucket".to_string()),
         )
     );
+
+    sql_test!(
+        test_query_timeout,
+        SqlTest::new(&[
+            "SELECT SLEEP(2)",
+        ])
+        .with_server_config(
+            RestApiConfig::new(ARROW, TEST_JWT_SECRET.to_string())
+                .expect("Failed to create server config")
+                .with_demo_credentials("embucket".to_string(), "embucket".to_string()),
+        )
+        .with_executor_config(
+            executor::utils::Config::default().with_query_timeout(1)
+        )
+    );
 }
