@@ -13,6 +13,8 @@ use std::time::Duration;
 use tokio::runtime::Builder;
 use tracing_subscriber::fmt::format::FmtSpan;
 
+static INIT: std::sync::Once = std::sync::Once::new();
+
 #[allow(clippy::expect_used)]
 #[must_use]
 pub fn rest_default_cfg(data_format: &str) -> RestApiConfig {
@@ -83,6 +85,78 @@ pub fn run_test_rest_api_server(
     addr
 }
 
+fn setup_tracing() {
+    use opentelemetry::trace::TracerProvider;
+    use opentelemetry_sdk::Resource;
+    use opentelemetry_sdk::trace::BatchSpanProcessor;
+    use opentelemetry_sdk::trace::SdkTracerProvider;
+    use tracing_subscriber::filter::{LevelFilter, Targets};
+    use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+
+    const DISABLED_TARGETS: [&str; 1] = ["h2"];
+
+    INIT.call_once(|| {
+        // Initialize OTLP exporter using gRPC (Tonic)
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .build()
+            .expect("Failed to create OTLP exporter");
+
+        let resource = Resource::builder().with_service_name("Em").build();
+
+        // Since BatchSpanProcessor and BatchSpanProcessorAsyncRuntime are not compatible with each other
+        // we just create TracerProvider with different span processors
+        let tracing_provider = SdkTracerProvider::builder()
+            .with_span_processor(BatchSpanProcessor::builder(exporter).build())
+            .with_resource(resource)
+            .build();
+
+        let targets_with_level =
+            |targets: &[&'static str], level: LevelFilter| -> Vec<(&str, LevelFilter)> {
+                targets.iter().map(|t| ((*t), level)).collect()
+            };
+
+        let registry = tracing_subscriber::registry()
+            // Telemetry filtering
+            .with(
+                tracing_opentelemetry::OpenTelemetryLayer::new(tracing_provider.tracer("embucket"))
+                    .with_level(true)
+                    .with_filter(
+                        Targets::default()
+                            .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
+                            .with_default(LevelFilter::TRACE),
+                    ),
+            )
+            // Logs filtering
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open("traces.log")
+                            .expect("Failed to open traces.log"),
+                    )
+                    .with_ansi(false)
+                    .with_thread_ids(true)
+                    .with_thread_names(true)
+                    .with_file(true)
+                    .with_line_number(true)
+                    .with_span_events(FmtSpan::NONE)
+                    .json()
+                    .with_level(true)
+                    .with_filter(
+                        Targets::default()
+                            .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
+                            .with_default(LevelFilter::TRACE),
+                    ),
+            );
+
+        registry.init();
+        opentelemetry::global::set_tracer_provider(tracing_provider);
+    });
+}
+
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub async fn run_test_rest_api_server_with_config(
     snowflake_rest_cfg: RestApiConfig,
@@ -92,29 +166,7 @@ pub async fn run_test_rest_api_server_with_config(
 ) {
     let addr = listener.local_addr().unwrap();
 
-    let traces_writer = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("traces.log")
-        .expect("Failed to open traces.log");
-
-    let subscriber = tracing_subscriber::fmt()
-        // using stderr as it won't be showed until test failed
-        .with_writer(traces_writer)
-        .with_ansi(false)
-        .with_thread_ids(true)
-        .with_thread_names(true)
-        .with_file(true)
-        .with_line_number(true)
-        .with_span_events(FmtSpan::NONE)
-        .with_level(true)
-        .with_max_level(tracing_subscriber::filter::LevelFilter::TRACE)
-        .finish();
-
-    // ignoring error: as with parralel tests execution, just first thread is able to set it successfully
-    // since all tests run in a single process
-    let _ = tracing::subscriber::set_global_default(subscriber);
-
+    setup_tracing();
     tracing::info!("Starting server at {addr}");
 
     let metastore_config = MetastoreConfig::DefaultConfig;
