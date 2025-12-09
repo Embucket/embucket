@@ -345,12 +345,7 @@ impl Metastore for InMemoryMetastore {
         Ok(entry.clone())
     }
 
-    #[instrument(
-        name = "Metastore::delete_database",
-        level = "debug",
-        skip(self),
-        err
-    )]
+    #[instrument(name = "Metastore::delete_database", level = "debug", skip(self), err)]
     async fn delete_database(&self, name: &DatabaseIdent, cascade: bool) -> Result<()> {
         let mut state = self.state.write().await;
         let schema_keys: Vec<_> = state
@@ -457,12 +452,7 @@ impl Metastore for InMemoryMetastore {
         Ok(entry.clone())
     }
 
-    #[instrument(
-        name = "Metastore::delete_schema",
-        level = "debug",
-        skip(self),
-        err
-    )]
+    #[instrument(name = "Metastore::delete_schema", level = "debug", skip(self), err)]
     async fn delete_schema(&self, ident: &SchemaIdent, cascade: bool) -> Result<()> {
         let mut state = self.state.write().await;
         let tables: Vec<_> = state
@@ -679,12 +669,7 @@ impl Metastore for InMemoryMetastore {
         Ok(table_entry.clone())
     }
 
-    #[instrument(
-        name = "Metastore::delete_table",
-        level = "debug",
-        skip(self),
-        err
-    )]
+    #[instrument(name = "Metastore::delete_table", level = "debug", skip(self), err)]
     async fn delete_table(&self, ident: &TableIdent, _cascade: bool) -> Result<()> {
         let mut state = self.state.write().await;
         state.tables.remove(&Self::table_key(ident));
@@ -774,10 +759,7 @@ impl InMemoryMetastore {
             })
     }
 
-    #[instrument(
-        name = "Metastore::update_properties_timestamps",
-        level = "trace"
-    )]
+    #[instrument(name = "Metastore::update_properties_timestamps", level = "trace")]
     fn update_properties_timestamps(properties: &mut HashMap<String, String>) {
         let utc_now = Utc::now();
         let utc_now_str = utc_now.to_rfc3339();
