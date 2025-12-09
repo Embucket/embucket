@@ -23,8 +23,12 @@ pub fn insta_replace_filters() -> Vec<(&'static str, &'static str)> {
             "UUID",
         ),
         (
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6} UTC",
+            "UTC_TIME6",
+        ),
+        (
             r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{9} UTC",
-            "UTC_TIME",
+            "UTC_TIME9",
         ),
     ]
 }
