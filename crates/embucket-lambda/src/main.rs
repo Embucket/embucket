@@ -40,6 +40,9 @@ async fn main() -> Result<(), LambdaError> {
         mem_pool_type = ?env_config.mem_pool_type,
         mem_pool_size_mb = ?env_config.mem_pool_size_mb,
         disk_pool_size_mb = ?env_config.disk_pool_size_mb,
+        aws_sdk_connect_timeout_secs = env_config.aws_sdk_connect_timeout_secs,
+        aws_sdk_operation_timeout_secs = env_config.aws_sdk_operation_timeout_secs,
+        aws_sdk_operation_attempt_timeout_secs = env_config.aws_sdk_operation_attempt_timeout_secs,
         metastore_config = env_config.metastore_config.as_ref().map(|p| p.display().to_string()),
         "Loaded Lambda configuration"
     );

@@ -1,5 +1,7 @@
 use super::models::QueryResult;
 use crate::error::{ArrowSnafu, CantCastToSnafu, Result};
+#[cfg(not(feature = "rest-catalog"))]
+use aws_config::timeout::TimeoutConfigBuilder;
 use catalog::catalog_list::CatalogListConfig;
 use catalog_metastore::SchemaIdent as MetastoreSchemaIdent;
 use catalog_metastore::TableIdent as MetastoreTableIdent;
@@ -40,13 +42,28 @@ pub struct Config {
     pub mem_enable_track_consumers_pool: Option<bool>,
     pub disk_pool_size_mb: Option<usize>,
     pub max_concurrent_table_fetches: usize,
+    pub aws_sdk_connect_timeout_secs: u64,
+    pub aws_sdk_operation_timeout_secs: Option<u64>,
+    pub aws_sdk_operation_attempt_timeout_secs: Option<u64>,
 }
 
 impl From<&Config> for CatalogListConfig {
     fn from(value: &Config) -> Self {
         Self {
             max_concurrent_table_fetches: value.max_concurrent_table_fetches,
-        }
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_timeout_config: {
+                let mut builder = TimeoutConfigBuilder::default()
+                    .connect_timeout(std::time::Duration::from_secs(value.aws_sdk_connect_timeout_secs));
+                if let Some(timeout) = value.aws_sdk_operation_timeout_secs {
+                    builder = builder.operation_timeout(std::time::Duration::from_secs(timeout));
+                }
+                if let Some(timeout) = value.aws_sdk_operation_attempt_timeout_secs {
+                    builder = builder.operation_attempt_timeout(std::time::Duration::from_secs(timeout));
+                }
+                builder
+            },
+        }        
     }
 }
 
@@ -62,6 +79,12 @@ impl Default for Config {
             mem_enable_track_consumers_pool: None,
             disk_pool_size_mb: None,
             max_concurrent_table_fetches: 5,
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_connect_timeout_secs: 5,
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_operation_timeout_secs: None,
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_operation_attempt_timeout_secs: None,
         }
     }
 }

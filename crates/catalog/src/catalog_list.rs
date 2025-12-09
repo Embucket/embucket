@@ -12,7 +12,7 @@ use crate::schema::CachingSchema;
 use crate::table::CachingTable;
 use crate::utils::fetch_table_providers;
 #[cfg(not(feature = "rest-catalog"))]
-use aws_config::{BehaviorVersion, Region, defaults};
+use aws_config::{BehaviorVersion, Region, defaults, timeout::TimeoutConfigBuilder};
 #[cfg(not(feature = "rest-catalog"))]
 use aws_credential_types::{Credentials, provider::SharedCredentialsProvider};
 use catalog_metastore::{
@@ -54,6 +54,8 @@ pub struct EmbucketCatalogList {
 #[derive(Default, Clone)]
 pub struct CatalogListConfig {
     pub max_concurrent_table_fetches: usize,
+    #[cfg(not(feature = "rest-catalog"))]
+    pub aws_sdk_timeout_config: TimeoutConfigBuilder, // using builder as it has default
 }
 
 impl EmbucketCatalogList {
@@ -248,6 +250,7 @@ impl EmbucketCatalogList {
             let creds =
                 Credentials::from_keys(ak.unwrap_or_default(), sk.unwrap_or_default(), token);
             let config = defaults(BehaviorVersion::latest())
+                .timeout_config(self.config.aws_sdk_timeout_config.clone().build())
                 .credentials_provider(SharedCredentialsProvider::new(creds))
                 .region(Region::new(volume.region()))
                 .load()

@@ -17,6 +17,9 @@ pub struct EnvConfig {
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
     pub max_concurrent_table_fetches: usize,
+    pub aws_sdk_connect_timeout_secs: u64,
+    pub aws_sdk_operation_timeout_secs: Option<u64>,
+    pub aws_sdk_operation_attempt_timeout_secs: Option<u64>,
 }
 
 impl EnvConfig {
@@ -37,6 +40,9 @@ impl EnvConfig {
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
             max_concurrent_table_fetches: parse_env("MAX_CONCURRENT_TABLE_FETCHES").unwrap_or(5),
+            aws_sdk_connect_timeout_secs: parse_env("AWS_SDK_CONNECT_TIMEOUT_SECS").unwrap_or(3),
+            aws_sdk_operation_timeout_secs: parse_env("AWS_SDK_OPERATION_TIMEOUT_SECS"),
+            aws_sdk_operation_attempt_timeout_secs: parse_env("AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS"),
         }
     }
 
@@ -52,6 +58,9 @@ impl EnvConfig {
             mem_enable_track_consumers_pool: self.mem_enable_track_consumers_pool,
             disk_pool_size_mb: self.disk_pool_size_mb,
             max_concurrent_table_fetches: self.max_concurrent_table_fetches,
+            aws_sdk_connect_timeout_secs: self.aws_sdk_connect_timeout_secs,
+            aws_sdk_operation_timeout_secs: self.aws_sdk_operation_timeout_secs,
+            aws_sdk_operation_attempt_timeout_secs: self.aws_sdk_operation_attempt_timeout_secs,
         }
     }
 }

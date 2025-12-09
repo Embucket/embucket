@@ -120,6 +120,9 @@ async fn async_main(
         mem_enable_track_consumers_pool: opts.mem_enable_track_consumers_pool,
         disk_pool_size_mb: opts.disk_pool_size_mb,
         max_concurrent_table_fetches: opts.max_concurrent_table_fetches,
+        aws_sdk_operation_timeout_secs: opts.aws_sdk_operation_timeout_secs,
+        aws_sdk_operation_attempt_timeout_secs: opts.aws_sdk_operation_attempt_timeout_secs,
+        aws_sdk_connect_timeout_secs: opts.aws_sdk_connect_timeout_secs,
     };
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
