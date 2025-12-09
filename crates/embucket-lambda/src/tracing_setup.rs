@@ -9,7 +9,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
-use tracing::Subscriber;
+use tracing::{instrument, Subscriber};
 use tracing_subscriber::filter::{EnvFilter, FilterExt, filter_fn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
@@ -89,7 +89,9 @@ where
             .boxed()
     }
 }
-
+#[lambda_http::tracing::instrument(name = "lambda_handle_event", skip_all, fields(
+        flush_result = tracing::field::Empty,
+))]
 pub async fn trace_flusher(
     State(state): State<SdkTracerProvider>,
     req: Request,
