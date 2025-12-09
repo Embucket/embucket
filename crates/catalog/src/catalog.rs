@@ -108,6 +108,11 @@ impl CachingCatalog {
         self
     }
 
+    #[tracing::instrument(
+        name = "CachingCatalog::iceberg_schema_provider",
+        level = "debug",
+        skip(self)
+    )]
     #[allow(clippy::as_conversions)]
     fn iceberg_schema_provider(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
         let Some(iceberg_catalog) = &self.iceberg_catalog else {
