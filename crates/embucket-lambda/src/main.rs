@@ -136,7 +136,8 @@ impl LambdaApp {
         http.method = %request.method(),
         http.uri = %request.uri(),
         http.request_id = tracing::field::Empty,
-        http.status_code = tracing::field::Empty
+        http.status_code = tracing::field::Empty,
+        yes = tracing::field::Empty,
     ))]
     async fn handle_event(&self, request: Request) -> Result<Response<LambdaBody>, LambdaError> {
         let (parts, body) = request.into_parts();
