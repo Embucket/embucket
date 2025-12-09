@@ -13,15 +13,12 @@ via Snowflake REST API in similar way as `snow sql` command line tool does.
 There is also a `sql_test` macro which is a wrapper around `snow_sql` function. Test suite uses this helper macro to run SQLs like it was executed from `snow sql`.
 
 ## Testing
-Snowflake REST API allows to build only tests, to be tested against external Embucket server.
-In some cases it can help with reducing development cycle, in case if changes are not directly related to project itself. At the moment only following quick tests are supported: `test_rest_quick_sqls.rs`.
-
-Use following command to run quick tests: 
-``` bash
-cargo test-rest
+Set `METASTORE_CONFIG_JSON` env var to stress test on real s3_tables.
+``` shell
+export METASTORE_CONFIG_JSON="$(yq eval -o=json config/metastore.yaml)"
 ```
 
-## Features
-In order to provide coditional compilation for quick tests, this crate exposes features:
-- `default-server` - enabled by default, enables test code for CI/CD tests, workspace tests.
-- `external-server` - for quick tests, depends on external server, therefore re/compiles fast.
+Run tests as usual:
+```
+cargo test --workspace
+```

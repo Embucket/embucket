@@ -77,6 +77,8 @@ pub enum ConfigError {
         path: PathBuf,
         source: serde_yaml::Error,
     },
+    #[snafu(display("Failed to parse metastore config from json: {source}"))]
+    ParseJsonConfig { source: serde_json::Error },
     #[snafu(display("Failed to load metastore config from environment: {reason}"))]
     EnvConfig { reason: String },
     #[snafu(display("Metastore bootstrap error: {source}"))]
@@ -142,6 +144,14 @@ impl MetastoreBootstrapConfig {
             path: path.to_path_buf(),
         })?;
 
+        if let Some(volume) = load_volume_from_env()? {
+            config.volumes.push(volume);
+        }
+        Ok(config)
+    }
+
+    pub fn load_from_json_data(data: &str) -> Result<Self, ConfigError> {
+        let mut config: Self = serde_json::from_str(data).context(ParseJsonConfigSnafu)?;
         if let Some(volume) = load_volume_from_env()? {
             config.volumes.push(volume);
         }

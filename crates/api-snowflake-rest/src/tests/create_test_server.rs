@@ -33,6 +33,7 @@ pub fn executor_default_cfg() -> UtilsConfig {
 pub fn run_test_rest_api_server(
     rest_cfg: Option<RestApiConfig>,
     executor_cfg: Option<UtilsConfig>,
+    metastore_cfg: MetastoreConfig,
 ) -> SocketAddr {
     let rest_cfg = rest_cfg.unwrap_or_else(|| rest_default_cfg("json"));
     let executor_cfg = executor_cfg.unwrap_or_else(executor_default_cfg);
@@ -46,7 +47,7 @@ pub fn run_test_rest_api_server(
     // Start a new thread for the server
     let _handle = std::thread::spawn(move || {
         // Create the Tokio runtime
-        let rt = Builder::new_current_thread()
+        let rt = Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("Failed to create Tokio runtime");
@@ -56,6 +57,7 @@ pub fn run_test_rest_api_server(
             let () = run_test_rest_api_server_with_config(
                 rest_cfg,
                 executor_cfg,
+                metastore_cfg,
                 listener,
                 server_cond_clone,
             )
@@ -161,6 +163,7 @@ fn setup_tracing() {
 pub async fn run_test_rest_api_server_with_config(
     snowflake_rest_cfg: RestApiConfig,
     execution_cfg: UtilsConfig,
+    metastore_cfg: MetastoreConfig,
     listener: std::net::TcpListener,
     server_cond: Arc<(Mutex<bool>, Condvar)>,
 ) {
@@ -169,8 +172,7 @@ pub async fn run_test_rest_api_server_with_config(
     setup_tracing();
     tracing::info!("Starting server at {addr}");
 
-    let metastore_config = MetastoreConfig::DefaultConfig;
-    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_config)
+    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_cfg)
         .await
         .expect("Core state creation error");
 

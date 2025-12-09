@@ -145,6 +145,7 @@ impl SnowflakeError {
 
 // Self { message: format!("SQL execution error: {}", message) }
 impl SnowflakeError {
+    #[must_use]
     pub fn from_executor_error(value: &Error) -> Self {
         executor_error(value)
     }
@@ -164,6 +165,7 @@ fn format_message(subtext: &[&str], error: String) -> String {
     }
 }
 
+#[must_use]
 pub fn executor_error(error: &Error) -> SnowflakeError {
     let message = error.to_string();
     match error {

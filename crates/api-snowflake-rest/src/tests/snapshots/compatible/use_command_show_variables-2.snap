@@ -1,6 +1,6 @@
 ---
 source: crates/api-snowflake-rest/src/tests/test_rest_api.rs
-description: "SQL #2 [spent: 366/1039ms]: SHOW VARIABLES\nQuery UUID: 00000000-0000-0000-0000-000000000000"
+description: "SQL #2 [spent: 1947/3917ms]: SHOW VARIABLES\nQuery UUID: 00000000-0000-0000-0000-000000000000"
 expression: snapshot
 ---
 SHOW VARIABLES
@@ -107,8 +107,8 @@ SHOW VARIABLES
         "embucket",
         "text",
         "",
-        "UTC_TIME",
-        "UTC_TIME"
+        "UTC_TIME9",
+        "UTC_TIME9"
       ]
     ],
     "total": 1,

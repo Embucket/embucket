@@ -2114,13 +2114,13 @@ impl UserQuery {
                     .session
                     .executor
                     .spawn(async move {
-                        UserQuery::_execute_sql(session, &query).await
+                        Self::_execute_sql(session, &query).await
                     })
                     .await
                     .context(ex_error::JobSnafu)??;
                 Ok(stream)
             } else {
-                UserQuery::_execute_sql(session, query).await
+                Self::_execute_sql(session, query).await
             }
         }
     }
@@ -2156,13 +2156,13 @@ impl UserQuery {
                     .session
                     .executor
                     .spawn(async move {
-                        UserQuery::_execute_logical_plan(session, plan, span).await
+                        Self::_execute_logical_plan(session, plan, span).await
                     })
                     .await
                     .context(ex_error::JobSnafu)??;
                 Ok(stream)
             } else {
-                UserQuery::_execute_logical_plan(session, plan, span).await
+                Self::_execute_logical_plan(session, plan, span).await
             }
         }
     }
@@ -2216,13 +2216,13 @@ impl UserQuery {
                     .session
                     .executor
                     .spawn(async move {
-                        UserQuery::_execute_logical_plan_with_custom_rules(session, plan, rules).await
+                        Self::_execute_logical_plan_with_custom_rules(session, plan, rules).await
                     })
                     .await
                     .context(ex_error::JobSnafu)??;
                 Ok(stream)
             } else {
-                UserQuery::_execute_logical_plan_with_custom_rules(session, plan, rules).await
+                Self::_execute_logical_plan_with_custom_rules(session, plan, rules).await
             }
         }
     }

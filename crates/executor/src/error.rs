@@ -635,6 +635,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[must_use]
     pub fn query_id(&self) -> QueryId {
         if let Self::QueryExecution { query_id, .. } = self {
             *query_id

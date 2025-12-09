@@ -161,6 +161,7 @@ impl Error {
         InvalidAuthDataSnafu.build()
     }
 
+    #[must_use]
     pub fn query_id(&self) -> QueryId {
         if let Self::Execution { source, .. } = self {
             source.query_id()
@@ -169,6 +170,7 @@ impl Error {
         }
     }
 
+    #[must_use]
     pub fn display_error_message(&self) -> String {
         if let Self::Execution { source, .. } = self {
             source.to_snowflake_error().display_error_message()
@@ -177,6 +179,7 @@ impl Error {
         }
     }
 
+    #[must_use]
     pub fn debug_error_message(&self) -> String {
         if let Self::Execution { source, .. } = self {
             source.to_snowflake_error().debug_error_message()
