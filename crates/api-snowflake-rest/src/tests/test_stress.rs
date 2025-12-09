@@ -3,15 +3,12 @@ use crate::tests::sql_test_macro::{SqlTest, sql_test_wrapper};
 use tokio::task::JoinError;
 
 fn check_if_test_failed(results: Vec<std::result::Result<bool, JoinError>>) -> bool {
-    results
-        .into_iter()
-        .map(|r| {
-            r.unwrap_or_else(|e| {
-                eprintln!("Task join error: {e:?}");
-                false
-            })
+    results.into_iter().all(|r| {
+        r.unwrap_or_else(|e| {
+            eprintln!("Task join error: {e:?}");
+            false
         })
-        .all(|res| res)
+    })
 }
 
 mod stress {
@@ -95,7 +92,7 @@ mod stress {
                         let bool_result = expected_patterns
                             .iter()
                             .any(|pattern| msg.contains(pattern.trim()));
-                        eprintln!("{idx}: {} {sql} = {msg} {err_code}", if !bool_result { "NEW_ERROR" } else { "" });
+                        eprintln!("{idx}: {} {sql} = {msg} {err_code}", if bool_result { "" } else { "NEW_ERROR" });
                         bool_result
                     }).await
                 })

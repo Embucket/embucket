@@ -159,9 +159,7 @@ impl SqlTest {
             time::Duration::seconds(JWT_TOKEN_EXPIRATION_SECONDS.into()),
         );
 
-        let jwt_token = create_jwt(&jwt_claims, jwt_secret).expect("Failed to create JWT token");
-
-        jwt_token
+        create_jwt(&jwt_claims, jwt_secret).expect("Failed to create JWT token")
     }
 }
 
@@ -201,11 +199,11 @@ where
         if let Some(handle) = task_handle {
             let _resp = handle.await;
         }
-        assert_eq!(res.success, true);
+        assert!(res.success);
     }
 
     for (idx, sql) in sql_test.sqls.iter().enumerate() {
-        let mut sql = sql.to_string();
+        let mut sql = sql.clone();
         let sql_start = std::time::Instant::now();
 
         // replace $LAST_QUERY_ID by query_id from previous response
@@ -234,7 +232,8 @@ where
 
         let test_duration = test_start.elapsed().as_millis();
         let sql_duration = sql_start.elapsed().as_millis();
-        let async_query = sql.ends_with(";>").then(|| "Async ").unwrap_or("");
+        #[allow(clippy::obfuscated_if_else)]
+        let async_query = sql.ends_with(";>").then_some("Async ").unwrap_or("");
         let query_num = idx + 1;
         let sql_info = format!(
             "{async_query}SQL #{query_num} [spent: {sql_duration}/{test_duration}ms]: {sql}"
