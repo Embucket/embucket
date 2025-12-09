@@ -22,6 +22,7 @@ pub struct CoreState {
 #[derive(Clone)]
 pub enum MetastoreConfig {
     ConfigPath(PathBuf),
+    ConfigJson(String),
     DefaultConfig,
     None,
 }
@@ -74,6 +75,15 @@ async fn apply_metastore_config(
             );
             let config = MetastoreBootstrapConfig::load(&path)
                 .await
+                .context(MetastoreConfigSnafu)?;
+            config
+                .apply(metastore.clone())
+                .await
+                .context(MetastoreConfigSnafu)?;
+        }
+        MetastoreConfig::ConfigJson(data) => {
+            tracing::info!("Bootstrapping metastore from config json");
+            let config = MetastoreBootstrapConfig::load_from_json_data(&data)
                 .context(MetastoreConfigSnafu)?;
             config
                 .apply(metastore.clone())
