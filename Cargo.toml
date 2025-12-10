@@ -10,8 +10,10 @@ members = [
   "crates/functions",
   "crates/queries",
   "crates/error-stack",
-  "crates/error-stack-trace"
-, "crates/embucket-lambda"]
+  "crates/error-stack-trace",
+  "crates/embucket-lambda",
+  "crates/statestore",
+]
 resolver = "2"
 package.license-file = "LICENSE"
 
@@ -30,6 +32,7 @@ debug = false
 queries = { path = "crates/queries" }
 async-trait = { version = "0.1.84" }
 aws-config = { version = "1.5.17" }
+aws-sdk-dynamodb = { version = "1.100.0" }
 aws-credential-types = { version = "1.2.1",  features = ["hardcoded-credentials"]}
 axum = { version = "0.8.1", features = ["multipart", "macros"] }
 axum-macros = "0.5"
