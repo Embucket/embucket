@@ -143,6 +143,7 @@ pub async fn create_df_session() -> Arc<UserSession> {
             #[cfg(feature = "state-store")]
             state_store,
         )
+        .await
         .expect("Failed to create user session"),
     );
 
