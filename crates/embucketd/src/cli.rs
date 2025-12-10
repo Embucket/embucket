@@ -168,20 +168,22 @@ pub struct CliOpts {
         help = "AWS SDK connect timeout in seconds"
     )]
     pub aws_sdk_connect_timeout_secs: u64,
-    
+
     #[arg(
         long,
         env = "AWS_SDK_OPERATION_TIMEOUT_SECS",
+        default_value = "30",
         help = "AWS SDK operation timeout in seconds"
     )]
-    pub aws_sdk_operation_timeout_secs: Option<u64>,
+    pub aws_sdk_operation_timeout_secs: u64,
 
     #[arg(
         long,
         env = "AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS",
+        default_value = "10",
         help = "AWS SDK operation attempt timeout in seconds"
     )]
-    pub aws_sdk_operation_attempt_timeout_secs: Option<u64>,
+    pub aws_sdk_operation_attempt_timeout_secs: u64,
 }
 
 impl CliOpts {

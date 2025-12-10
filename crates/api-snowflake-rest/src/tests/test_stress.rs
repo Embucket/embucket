@@ -61,6 +61,8 @@ mod stress {
             "Generic S3 error: Error performing GET",
             "Iceberg Object store: The operation lacked the necessary privileges to complete for path metadata",
             "Table test_table not found",
+            // broken s3 tables error
+            "External error: Iceberg error: service error",
             // create table if not exists
             "External error: The operation lacked the necessary privileges to complete for path metadata",
             // create table if not exists
