@@ -10,6 +10,8 @@ use std::fmt::Display;
 pub enum ErrorCode {
     Db,
     Metastore,
+    #[cfg(feature = "state-store")]
+    StateStore,
     ObjectStore,
     Datafusion,
     DatafusionEmbucketFn,

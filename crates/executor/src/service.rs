@@ -33,6 +33,8 @@ use crate::tracing::SpanTracer;
 use crate::utils::{Config, MemPoolType};
 use catalog::catalog_list::EmbucketCatalogList;
 use catalog_metastore::{InMemoryMetastore, Metastore, TableIdent as MetastoreTableIdent};
+#[cfg(feature = "state-store")]
+use state_store::StateStore;
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::Instrument;
@@ -146,6 +148,8 @@ pub struct CoreExecutionService {
     catalog_list: Arc<EmbucketCatalogList>,
     runtime_env: Arc<RuntimeEnv>,
     queries: Arc<RunningQueriesRegistry>,
+    #[cfg(feature = "state-store")]
+    state_store: Arc<StateStore>,
 }
 
 impl CoreExecutionService {
@@ -160,6 +164,10 @@ impl CoreExecutionService {
 
         let catalog_list = Self::catalog_list(metastore.clone(), &config).await?;
         let runtime_env = Self::runtime_env(&config, catalog_list.clone())?;
+        #[cfg(feature = "state-store")]
+        let state_store = StateStore::new_from_env()
+            .await
+            .context(ex_error::StateStoreSnafu)?;
         Ok(Self {
             metastore,
             df_sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -167,6 +175,8 @@ impl CoreExecutionService {
             catalog_list,
             runtime_env,
             queries: Arc::new(RunningQueriesRegistry::new()),
+            #[cfg(feature = "state-store")]
+            state_store: Arc::new(state_store),
         })
     }
 
@@ -266,18 +276,31 @@ impl ExecutionService for CoreExecutionService {
                 return Ok(session.clone());
             }
         }
-        let user_session: Arc<UserSession> = Arc::new(UserSession::new(
-            self.metastore.clone(),
-            self.queries.clone(),
-            self.config.clone(),
-            self.catalog_list.clone(),
-            self.runtime_env.clone(),
-        )?);
+        let user_session: Arc<UserSession> = Arc::new(
+            UserSession::new(
+                self.metastore.clone(),
+                self.queries.clone(),
+                self.config.clone(),
+                self.catalog_list.clone(),
+                self.runtime_env.clone(),
+                #[cfg(feature = "state-store")]
+                session_id,
+                #[cfg(feature = "state-store")]
+                self.state_store.clone(),
+            )
+            .await?,
+        );
         {
             tracing::trace!("Acquiring write lock for df_sessions");
             let mut sessions = self.df_sessions.write().await;
             tracing::trace!("Acquired write lock for df_sessions");
             sessions.insert(session_id.to_string(), user_session.clone());
+
+            #[cfg(feature = "state-store")]
+            self.state_store
+                .put_new_session(session_id.to_string())
+                .await
+                .context(ex_error::StateStoreSnafu)?;
 
             // Record the result as part of the current span.
             tracing::Span::current().record("new_sessions_count", sessions.len());

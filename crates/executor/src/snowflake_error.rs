@@ -19,6 +19,8 @@ use iceberg_s3tables_catalog::error::Error as S3TablesError;
 use snafu::GenerateImplicitData;
 use snafu::{Location, Snafu, location};
 use sqlparser::parser::ParserError;
+#[cfg(feature = "state-store")]
+use state_store::error::Error as StateStoreError;
 use strum_macros::{Display, EnumString};
 
 // SnowflakeError have no query_id, it is inconvinient adding it here.
@@ -179,6 +181,8 @@ pub fn executor_error(error: &Error) -> SnowflakeError {
         Error::SqlParser { error, .. } => datafusion_parser_error(error),
         Error::Metastore { source, .. } => metastore_error(source, &[]),
         Error::Iceberg { error, .. } => iceberg_error(error, &[]),
+        #[cfg(feature = "state-store")]
+        Error::StateStore { error, .. } => state_store_error(error, &[]),
         Error::RefreshCatalogList { source, .. }
         | Error::RegisterCatalog { source, .. }
         | Error::DropDatabase { source, .. }
@@ -277,6 +281,28 @@ fn catalog_error(error: &CatalogError, subtext: &[&str]) -> SnowflakeError {
     }
 }
 
+#[cfg(feature = "state-store")]
+fn state_store_error(error: &StateStoreError, subtext: &[&str]) -> SnowflakeError {
+    let subtext = [subtext, &["StateStore"]].concat();
+    let message = match error {
+        StateStoreError::DynamoDbPutItem { error, .. } => {
+            aws_sdk_error_message("DynamoDB put", error)
+        }
+        StateStoreError::DynamoDbGetItem { error, .. } => {
+            aws_sdk_error_message("DynamoDB get", error)
+        }
+        StateStoreError::DynamoDbDeleteItem { error, .. } => {
+            aws_sdk_error_message("DynamoDB delete", error)
+        }
+        _ => error.to_string(),
+    };
+    CustomSnafu {
+        message: format_message(&subtext, message),
+        error_code: ErrorCode::StateStore,
+    }
+    .build()
+}
+
 fn metastore_error(error: &MetastoreError, subtext: &[&str]) -> SnowflakeError {
     let subtext = [subtext, &["Metastore"]].concat();
     let message = error.to_string();
@@ -348,22 +374,26 @@ fn s3tables_error(error: &S3TablesError, subtext: &[&str]) -> SnowflakeError {
     let message = match error {
         S3TablesError::Text(text) => text.clone(),
         S3TablesError::ParseError(err) => err.to_string(),
-        S3TablesError::CreateNamespace(err) => s3tables_sdk_error_message("create namespace", err),
-        S3TablesError::DeleteNamespace(err) => s3tables_sdk_error_message("delete namespace", err),
-        S3TablesError::GetNamespace(err) => s3tables_sdk_error_message("get namespace", err),
-        S3TablesError::ListTables(err) => s3tables_sdk_error_message("list tables", err),
-        S3TablesError::ListNamespaces(err) => s3tables_sdk_error_message("list namespaces", err),
-        S3TablesError::GetTable(err) => s3tables_sdk_error_message("get table", err),
-        S3TablesError::DeleteTable(err) => s3tables_sdk_error_message("delete table", err),
+        S3TablesError::CreateNamespace(err) => {
+            aws_sdk_error_message("S3Tables create namespace", err)
+        }
+        S3TablesError::DeleteNamespace(err) => {
+            aws_sdk_error_message("S3Tables delete namespace", err)
+        }
+        S3TablesError::GetNamespace(err) => aws_sdk_error_message("S3Tables get namespace", err),
+        S3TablesError::ListTables(err) => aws_sdk_error_message("S3Tables list tables", err),
+        S3TablesError::ListNamespaces(err) => aws_sdk_error_message("list namespaces", err),
+        S3TablesError::GetTable(err) => aws_sdk_error_message("S3Tables get table", err),
+        S3TablesError::DeleteTable(err) => aws_sdk_error_message("S3Tables delete table", err),
         S3TablesError::SdkError(err) => {
-            s3tables_sdk_error_message("get table metadata location", err)
+            aws_sdk_error_message("S3Tables get table metadata location", err)
         }
         S3TablesError::GetTableMetadataLocation(err) => {
             s3tables_modeled_error_message("get table metadata location", err)
         }
-        S3TablesError::CreateTable(err) => s3tables_sdk_error_message("create table", err),
+        S3TablesError::CreateTable(err) => aws_sdk_error_message("S3Tables create table", err),
         S3TablesError::UpdateTableMetadataLocation(err) => {
-            s3tables_sdk_error_message("update table metadata location", err)
+            aws_sdk_error_message("S3Tables update table metadata location", err)
         }
     };
 
@@ -375,7 +405,7 @@ fn s3tables_error(error: &S3TablesError, subtext: &[&str]) -> SnowflakeError {
 }
 
 #[allow(clippy::map_unwrap_or, clippy::cognitive_complexity)]
-fn s3tables_sdk_error_message<E>(operation: &str, err: &AwsSdkError<E, AwsHttpResponse>) -> String
+fn aws_sdk_error_message<E>(operation: &str, err: &AwsSdkError<E, AwsHttpResponse>) -> String
 where
     E: std::error::Error + AwsProvideErrorMetadata,
 {
@@ -394,11 +424,9 @@ where
                 aws_status = status,
                 aws_message = %message,
                 service_error = ?service_err.err(),
-                "S3Tables service error"
+                "service error"
             );
-            format!(
-                "S3Tables {operation} failed with service error {code} (HTTP {status}): {message}"
-            )
+            format!("{operation} failed with service error {code} (HTTP {status}): {message}")
         }
         AwsSdkError::ResponseError(response_err) => {
             let status = response_err.raw().status().as_u16();
@@ -406,33 +434,33 @@ where
                 operation,
                 aws_status = status,
                 error = ?response_err,
-                "S3Tables response error"
+                "response error"
             );
-            format!("S3Tables {operation} returned an unparseable response (HTTP {status})")
+            format!("{operation} returned an unparseable response (HTTP {status})")
         }
         AwsSdkError::DispatchFailure(dispatch_err) => {
             tracing::warn!(
                 operation,
                 error = ?dispatch_err,
-                "S3Tables dispatch failure"
+                "dispatch failure"
             );
-            format!("S3Tables {operation} request failed during dispatch: {dispatch_err:?}")
+            format!("{operation} request failed during dispatch: {dispatch_err:?}")
         }
         AwsSdkError::TimeoutError(timeout_err) => {
-            tracing::warn!(operation, error = ?timeout_err, "S3Tables timeout");
-            format!("S3Tables {operation} request timed out: {timeout_err:?}")
+            tracing::warn!(operation, error = ?timeout_err, "timeout");
+            format!("{operation} request timed out: {timeout_err:?}")
         }
         AwsSdkError::ConstructionFailure(construction_err) => {
             tracing::warn!(
                 operation,
                 error = ?construction_err,
-                "S3Tables request construction failure"
+                "request construction failure"
             );
-            format!("S3Tables {operation} request could not be built: {construction_err:?}")
+            format!("{operation} request could not be built: {construction_err:?}")
         }
         _ => {
-            tracing::warn!(operation, error = ?err, "S3Tables unexpected SDK error");
-            format!("S3Tables {operation} failed with unexpected SDK error: {err}")
+            tracing::warn!(operation, error = ?err, "unexpected SDK error");
+            format!("{operation} failed with unexpected SDK error: {err}")
         }
     }
 }

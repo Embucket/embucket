@@ -3423,6 +3423,7 @@ dependencies = [
  "async-trait",
  "aws-config",
  "aws-credential-types",
+ "aws-sdk-dynamodb",
  "aws-sdk-s3tables",
  "bytes",
  "catalog",
@@ -3457,6 +3458,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "sqlparser",
+ "state-store",
  "strum 0.27.2",
  "strum_macros 0.27.2",
  "time",
@@ -7248,7 +7250,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "statestore"
+name = "state-store"
 version = "0.1.0"
 dependencies = [
  "aws-config",

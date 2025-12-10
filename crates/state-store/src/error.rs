@@ -7,9 +7,10 @@ use snafu::{Location, Snafu};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Errors produced by the statestore helpers.
-#[derive(Debug, Snafu)]
+/// Errors produced by the state store helpers.
+#[derive(Snafu)]
 #[snafu(visibility(pub(crate)))]
+#[error_stack_trace::debug]
 pub enum Error {
     #[snafu(display("Environment variable {reason} is not set"))]
     MissingEnvVar { reason: String },

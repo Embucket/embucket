@@ -1,12 +1,8 @@
 [package]
-name = "statestore"
+name = "state-store"
 version = "0.1.0"
 edition = "2024"
 license-file = { workspace = true }
-
-[lib]
-name = "statestore"
-path = "src/lib.rs"
 
 [dependencies]
 error-stack-trace = { path = "../error-stack-trace" }

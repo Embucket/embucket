@@ -1,15 +1,12 @@
-use std::{collections::HashMap, env};
+use std::collections::HashMap;
 
+use crate::config::DynamoDbConfig;
 use crate::error::DynamoDbPutItemSnafu;
 use crate::error::Result;
 use crate::error::{DynamoDbDeleteItemSnafu, DynamoDbGetItemSnafu, Error, FailedToParseJsonSnafu};
-use crate::models::Entities::Session;
 use crate::models::SessionRecord;
-use aws_config::{BehaviorVersion, defaults};
-use aws_credential_types::{Credentials, provider::SharedCredentialsProvider};
-use aws_sdk_dynamodb::{Client, config::Region, types::AttributeValue};
+use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 
 const PK: &str = "PK";
@@ -19,12 +16,12 @@ const DATA: &str = "Data";
 
 /// `DynamoDB` single-table client.
 #[derive(Clone, Debug)]
-pub struct DynamoDbStateStore {
+pub struct StateStore {
     client: Client,
     table_name: String,
 }
 
-impl DynamoDbStateStore {
+impl StateStore {
     /// Create a DynamoDB-backed statestore using environment variables.
     ///
     /// Expected variables:
@@ -32,27 +29,13 @@ impl DynamoDbStateStore {
     /// - `AWS_ACCESS_KEY_ID`
     /// - `AWS_SECRET_ACCESS_KEY`
     /// - `AWS_REGION`
-    pub async fn from_env() -> Result<Self> {
-        let missing_var_error = |name: &str| Error::MissingEnvVar {
-            reason: format!("{name} environment variable is required for dynamodb initialization"),
-        };
-
-        let table_name = env::var("STATESTORE_TABLE_NAME")
-            .map_err(|_| missing_var_error("STATESTORE_TABLE_NAME"))?;
-        let access_key =
-            env::var("AWS_ACCESS_KEY_ID").map_err(|_| missing_var_error("AWS_ACCESS_KEY_ID"))?;
-        let secret_key = env::var("AWS_SECRET_ACCESS_KEY")
-            .map_err(|_| missing_var_error("AWS_SECRET_ACCESS_KEY"))?;
-        let region = env::var("AWS_REGION").map_err(|_| missing_var_error("AWS_REGION"))?;
-        let creds = Credentials::from_keys(access_key, secret_key, None);
-        let config = defaults(BehaviorVersion::latest())
-            .credentials_provider(SharedCredentialsProvider::new(creds))
-            .region(Region::new(region))
-            .load()
-            .await;
-        let client = Client::new(&config);
-
-        Ok(Self { client, table_name })
+    pub async fn new_from_env() -> Result<Self> {
+        let config = DynamoDbConfig::from_env()?;
+        let client = config.client().await?;
+        Ok(Self {
+            client,
+            table_name: config.table_name,
+        })
     }
 
     /// Create a new instance from an existing `DynamoDB` client.
@@ -63,8 +46,13 @@ impl DynamoDbStateStore {
         }
     }
 
+    #[must_use]
     pub fn session_id_pk(key: &str) -> String {
         format!("SESSION#{key}")
+    }
+
+    pub async fn put_new_session(&self, session_id: String) -> Result<()> {
+        self.put_session(SessionRecord::new(session_id)).await
     }
 
     /// Persist a session record.
@@ -72,8 +60,8 @@ impl DynamoDbStateStore {
         let mut item = HashMap::new();
         let key = Self::session_id_pk(&session.session_id.clone());
         item.insert(PK.to_string(), AttributeValue::S(key.clone()));
-        // item.insert(SK.to_string(), AttributeValue::S(key));
-        item.insert(ENTITY.to_string(), AttributeValue::S(Session.to_string()));
+        item.insert(SK.to_string(), AttributeValue::S(key));
+        item.insert(ENTITY.to_string(), AttributeValue::S(session.entity()));
         item.insert(
             DATA.to_string(),
             AttributeValue::S(serde_json::to_string(&session).context(FailedToParseJsonSnafu)?),

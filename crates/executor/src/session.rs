@@ -17,6 +17,8 @@ use crate::running_queries::RunningQueries;
 use crate::utils::Config;
 use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
 use catalog_metastore::Metastore;
+#[cfg(feature = "state-store")]
+use chrono::{TimeZone, Utc};
 use datafusion::config::ConfigOptions;
 use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::execution::{SessionStateBuilder, SessionStateDefaults};
@@ -28,12 +30,16 @@ use functions::register_udafs;
 use functions::session_params::{SessionParams, SessionProperty};
 use functions::table::register_udtfs;
 use snafu::ResultExt;
+#[cfg(feature = "state-store")]
+use state_store::{StateStore, Variable};
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZero;
 use std::sync::atomic::AtomicI64;
 use std::sync::{Arc, RwLock};
 use std::thread::available_parallelism;
 use time::{Duration, OffsetDateTime};
+#[cfg(feature = "state-store")]
+use tracing::warn;
 
 pub const SESSION_INACTIVITY_EXPIRATION_SECONDS: i64 = 5 * 60;
 static MINIMUM_PARALLEL_OUTPUT_FILES: usize = 1;
@@ -47,6 +53,8 @@ pub const fn to_unix(t: OffsetDateTime) -> i64 {
 
 pub struct UserSession {
     pub metastore: Arc<dyn Metastore>,
+    #[cfg(feature = "state-store")]
+    state_store: Arc<StateStore>,
     // running_queries contains all the queries running across sessions
     pub running_queries: Arc<dyn RunningQueries>,
     pub ctx: SessionContext,
@@ -60,12 +68,15 @@ pub struct UserSession {
 }
 
 impl UserSession {
-    pub fn new(
+    #[allow(clippy::unused_async)]
+    pub async fn new(
         metastore: Arc<dyn Metastore>,
         running_queries: Arc<dyn RunningQueries>,
         config: Arc<Config>,
         catalog_list: Arc<EmbucketCatalogList>,
         runtime_env: Arc<RuntimeEnv>,
+        #[cfg(feature = "state-store")] session_id: &str,
+        #[cfg(feature = "state-store")] state_store: Arc<StateStore>,
     ) -> Result<Self> {
         let sql_parser_dialect = config
             .sql_parser_dialect
@@ -79,6 +90,9 @@ impl UserSession {
         let parallelism_opt = available_parallelism().ok().map(NonZero::get);
 
         let session_params = SessionParams::default();
+        #[cfg(feature = "state-store")]
+        let session_params_arc = Self::session_params(session_id, state_store.clone()).await;
+        #[cfg(not(feature = "state-store"))]
         let session_params_arc = Arc::new(session_params.clone());
         let mut config_options = ConfigOptions::from_env().context(ex_error::DataFusionSnafu)?;
 
@@ -131,6 +145,8 @@ impl UserSession {
         let enable_ident_normalization = ctx.enable_ident_normalization();
         let session = Self {
             metastore,
+            #[cfg(feature = "state-store")]
+            state_store,
             running_queries,
             ctx,
             ident_normalizer: IdentNormalizer::new(enable_ident_normalization),
@@ -145,6 +161,38 @@ impl UserSession {
             recent_queries: Arc::new(RwLock::new(VecDeque::new())),
         };
         Ok(session)
+    }
+
+    #[cfg(feature = "state-store")]
+    pub async fn session_params(
+        session_id: &str,
+        state_store: Arc<StateStore>,
+    ) -> Arc<SessionParams> {
+        let session_params = SessionParams::default();
+        #[cfg(feature = "state-store")]
+        match state_store
+            .get_session(session_id)
+            .await
+            .context(ex_error::StateStoreSnafu)
+        {
+            Ok(session) => {
+                let params = session
+                    .variables
+                    .into_iter()
+                    .map(|v| {
+                        (
+                            v.name.clone(),
+                            state_store_variable_to_property(v, session_id),
+                        )
+                    })
+                    .collect();
+                session_params.set_properties(params);
+            }
+            Err(_) => {
+                warn!("Failed to retrieve session from state store for {session_id}");
+            }
+        }
+        Arc::new(session_params.clone())
     }
 
     pub fn set_database(&self, database: &str) -> Result<()> {
@@ -213,8 +261,7 @@ impl UserSession {
         let config = options.extensions.get_mut::<SessionParams>();
         if let Some(cfg) = config {
             if set {
-                cfg.set_properties(session_params)
-                    .context(ex_error::DataFusionSnafu)?;
+                cfg.set_properties(session_params);
             } else {
                 cfg.remove_properties(session_params)
                     .context(ex_error::DataFusionSnafu)?;
@@ -264,5 +311,26 @@ pub fn parse_bool(value: &str) -> Option<bool> {
         "true" | "1" => Some(true),
         "false" | "0" => Some(false),
         _ => None,
+    }
+}
+
+#[cfg(feature = "state-store")]
+#[allow(clippy::as_conversions)]
+pub fn state_store_variable_to_property(var: Variable, session_id: &str) -> SessionProperty {
+    SessionProperty {
+        session_id: Some(session_id.to_string()),
+        created_on: Utc
+            .timestamp_opt(var.created_at as i64, 0)
+            .single()
+            .unwrap_or_else(Utc::now),
+        updated_on: var.updated_at.map_or_else(Utc::now, |ts| {
+            Utc.timestamp_opt(ts as i64, 0)
+                .single()
+                .unwrap_or_else(Utc::now)
+        }),
+        value: var.value,
+        property_type: var.value_type,
+        comment: var.comment,
+        name: var.name,
     }
 }
