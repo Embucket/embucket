@@ -8,8 +8,6 @@ use uuid::Uuid;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequestQueryParams {
-    #[serde(rename = "request_id")]
-    pub request_id: String,
     pub database_name: Option<String>,
     pub schema_name: Option<String>,
     pub warehouse: Option<String>,
