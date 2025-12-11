@@ -4,6 +4,7 @@ use crate::server::core_state::MetastoreConfig;
 use crate::server::make_snowflake_router;
 use crate::server::server_models::RestApiConfig;
 use crate::server::state::AppState;
+use catalog_metastore::global_settings::GlobalSettings;
 use executor::utils::Config as UtilsConfig;
 use std::net::SocketAddr;
 use std::net::TcpListener;
@@ -14,6 +15,14 @@ use tokio::runtime::Builder;
 use tracing_subscriber::fmt::format::FmtSpan;
 
 static INIT: std::sync::Once = std::sync::Once::new();
+
+pub fn init_global_settings(global_settings: GlobalSettings) {
+    if GlobalSettings::get_object_store_config().is_err() {
+        GlobalSettings::default()
+            .initialize()
+            .expect("Failed to initialize global settings");
+    }
+}
 
 #[allow(clippy::expect_used)]
 #[must_use]
@@ -33,8 +42,10 @@ pub fn executor_default_cfg() -> UtilsConfig {
 pub fn run_test_rest_api_server(
     rest_cfg: Option<RestApiConfig>,
     executor_cfg: Option<UtilsConfig>,
+    global_settings_cfg: Option<GlobalSettings>,
     metastore_cfg: MetastoreConfig,
 ) -> SocketAddr {
+    let global_settings_cfg = global_settings_cfg.unwrap_or_default();
     let rest_cfg = rest_cfg.unwrap_or_else(|| rest_default_cfg("json"));
     let executor_cfg = executor_cfg.unwrap_or_else(executor_default_cfg);
 
@@ -57,6 +68,7 @@ pub fn run_test_rest_api_server(
             let () = run_test_rest_api_server_with_config(
                 rest_cfg,
                 executor_cfg,
+                global_settings_cfg,
                 metastore_cfg,
                 listener,
                 server_cond_clone,
@@ -163,6 +175,7 @@ fn setup_tracing() {
 pub async fn run_test_rest_api_server_with_config(
     snowflake_rest_cfg: RestApiConfig,
     execution_cfg: UtilsConfig,
+    global_settings_cfg: GlobalSettings,
     metastore_cfg: MetastoreConfig,
     listener: std::net::TcpListener,
     server_cond: Arc<(Mutex<bool>, Condvar)>,
@@ -171,6 +184,8 @@ pub async fn run_test_rest_api_server_with_config(
 
     setup_tracing();
     tracing::info!("Starting server at {addr}");
+
+    init_global_settings(global_settings_cfg);
 
     let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_cfg)
         .await

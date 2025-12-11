@@ -1,3 +1,4 @@
+use crate::error::Error;
 use error_stack_trace;
 use iceberg_rust::error::Error as IcebergError;
 use snafu::Location;
@@ -56,6 +57,14 @@ pub enum DFExternalError {
     Iceberg {
         #[snafu(source(from(IcebergError, Box::new)))]
         error: Box<IcebergError>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
+    #[snafu(display("Catalog error: {error}"))]
+    Catalog {
+        #[snafu(source(from(Error, Box::new)))]
+        error: Box<Error>,
         #[snafu(implicit)]
         location: Location,
     },

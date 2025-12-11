@@ -48,6 +48,8 @@ pub struct Config {
     pub aws_sdk_operation_timeout_secs: u64,
     #[cfg(not(feature = "rest-catalog"))]
     pub aws_sdk_operation_attempt_timeout_secs: u64,
+    pub iceberg_create_table_timeout_secs: u64,
+    pub iceberg_catalog_timeout_secs: u64,
 }
 
 impl From<&Config> for CatalogListConfig {
@@ -65,6 +67,8 @@ impl From<&Config> for CatalogListConfig {
                 .operation_attempt_timeout(std::time::Duration::from_secs(
                     value.aws_sdk_operation_attempt_timeout_secs,
                 )),
+            iceberg_create_table_timeout_secs: value.iceberg_create_table_timeout_secs,
+            iceberg_catalog_timeout_secs: value.iceberg_catalog_timeout_secs,
         }
     }
 }
@@ -87,6 +91,8 @@ impl Default for Config {
             aws_sdk_operation_timeout_secs: 30,
             #[cfg(not(feature = "rest-catalog"))]
             aws_sdk_operation_attempt_timeout_secs: 10,
+            iceberg_create_table_timeout_secs: 30,
+            iceberg_catalog_timeout_secs: 10,
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{block_in_new_runtime, error};
+use crate::{block_on_with_timeout, error};
 use async_trait::async_trait;
 use catalog_metastore::error as metastore_error;
 use catalog_metastore::{Metastore, SchemaIdent, TableIdent};
@@ -11,6 +11,8 @@ use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
 use tracing::error;
+
+pub const CATALOG_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(35);
 
 pub struct EmbucketSchema {
     pub database: String,
@@ -48,13 +50,18 @@ impl SchemaProvider for EmbucketSchema {
         let database = self.database.clone();
         let schema = self.schema.clone();
 
-        let table_names = block_in_new_runtime(async move {
-            metastore
-                .list_tables(&SchemaIdent::new(database, schema))
-                .await
-                .map(|tables| tables.into_iter().map(|s| s.ident.table.clone()).collect())
-                .context(error::MetastoreSnafu)
-        })
+        #[allow(clippy::expect_used)]
+        let table_names = block_on_with_timeout(
+            async move {
+                metastore
+                    .list_tables(&SchemaIdent::new(database, schema))
+                    .await
+                    .map(|tables| tables.into_iter().map(|s| s.ident.table.clone()).collect())
+                    .context(error::MetastoreSnafu)
+            },
+            CATALOG_TIMEOUT,
+        )
+        .expect("Catalog timeout on: list_tables")
         .unwrap_or_else(|error| {
             error!(?error, "Failed to list tables; returning empty list");
             vec![]
@@ -112,12 +119,17 @@ impl SchemaProvider for EmbucketSchema {
         let ident = TableIdent::new(&database, &schema, &table);
         let ident_for_runtime = ident.clone();
 
-        block_in_new_runtime(async move {
-            iceberg_catalog
-                .tabular_exists(&ident_for_runtime.to_iceberg_ident())
-                .await
-                .context(error::IcebergSnafu)
-        })
+        #[allow(clippy::expect_used)]
+        block_on_with_timeout(
+            async move {
+                iceberg_catalog
+                    .tabular_exists(&ident_for_runtime.to_iceberg_ident())
+                    .await
+                    .context(error::IcebergSnafu)
+            },
+            CATALOG_TIMEOUT,
+        )
+        .expect("Catalog timeout on: tabular_exists")
         .unwrap_or_else(|error| {
             error!(
                 ?error,

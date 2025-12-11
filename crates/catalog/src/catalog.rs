@@ -1,6 +1,6 @@
 use crate::catalogs::embucket::schema::EmbucketSchema;
 use crate::schema::CachingSchema;
-use crate::{block_in_new_runtime, df_error, error};
+use crate::{block_on_with_timeout, df_error, error};
 use catalog_metastore::Metastore;
 use chrono::NaiveDateTime;
 use dashmap::DashMap;
@@ -14,6 +14,8 @@ use snafu::{OptionExt, ResultExt};
 use std::fmt::{Display, Formatter};
 use std::{any::Any, sync::Arc};
 use tracing::error;
+
+pub const CATALOG_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(35);
 
 #[derive(Clone)]
 pub struct CachingCatalog {
@@ -124,12 +126,17 @@ impl CachingCatalog {
         let catalog = iceberg_catalog.clone();
 
         // Check if schema exists
-        let schema_exists = block_in_new_runtime(async move {
-            catalog
-                .namespace_exists(&namespace_to_check)
-                .await
-                .context(error::IcebergSnafu)
-        })
+        #[allow(clippy::expect_used)]
+        let schema_exists = block_on_with_timeout(
+            async move {
+                catalog
+                    .namespace_exists(&namespace_to_check)
+                    .await
+                    .context(error::IcebergSnafu)
+            },
+            CATALOG_TIMEOUT,
+        )
+        .expect("Catalog timeout on namespace_exists")
         .unwrap_or_else(|error| {
             error!(?error, "Failed to check schema");
             false
@@ -178,13 +185,20 @@ impl CatalogProvider for CachingCatalog {
         let schema_names = match &self.iceberg_catalog {
             Some(catalog) => {
                 let catalog = catalog.clone();
-                block_in_new_runtime(async move {
-                    catalog
-                        .list_namespaces(None)
-                        .await
-                        .context(error::IcebergSnafu)
-                        .map(|namespaces| namespaces.into_iter().map(|ns| ns.to_string()).collect())
-                })
+                #[allow(clippy::expect_used)]
+                block_on_with_timeout(
+                    async move {
+                        catalog
+                            .list_namespaces(None)
+                            .await
+                            .context(error::IcebergSnafu)
+                            .map(|namespaces| {
+                                namespaces.into_iter().map(|ns| ns.to_string()).collect()
+                            })
+                    },
+                    CATALOG_TIMEOUT,
+                )
+                .expect("Catalog timeout on: list_namespaces")
                 .unwrap_or_else(|error| {
                     error!(?error, "Failed to list schema names; returning empty list");
                     vec![]
@@ -269,12 +283,17 @@ impl CatalogProvider for CachingCatalog {
                 }
             };
             let catalog = catalog.clone();
-            block_in_new_runtime(async move {
-                catalog
-                    .create_namespace(&namespace, None)
-                    .await
-                    .context(error::IcebergSnafu)
-            })
+            #[allow(clippy::expect_used)]
+            block_on_with_timeout(
+                async move {
+                    catalog
+                        .create_namespace(&namespace, None)
+                        .await
+                        .context(error::IcebergSnafu)
+                },
+                CATALOG_TIMEOUT,
+            )
+            .expect("Catalog timeout on: create_namespace")
             .map_err(|err| DataFusionError::External(Box::new(err)))?;
             schema_provider
         } else {
@@ -309,12 +328,17 @@ impl CatalogProvider for CachingCatalog {
             let namespace = Namespace::try_new(std::slice::from_ref(&name.to_string()))
                 .map_err(|err| DataFusionError::External(Box::new(err)))?;
             let catalog = catalog.clone();
-            block_in_new_runtime(async move {
-                catalog
-                    .drop_namespace(&namespace)
-                    .await
-                    .context(error::IcebergSnafu)
-            })
+            #[allow(clippy::expect_used)]
+            block_on_with_timeout(
+                async move {
+                    catalog
+                        .drop_namespace(&namespace)
+                        .await
+                        .context(error::IcebergSnafu)
+                },
+                CATALOG_TIMEOUT,
+            )
+            .expect("Catalog timeout on: drop_namespace")
             .map_err(|err| DataFusionError::External(Box::new(err)))?;
         } else {
             return self.catalog.deregister_schema(name, cascade);

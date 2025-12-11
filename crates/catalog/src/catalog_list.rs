@@ -56,6 +56,8 @@ pub struct CatalogListConfig {
     pub max_concurrent_table_fetches: usize,
     #[cfg(not(feature = "rest-catalog"))]
     pub aws_sdk_timeout_config: TimeoutConfigBuilder, // using builder as it has default
+    pub iceberg_create_table_timeout_secs: u64,
+    pub iceberg_catalog_timeout_secs: u64,
 }
 
 impl EmbucketCatalogList {
@@ -208,7 +210,8 @@ impl EmbucketCatalogList {
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
             EmbucketIcebergCatalog::new(self.metastore.clone(), db.ident.clone())
                 .await
-                .context(MetastoreSnafu)?,
+                .context(MetastoreSnafu)?
+                .with_config(self.config.clone().into()),
         );
         let catalog_provider: Arc<dyn CatalogProvider> = Arc::new(EmbucketCatalog::new(
             db.ident.clone(),

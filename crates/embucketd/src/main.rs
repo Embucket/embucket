@@ -16,6 +16,7 @@ use axum::{
     Json, Router,
     routing::{get, post},
 };
+use catalog_metastore::global_settings::GlobalSettings;
 use clap::Parser;
 use dotenv::dotenv;
 use executor::service::{ExecutionService, TIMEOUT_SIGNAL_INTERVAL_SECONDS};
@@ -126,7 +127,16 @@ async fn async_main(
         aws_sdk_operation_attempt_timeout_secs: opts.aws_sdk_operation_attempt_timeout_secs,
         #[cfg(not(feature = "rest-catalog"))]
         aws_sdk_connect_timeout_secs: opts.aws_sdk_connect_timeout_secs,
+        iceberg_create_table_timeout_secs: opts.iceberg_create_table_timeout_secs,
+        iceberg_catalog_timeout_secs: opts.iceberg_catalog_timeout_secs,
     };
+
+    GlobalSettings::new()
+        .with_object_store_timeout(opts.object_store_timeout_secs)
+        .with_object_store_connect_timeout(opts.object_store_connect_timeout_secs)
+        .initialize()
+        .expect("Failed to initialize global settings");
+
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
 

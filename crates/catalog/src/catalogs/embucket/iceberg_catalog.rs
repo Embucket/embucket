@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use crate::catalog_list::CatalogListConfig;
 use crate::error;
 use async_trait::async_trait;
 use catalog_metastore::error::{self as metastore_error, Result as MetastoreResult};
@@ -31,10 +32,26 @@ use object_store::ObjectStore;
 use snafu::ResultExt;
 
 #[derive(Debug)]
+pub struct EmbucketIcebergCatalogConfig {
+    pub object_store_timeout_secs: u64,
+    pub object_store_connect_timeout_secs: u64,
+}
+
+impl From<CatalogListConfig> for EmbucketIcebergCatalogConfig {
+    fn from(config: CatalogListConfig) -> Self {
+        Self {
+            object_store_timeout_secs: config.iceberg_catalog_timeout_secs,
+            object_store_connect_timeout_secs: config.iceberg_create_table_timeout_secs,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct EmbucketIcebergCatalog {
     pub metastore: Arc<dyn Metastore>,
     pub database: String,
     pub object_store: Arc<dyn ObjectStore>,
+    pub config: Option<EmbucketIcebergCatalogConfig>,
 }
 
 impl EmbucketIcebergCatalog {
@@ -59,7 +76,16 @@ impl EmbucketIcebergCatalog {
             metastore,
             database,
             object_store,
+            config: None,
         })
+    }
+
+    #[must_use]
+    pub fn with_config(self, config: EmbucketIcebergCatalogConfig) -> Self {
+        Self {
+            config: Some(config),
+            ..self
+        }
     }
 
     #[must_use]

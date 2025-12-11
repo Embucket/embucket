@@ -1,6 +1,8 @@
 use error::Result;
+use futures::TryFutureExt;
+use futures::executor::block_on;
 use snafu::ResultExt;
-use tokio::runtime::Builder;
+use tokio::runtime::{Builder, Handle, RuntimeFlavor};
 
 #[allow(clippy::module_inception)]
 pub mod catalog;
@@ -37,6 +39,29 @@ where
     match handle.join() {
         Ok(inner) => inner, // inner: Result<R, error::Error>
         Err(_) => error::ThreadPanickedWhileExecutingFutureSnafu.fail()?,
+    }
+}
+
+fn block_on_with_timeout<F>(future: F, timeout_duration: tokio::time::Duration) -> Result<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let future_with_timeout = async move {
+        tokio::time::timeout(timeout_duration, future)
+            .await
+            .context(error::TimeoutSnafu)
+    };
+
+    match Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            RuntimeFlavor::CurrentThread => block_on(
+                tokio::task::spawn_blocking(|| block_on(future_with_timeout))
+                    .unwrap_or_else(|err| std::panic::resume_unwind(err.into_panic())),
+            ),
+            _ => tokio::task::block_in_place(|| handle.block_on(future_with_timeout)),
+        },
+        Err(_) => block_on(future_with_timeout),
     }
 }
 

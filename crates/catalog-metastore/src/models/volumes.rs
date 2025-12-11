@@ -1,4 +1,5 @@
 use crate::error::{self as metastore_error, Result};
+use crate::global_settings::GlobalSettings;
 use object_store::{
     ClientOptions, ObjectStore,
     aws::{AmazonS3Builder, resolve_bucket_region},
@@ -111,10 +112,16 @@ pub struct S3Volume {
 }
 
 impl S3Volume {
+    #[allow(clippy::expect_used)]
     #[must_use]
     pub fn get_s3_builder(&self) -> AmazonS3Builder {
         let mut s3_builder = AmazonS3Builder::new()
-            .with_conditional_put(object_store::aws::S3ConditionalPut::ETagMatch);
+            .with_conditional_put(object_store::aws::S3ConditionalPut::ETagMatch)
+            .with_client_options(
+                GlobalSettings::get_object_store_config()
+                    .expect("Global settings are not initialized")
+                    .clone(),
+            );
 
         if let Some(region) = &self.region {
             s3_builder = s3_builder.with_region(region);

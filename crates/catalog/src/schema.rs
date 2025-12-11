@@ -1,5 +1,6 @@
+use crate::df_error::CatalogSnafu;
 use crate::table::{CachingTable, IcebergTableBuilder};
-use crate::{block_in_new_runtime, error};
+use crate::{block_on_with_timeout, error};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
@@ -14,6 +15,8 @@ use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
 use tracing::error;
+
+pub const CATALOG_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(35);
 
 pub struct CachingSchema {
     pub schema: Arc<dyn SchemaProvider>,
@@ -46,18 +49,23 @@ impl SchemaProvider for CachingSchema {
                 let Ok(namespace) = Namespace::try_new(std::slice::from_ref(&self.name)) else {
                     return vec![];
                 };
-                block_in_new_runtime(async move {
-                    catalog
-                        .list_tabulars(&namespace)
-                        .await
-                        .map(|tables| {
-                            tables
-                                .into_iter()
-                                .map(|identifier| identifier.name().to_owned())
-                                .collect()
-                        })
-                        .context(error::IcebergSnafu)
-                })
+                #[allow(clippy::expect_used)]
+                block_on_with_timeout(
+                    async move {
+                        catalog
+                            .list_tabulars(&namespace)
+                            .await
+                            .map(|tables| {
+                                tables
+                                    .into_iter()
+                                    .map(|identifier| identifier.name().to_owned())
+                                    .collect()
+                            })
+                            .context(error::IcebergSnafu)
+                    },
+                    CATALOG_TIMEOUT,
+                )
+                .expect("Catalog timeout on: list_tabulars")
                 .unwrap_or_else(|error| {
                     error!(?error, "Failed to list tables; returning empty list");
                     vec![]
@@ -108,18 +116,22 @@ impl SchemaProvider for CachingSchema {
             let namespace = vec![self.name.clone()];
             let table_name = name.clone();
 
-            block_in_new_runtime(async move {
-                let ident = Identifier::new(&namespace, &table_name);
-                let iceberg_table = builder
-                    .build(ident.namespace(), catalog)
-                    .await
-                    .context(error::IcebergSnafu)?;
-                let tabular = IcebergTabular::Table(iceberg_table);
-                let table_provider: Arc<dyn TableProvider> =
-                    Arc::new(DataFusionTable::new(tabular, None, None, None));
-                Ok(table_provider)
-            })
-            .map_err(|err| DataFusionError::External(Box::new(err)))?
+            block_on_with_timeout(
+                async move {
+                    let ident = Identifier::new(&namespace, &table_name);
+                    let iceberg_table = builder
+                        .build(ident.namespace(), catalog)
+                        .await
+                        .context(error::IcebergSnafu)?;
+                    let tabular = IcebergTabular::Table(iceberg_table);
+                    let table_provider: Arc<dyn TableProvider> =
+                        Arc::new(DataFusionTable::new(tabular, None, None, None));
+                    Ok(table_provider)
+                },
+                CATALOG_TIMEOUT,
+            )
+            .context(CatalogSnafu)?
+            .map_err(|err: error::Error| DataFusionError::External(Box::new(err)))?
         } else if table.table_type() == TableType::View {
             table
         } else {
@@ -147,13 +159,17 @@ impl SchemaProvider for CachingSchema {
                     let namespace = vec![self.name.clone()];
                     let table_name = name.to_string();
 
-                    block_in_new_runtime(async move {
-                        let ident = Identifier::new(&namespace, &table_name);
-                        catalog
-                            .drop_table(&ident)
-                            .await
-                            .context(error::IcebergSnafu)
-                    })
+                    block_on_with_timeout(
+                        async move {
+                            let ident = Identifier::new(&namespace, &table_name);
+                            catalog
+                                .drop_table(&ident)
+                                .await
+                                .context(error::IcebergSnafu)
+                        },
+                        CATALOG_TIMEOUT,
+                    )
+                    .context(CatalogSnafu)?
                     .map_err(|err| DataFusionError::External(Box::new(err)))?;
                 } else {
                     return self.schema.deregister_table(name);
@@ -175,12 +191,17 @@ impl SchemaProvider for CachingSchema {
             let ident = Identifier::new(&namespace, &table_name);
             let ident_for_runtime = ident.clone();
 
-            block_in_new_runtime(async move {
-                catalog
-                    .tabular_exists(&ident_for_runtime)
-                    .await
-                    .context(error::IcebergSnafu)
-            })
+            #[allow(clippy::expect_used)]
+            block_on_with_timeout(
+                async move {
+                    catalog
+                        .tabular_exists(&ident_for_runtime)
+                        .await
+                        .context(error::IcebergSnafu)
+                },
+                CATALOG_TIMEOUT,
+            )
+            .expect("Catalog timeout on: tabular_exists")
             .unwrap_or_else(|error| {
                 error!(
                     ?error,
