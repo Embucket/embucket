@@ -54,6 +54,6 @@ tracing = "Active"
 # Must run deploy from workspace root: cargo lambda deploy --binary-name bootstrap
 include = ["config"]
 
-# [package.metadata.lambda.deploy.env]
-# LOG_FORMAT = "json"
-# METASTORE_CONFIG = "config/metastore.yaml"
+[package.metadata.lambda.deploy.env]
+LOG_FORMAT = "json"
+METASTORE_CONFIG = "config/metastore.yaml"
