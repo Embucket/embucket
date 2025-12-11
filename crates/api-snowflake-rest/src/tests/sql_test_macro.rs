@@ -7,7 +7,7 @@ use crate::tests::snow_sql::{PASSWORD_KEY, REQUEST_ID_KEY, USER_KEY};
 use crate::{models::JsonResponse, server::server_models::RestApiConfig};
 use api_snowflake_rest_sessions::helpers::{create_jwt, jwt_claims};
 use arrow::record_batch::RecordBatch;
-use catalog_metastore::global_settings::GlobalSettings;
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use executor::utils::Config as UtilsConfig;
 
 pub const DEMO_USER: &str = "embucket";
@@ -81,7 +81,7 @@ impl std::fmt::Display for HistoricalCodes {
 pub struct SqlTest {
     pub server_cfg: Option<RestApiConfig>,
     pub executor_cfg: Option<UtilsConfig>,
-    pub global_settings: Option<GlobalSettings>,
+    pub metastore_settings_config: Option<MetastoreSettingsConfig>,
     pub metastore_cfg: MetastoreConfig,
     pub setup_queries: Vec<String>,
     pub params: Vec<(&'static str, String)>,
@@ -95,7 +95,7 @@ impl SqlTest {
         Self {
             server_cfg: None,
             executor_cfg: None,
-            global_settings: None,
+            metastore_settings_config: None,
             metastore_cfg: MetastoreConfig::None,
             setup_queries: vec![],
             params: vec![],
@@ -134,9 +134,9 @@ impl SqlTest {
     }
 
     #[must_use]
-    pub fn with_global_settings(self, global_settings: GlobalSettings) -> Self {
+    pub fn with_global_settings(self, metastore_settings_config: MetastoreSettingsConfig) -> Self {
         Self {
-            global_settings: Some(global_settings),
+            metastore_settings_config: Some(metastore_settings_config),
             ..self
         }
     }
@@ -150,7 +150,7 @@ impl SqlTest {
     }
 
     #[must_use]
-    pub fn with_metastore_config(self, metastore_cfg: MetastoreConfig) -> Self {
+    pub fn with_metastore_bootstrap_config(self, metastore_cfg: MetastoreConfig) -> Self {
         Self {
             metastore_cfg,
             ..self
@@ -182,7 +182,7 @@ where
     let server_addr = run_test_rest_api_server(
         sql_test.server_cfg.clone(),
         sql_test.executor_cfg.clone(),
-        sql_test.global_settings.clone(),
+        sql_test.metastore_settings_config.clone(),
         sql_test.metastore_cfg.clone(),
     );
     let skip_login_token = sql_test

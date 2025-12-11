@@ -2,15 +2,15 @@ use object_store::ClientOptions;
 use snafu::prelude::*;
 use std::sync::OnceLock;
 
-static GLOBAL_SETTINGS: OnceLock<GlobalSettings> = OnceLock::new();
+static GLOBAL_SETTINGS: OnceLock<MetastoreSettingsConfig> = OnceLock::new();
 
 #[derive(Debug, Clone, Default)]
-pub struct GlobalSettings {
+pub struct MetastoreSettingsConfig {
     pub object_store_config: ClientOptions,
 }
 
 #[derive(Debug, Snafu)]
-pub enum GlobalSettingsError {
+pub enum MetastoreSettingsConfigError {
     #[snafu(display("Global settings are already initialized"))]
     AlreadyInitialized,
 
@@ -18,7 +18,7 @@ pub enum GlobalSettingsError {
     NotInitialized,
 }
 
-impl GlobalSettings {
+impl MetastoreSettingsConfig {
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -44,16 +44,17 @@ impl GlobalSettings {
         }
     }
 
-    pub fn initialize(self) -> Result<(), GlobalSettingsError> {
+    pub fn initialize(self) -> Result<(), MetastoreSettingsConfigError> {
         GLOBAL_SETTINGS
             .set(self)
-            .map_err(|_| GlobalSettingsError::AlreadyInitialized)
+            .map_err(|_| MetastoreSettingsConfigError::AlreadyInitialized)
     }
 
-    pub fn get_object_store_config() -> Result<&'static ClientOptions, GlobalSettingsError> {
+    pub fn get_object_store_config() -> Result<&'static ClientOptions, MetastoreSettingsConfigError>
+    {
         Ok(&GLOBAL_SETTINGS
             .get()
-            .ok_or(GlobalSettingsError::NotInitialized)?
+            .ok_or(MetastoreSettingsConfigError::NotInitialized)?
             .object_store_config)
     }
 }

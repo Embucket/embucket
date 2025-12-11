@@ -1,5 +1,5 @@
 use crate::error::{self as metastore_error, Result};
-use crate::global_settings::GlobalSettings;
+use crate::metastore_settings_config::MetastoreSettingsConfig;
 use object_store::{
     ClientOptions, ObjectStore,
     aws::{AmazonS3Builder, resolve_bucket_region},
@@ -118,7 +118,7 @@ impl S3Volume {
         let mut s3_builder = AmazonS3Builder::new()
             .with_conditional_put(object_store::aws::S3ConditionalPut::ETagMatch)
             .with_client_options(
-                GlobalSettings::get_object_store_config()
+                MetastoreSettingsConfig::get_object_store_config()
                     .expect("Global settings are not initialized")
                     .clone(),
             );

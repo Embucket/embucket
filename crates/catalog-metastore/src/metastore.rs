@@ -1,4 +1,5 @@
 use crate::error::{self as metastore_error, Result};
+use crate::metastore_settings_config::MetastoreSettingsConfig;
 use crate::models::{
     RwObject,
     database::{Database, DatabaseIdent},
@@ -95,6 +96,18 @@ impl InMemoryMetastore {
             state: RwLock::new(MetastoreState::default()),
             object_store_cache: DashMap::new(),
         }
+        // default settings
+        .with_settings_config(MetastoreSettingsConfig::default())
+    }
+
+    #[allow(clippy::expect_used)]
+    #[must_use]
+    pub fn with_settings_config(self, settings: MetastoreSettingsConfig) -> Self {
+        // settings saved globally, self not used
+        settings
+            .initialize()
+            .expect("Failed to initialize global settings");
+        self
     }
 
     #[instrument(name = "Metastore::metadata_file_name", level = "trace", ret)]

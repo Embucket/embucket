@@ -10,7 +10,7 @@ use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
 use axum::Router;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
-use catalog_metastore::global_settings::GlobalSettings;
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
@@ -50,15 +50,6 @@ async fn main() -> Result<(), LambdaError> {
         "Loaded Lambda configuration"
     );
 
-    GlobalSettings::new()
-        .with_object_store_timeout(env_config.object_store_timeout_secs)
-        .with_object_store_connect_timeout(env_config.object_store_connect_timeout_secs)
-        .initialize()
-        .map_err(|err| {
-            error!(error = %err, "Failed to initialize global settings");
-            err
-        })?;
-
     let app = Arc::new(LambdaApp::initialize(env_config).await.map_err(|err| {
         error!(error = %err, "Failed to initialize Lambda services");
         err
@@ -97,7 +88,17 @@ impl LambdaApp {
             MetastoreConfig::None
         };
 
-        let core_state = CoreState::new(execution_cfg, snowflake_cfg, metastore_cfg).await?;
+        let metastore_settings_config = MetastoreSettingsConfig::new()
+            .with_object_store_timeout(config.object_store_timeout_secs)
+            .with_object_store_connect_timeout(config.object_store_connect_timeout_secs);
+
+        let core_state = CoreState::new(
+            execution_cfg,
+            snowflake_cfg,
+            metastore_settings_config,
+            metastore_cfg,
+        )
+        .await?;
         core_state
             .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 

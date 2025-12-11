@@ -1,6 +1,6 @@
 use crate::server::core_state::MetastoreConfig;
 use crate::tests::sql_test_macro::{SqlTest, sql_test_wrapper};
-use catalog_metastore::global_settings::GlobalSettings;
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use tokio::task::JoinError;
 
 fn check_if_test_failed(results: Vec<std::result::Result<bool, JoinError>>) -> bool {
@@ -31,7 +31,7 @@ mod stress {
                             "create table if not exists embucket.public.test_table (id int)",
                             "drop table if exists embucket.public.test_table",
                         ])
-                        .with_metastore_config(MetastoreConfig::DefaultConfig)
+                        .with_metastore_bootstrap_config(MetastoreConfig::DefaultConfig)
                         .with_skip_login(),
                         move |(sql, _), response| {
                             let err_msg = response.message.clone().unwrap_or_default();
@@ -86,8 +86,8 @@ mod stress {
                         "create table if not exists s3_table_db.schema1.test_table (id int)",
                         "drop table if exists s3_table_db.schema1.test_table",
                     ])
-                    .with_global_settings(GlobalSettings::default())
-                    .with_metastore_config(metastore_config)
+                    .with_global_settings(MetastoreSettingsConfig::default())
+                    .with_metastore_bootstrap_config(metastore_config)
                     .with_skip_login(),
                     move |sql_info, response| {
                         let sql = sql_info.0;
