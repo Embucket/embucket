@@ -134,7 +134,10 @@ impl SqlTest {
     }
 
     #[must_use]
-    pub fn with_global_settings(self, metastore_settings_config: MetastoreSettingsConfig) -> Self {
+    pub fn with_metastore_settings_config(
+        self,
+        metastore_settings_config: MetastoreSettingsConfig,
+    ) -> Self {
         Self {
             metastore_settings_config: Some(metastore_settings_config),
             ..self

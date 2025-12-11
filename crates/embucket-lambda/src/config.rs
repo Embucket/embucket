@@ -20,7 +20,7 @@ pub struct EnvConfig {
     pub aws_sdk_connect_timeout_secs: u64,
     pub aws_sdk_operation_timeout_secs: u64,
     pub aws_sdk_operation_attempt_timeout_secs: u64,
-    pub iceberg_create_table_timeout_secs: u64,
+    pub iceberg_table_timeout_secs: u64,
     pub iceberg_catalog_timeout_secs: u64,
     pub object_store_timeout_secs: u64,
     pub object_store_connect_timeout_secs: u64,
@@ -51,7 +51,7 @@ impl EnvConfig {
                 "AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS",
             )
             .unwrap_or(10),
-            iceberg_create_table_timeout_secs: parse_env("ICEBERG_CREATE_TABLE_TIMEOUT_SECS")
+            iceberg_table_timeout_secs: parse_env("ICEBERG_CREATE_TABLE_TIMEOUT_SECS")
                 .unwrap_or(30),
             iceberg_catalog_timeout_secs: parse_env("ICEBERG_CATALOG_TIMEOUT_SECS").unwrap_or(10),
             object_store_timeout_secs: parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
@@ -78,7 +78,7 @@ impl EnvConfig {
             aws_sdk_operation_timeout_secs: self.aws_sdk_operation_timeout_secs,
             #[cfg(not(feature = "rest-catalog"))]
             aws_sdk_operation_attempt_timeout_secs: self.aws_sdk_operation_attempt_timeout_secs,
-            iceberg_create_table_timeout_secs: self.iceberg_create_table_timeout_secs,
+            iceberg_table_timeout_secs: self.iceberg_table_timeout_secs,
             iceberg_catalog_timeout_secs: self.iceberg_catalog_timeout_secs,
         }
     }

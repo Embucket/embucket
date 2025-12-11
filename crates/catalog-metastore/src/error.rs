@@ -191,4 +191,12 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Metastore timeout: {error:?}"))]
+    Timeout {
+        #[snafu(source(from(tokio::time::error::Elapsed, std::io::Error::from)))]
+        error: std::io::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }

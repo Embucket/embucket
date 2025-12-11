@@ -1490,14 +1490,18 @@ impl UserQuery {
                     get_volume_kv_option(&params.credentials, "aws_secret_key", vol_type)?;
                 Volume::new(
                     ident.clone(),
-                    VolumeType::S3Tables(S3TablesVolume {
-                        endpoint: params.storage_endpoint,
-                        credentials: AwsCredentials::AccessKey(AwsAccessKeyCredentials {
-                            aws_access_key_id: key_id,
-                            aws_secret_access_key: secret_key,
-                        }),
-                        arn: params.aws_access_point_arn.unwrap_or_default(),
-                    }),
+                    VolumeType::S3Tables(
+                        S3TablesVolume {
+                            endpoint: params.storage_endpoint,
+                            credentials: AwsCredentials::AccessKey(AwsAccessKeyCredentials {
+                                aws_access_key_id: key_id,
+                                aws_secret_access_key: secret_key,
+                            }),
+                            arn: params.aws_access_point_arn.unwrap_or_default(),
+                            client_options: None,
+                        }
+                        .with_client_options(self.metastore.settings_config().map(Into::into)),
+                    ),
                 )
             }
             "s3" => {
@@ -1513,12 +1517,16 @@ impl UserQuery {
 
                 Volume::new(
                     ident.clone(),
-                    VolumeType::S3(S3Volume {
-                        region: Some(region),
-                        bucket: params.base_url,
-                        endpoint: params.storage_endpoint,
-                        credentials: Some(aws_credentials),
-                    }),
+                    VolumeType::S3(
+                        S3Volume {
+                            region: Some(region),
+                            bucket: params.base_url,
+                            endpoint: params.storage_endpoint,
+                            credentials: Some(aws_credentials),
+                            client_options: None,
+                        }
+                        .with_client_options(self.metastore.settings_config().map(Into::into)),
+                    ),
                 )
             }
             other => {
@@ -2840,7 +2848,9 @@ impl UserQuery {
                         bucket: Some(bucket.to_string()),
                         endpoint: stage_params.endpoint.clone(),
                         credentials,
-                    };
+                        client_options: None, // could set timeouts here
+                    }
+                    .with_client_options(self.metastore.settings_config().map(Into::into));
 
                     let s3 = s3_volume
                         .get_s3_builder()
@@ -2849,17 +2859,27 @@ impl UserQuery {
                     Ok(Arc::new(s3))
                 } else {
                     // Fall through to URL-based object store creation
-                    Ok(
-                        create_object_store_from_url(url.as_str(), stage_params.endpoint)
-                            .await
-                            .context(ex_error::MetastoreSnafu)?,
+                    Ok(create_object_store_from_url(
+                        url.as_str(),
+                        stage_params.endpoint,
+                        self.metastore
+                            .settings_config()
+                            .map(|config| config.object_store_client_options),
                     )
+                    .await
+                    .context(ex_error::MetastoreSnafu)?)
                 }
             }
             // No stage params or credentials - create from URL
-            _ => create_object_store_from_url(url.as_str(), stage_params.endpoint)
-                .await
-                .context(ex_error::MetastoreSnafu),
+            _ => create_object_store_from_url(
+                url.as_str(),
+                stage_params.endpoint,
+                self.metastore
+                    .settings_config()
+                    .map(|config| config.object_store_client_options),
+            )
+            .await
+            .context(ex_error::MetastoreSnafu),
         }
     }
 

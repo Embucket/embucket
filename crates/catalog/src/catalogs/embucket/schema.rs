@@ -1,3 +1,4 @@
+use crate::catalog::CatalogConfig;
 use crate::{block_on_with_timeout, error};
 use async_trait::async_trait;
 use catalog_metastore::error as metastore_error;
@@ -10,15 +11,15 @@ use iceberg_rust::{catalog::tabular::Tabular as IcebergTabular, table::Table as 
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::error;
-
-pub const CATALOG_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(35);
 
 pub struct EmbucketSchema {
     pub database: String,
     pub schema: String,
     pub metastore: Arc<dyn Metastore>,
     pub iceberg_catalog: Arc<dyn IcebergCatalog>,
+    pub config: CatalogConfig,
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -59,7 +60,7 @@ impl SchemaProvider for EmbucketSchema {
                     .map(|tables| tables.into_iter().map(|s| s.ident.table.clone()).collect())
                     .context(error::MetastoreSnafu)
             },
-            CATALOG_TIMEOUT,
+            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
         )
         .expect("Catalog timeout on: list_tables")
         .unwrap_or_else(|error| {
@@ -127,7 +128,7 @@ impl SchemaProvider for EmbucketSchema {
                     .await
                     .context(error::IcebergSnafu)
             },
-            CATALOG_TIMEOUT,
+            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
         )
         .expect("Catalog timeout on: tabular_exists")
         .unwrap_or_else(|error| {

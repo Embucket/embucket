@@ -127,14 +127,14 @@ async fn async_main(
         aws_sdk_operation_attempt_timeout_secs: opts.aws_sdk_operation_attempt_timeout_secs,
         #[cfg(not(feature = "rest-catalog"))]
         aws_sdk_connect_timeout_secs: opts.aws_sdk_connect_timeout_secs,
-        iceberg_create_table_timeout_secs: opts.iceberg_create_table_timeout_secs,
+        iceberg_table_timeout_secs: opts.iceberg_table_timeout_secs,
         iceberg_catalog_timeout_secs: opts.iceberg_catalog_timeout_secs,
     };
 
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
 
-    let metatore_settings_config = MetastoreSettingsConfig::new()
+    let metatore_settings_config = MetastoreSettingsConfig::default()
         .with_object_store_timeout(opts.object_store_timeout_secs)
         .with_object_store_connect_timeout(opts.object_store_connect_timeout_secs);
 

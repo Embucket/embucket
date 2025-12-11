@@ -61,9 +61,7 @@ impl CoreState {
 }
 
 #[must_use]
-pub fn create_metastore(
-    metastore_settings_config: MetastoreSettingsConfig,
-) -> Arc<InMemoryMetastore> {
+fn create_metastore(metastore_settings_config: MetastoreSettingsConfig) -> Arc<InMemoryMetastore> {
     Arc::new(InMemoryMetastore::new().with_settings_config(metastore_settings_config))
 }
 
@@ -106,7 +104,7 @@ async fn apply_metastore_bootstrap_config(
     Ok(())
 }
 
-pub async fn create_executor(
+async fn create_executor(
     metastore: Arc<dyn Metastore>,
     execution_cfg: ExecutionConfig,
 ) -> Result<Arc<CoreExecutionService>> {

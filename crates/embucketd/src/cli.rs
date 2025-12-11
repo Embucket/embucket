@@ -191,7 +191,7 @@ pub struct CliOpts {
         default_value = "30",
         help = "Iceberg create table timeout in seconds"
     )]
-    pub iceberg_create_table_timeout_secs: u64,
+    pub iceberg_table_timeout_secs: u64,
 
     #[arg(
         long,

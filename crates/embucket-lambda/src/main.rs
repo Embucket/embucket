@@ -88,7 +88,7 @@ impl LambdaApp {
             MetastoreConfig::None
         };
 
-        let metastore_settings_config = MetastoreSettingsConfig::new()
+        let metastore_settings_config = MetastoreSettingsConfig::default()
             .with_object_store_timeout(config.object_store_timeout_secs)
             .with_object_store_connect_timeout(config.object_store_connect_timeout_secs);
 

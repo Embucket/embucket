@@ -56,7 +56,7 @@ pub struct CatalogListConfig {
     pub max_concurrent_table_fetches: usize,
     #[cfg(not(feature = "rest-catalog"))]
     pub aws_sdk_timeout_config: TimeoutConfigBuilder, // using builder as it has default
-    pub iceberg_create_table_timeout_secs: u64,
+    pub iceberg_table_timeout_secs: u64,
     pub iceberg_catalog_timeout_secs: u64,
 }
 
@@ -208,25 +208,32 @@ impl EmbucketCatalogList {
 
     async fn get_embucket_catalog(&self, db: &RwObject<Database>) -> Result<CachingCatalog> {
         let iceberg_catalog: Arc<dyn Catalog> = Arc::new(
-            EmbucketIcebergCatalog::new(self.metastore.clone(), db.ident.clone())
-                .await
-                .context(MetastoreSnafu)?
-                .with_config(self.config.clone().into()),
+            EmbucketIcebergCatalog::new(
+                self.metastore.clone(),
+                db.ident.clone(),
+                self.config.clone().into(),
+            )
+            .await
+            .context(MetastoreSnafu)?,
         );
         let catalog_provider: Arc<dyn CatalogProvider> = Arc::new(EmbucketCatalog::new(
             db.ident.clone(),
             self.metastore.clone(),
             iceberg_catalog.clone(),
+            self.config.clone().into(),
         ));
-        Ok(
-            CachingCatalog::new(catalog_provider, db.ident.clone(), Some(iceberg_catalog))
-                .with_refresh(db.should_refresh)
-                .with_properties(Properties {
-                    created_at: db.created_at,
-                    updated_at: db.created_at,
-                })
-                .with_metastore(self.metastore.clone()),
+        Ok(CachingCatalog::new(
+            catalog_provider,
+            db.ident.clone(),
+            Some(iceberg_catalog),
+            (&self.config).into(),
         )
+        .with_refresh(db.should_refresh)
+        .with_properties(Properties {
+            created_at: db.created_at,
+            updated_at: db.created_at,
+        })
+        .with_metastore(self.metastore.clone()))
     }
 
     #[tracing::instrument(
@@ -271,6 +278,7 @@ impl EmbucketCatalogList {
                 Arc::new(catalog),
                 db.ident.clone(),
                 Some(iceberg_catalog),
+                self.config.clone().into(),
             )
             .with_refresh(db.should_refresh)
             .with_catalog_type(CatalogType::S3tables));
@@ -305,11 +313,14 @@ impl EmbucketCatalogList {
                 object_store_builder,
             ));
             let catalog = DataFusionIcebergCatalog::new_sync(iceberg_catalog.clone(), None);
-            Ok(
-                CachingCatalog::new(Arc::new(catalog), db.ident.clone(), Some(iceberg_catalog))
-                    .with_refresh(db.should_refresh)
-                    .with_catalog_type(CatalogType::S3tables),
+            Ok(CachingCatalog::new(
+                Arc::new(catalog),
+                db.ident.clone(),
+                Some(iceberg_catalog),
+                self.config.clone().into(),
             )
+            .with_refresh(db.should_refresh)
+            .with_catalog_type(CatalogType::S3tables))
         }
     }
 
@@ -345,6 +356,7 @@ impl EmbucketCatalogList {
                             tables_cache: DashMap::default(),
                             name: schema.clone(),
                             iceberg_catalog: catalog.iceberg_catalog.clone(),
+                            config: catalog.config.clone(),
                         };
                         let table_providers = fetch_table_providers(
                             Arc::clone(&schema.schema),
@@ -443,7 +455,7 @@ impl CatalogProviderList for EmbucketCatalogList {
         name: String,
         catalog: Arc<dyn CatalogProvider>,
     ) -> Option<Arc<dyn CatalogProvider>> {
-        let catalog = CachingCatalog::new(catalog, name, None);
+        let catalog = CachingCatalog::new(catalog, name, None, self.config.clone().into());
         self.catalogs
             .insert(catalog.name.clone(), Arc::new(catalog))
             .map(|arc| {

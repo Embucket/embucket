@@ -1,3 +1,4 @@
+use crate::catalog_list::CatalogListConfig;
 use crate::catalogs::embucket::schema::EmbucketSchema;
 use crate::schema::CachingSchema;
 use crate::{block_on_with_timeout, df_error, error};
@@ -12,10 +13,9 @@ use iceberg_rust::catalog::Catalog;
 use iceberg_rust_spec::namespace::Namespace;
 use snafu::{OptionExt, ResultExt};
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 use std::{any::Any, sync::Arc};
 use tracing::error;
-
-pub const CATALOG_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(35);
 
 #[derive(Clone)]
 pub struct CachingCatalog {
@@ -28,6 +28,7 @@ pub struct CachingCatalog {
     pub name: String,
     pub enable_information_schema: bool,
     pub properties: Option<Properties>,
+    pub config: CatalogConfig,
 }
 
 #[derive(Clone)]
@@ -63,11 +64,33 @@ impl Display for CatalogType {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CatalogConfig {
+    pub iceberg_catalog_timeout_secs: u64,
+    pub iceberg_table_timeout_secs: u64,
+}
+
+impl From<&CatalogListConfig> for CatalogConfig {
+    fn from(config: &CatalogListConfig) -> Self {
+        Self {
+            iceberg_catalog_timeout_secs: config.iceberg_catalog_timeout_secs,
+            iceberg_table_timeout_secs: config.iceberg_table_timeout_secs,
+        }
+    }
+}
+
+impl From<CatalogListConfig> for CatalogConfig {
+    fn from(config: CatalogListConfig) -> Self {
+        (&config).into()
+    }
+}
+
 impl CachingCatalog {
     pub fn new(
         catalog_provider: Arc<dyn CatalogProvider>,
         name: String,
         iceberg_catalog: Option<Arc<dyn Catalog>>,
+        config: CatalogConfig,
     ) -> Self {
         Self {
             catalog: catalog_provider,
@@ -79,6 +102,7 @@ impl CachingCatalog {
             name,
             catalog_type: CatalogType::Embucket,
             properties: None,
+            config,
         }
     }
     #[must_use]
@@ -134,7 +158,7 @@ impl CachingCatalog {
                     .await
                     .context(error::IcebergSnafu)
             },
-            CATALOG_TIMEOUT,
+            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
         )
         .expect("Catalog timeout on namespace_exists")
         .unwrap_or_else(|error| {
@@ -196,7 +220,7 @@ impl CatalogProvider for CachingCatalog {
                                 namespaces.into_iter().map(|ns| ns.to_string()).collect()
                             })
                     },
-                    CATALOG_TIMEOUT,
+                    Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
                 )
                 .expect("Catalog timeout on: list_namespaces")
                 .unwrap_or_else(|error| {
@@ -229,6 +253,7 @@ impl CatalogProvider for CachingCatalog {
                 schema: Arc::clone(&schema),
                 tables_cache: DashMap::new(),
                 iceberg_catalog: self.iceberg_catalog.clone(),
+                config: self.config.clone(),
             });
 
             self.schemas_cache
@@ -265,6 +290,7 @@ impl CatalogProvider for CachingCatalog {
                         schema: name.to_string(),
                         metastore: Arc::clone(&metastore),
                         iceberg_catalog: catalog.clone(),
+                        config: self.config.clone(),
                     })
                 }
                 CatalogType::S3tables => {
@@ -291,7 +317,7 @@ impl CatalogProvider for CachingCatalog {
                         .await
                         .context(error::IcebergSnafu)
                 },
-                CATALOG_TIMEOUT,
+                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
             )
             .expect("Catalog timeout on: create_namespace")
             .map_err(|err| DataFusionError::External(Box::new(err)))?;
@@ -305,6 +331,7 @@ impl CatalogProvider for CachingCatalog {
             schema: schema_provider,
             tables_cache: DashMap::new(),
             iceberg_catalog: self.iceberg_catalog.clone(),
+            config: self.config.clone(),
         });
         self.schemas_cache
             .insert(name.to_string(), Arc::clone(&caching_schema));
@@ -336,7 +363,7 @@ impl CatalogProvider for CachingCatalog {
                         .await
                         .context(error::IcebergSnafu)
                 },
-                CATALOG_TIMEOUT,
+                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
             )
             .expect("Catalog timeout on: drop_namespace")
             .map_err(|err| DataFusionError::External(Box::new(err)))?;

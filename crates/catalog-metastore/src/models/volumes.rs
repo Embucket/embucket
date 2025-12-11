@@ -1,5 +1,4 @@
 use crate::error::{self as metastore_error, Result};
-use crate::metastore_settings_config::MetastoreSettingsConfig;
 use object_store::{
     ClientOptions, ObjectStore,
     aws::{AmazonS3Builder, resolve_bucket_region},
@@ -9,7 +8,9 @@ use object_store::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
+use std::env;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt::Display, fs, path::Path as StdPath};
 use validator::{Validate, ValidationError, ValidationErrors};
 
@@ -98,7 +99,7 @@ impl Validate for AwsCredentials {
     }
 }
 
-#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct S3Volume {
     #[validate(length(min = 1))]
@@ -109,19 +110,61 @@ pub struct S3Volume {
     pub endpoint: Option<String>,
     #[validate(required, nested)]
     pub credentials: Option<AwsCredentials>,
+    #[serde(skip)]
+    pub client_options: Option<ClientOptions>,
+}
+
+impl Eq for S3Volume {}
+
+impl PartialEq for S3Volume {
+    fn eq(&self, other: &Self) -> bool {
+        self.region == other.region
+            && self.bucket == other.bucket
+            && self.endpoint == other.endpoint
+            && self.credentials == other.credentials
+    }
+}
+
+fn parse_env<T>(name: &str) -> Option<T>
+where
+    T: std::str::FromStr,
+{
+    env::var(name).ok().and_then(|value| value.parse().ok())
 }
 
 impl S3Volume {
-    #[allow(clippy::expect_used)]
+    #[must_use]
+    pub fn with_client_options(self, client_options: Option<ClientOptions>) -> Self {
+        Self {
+            client_options,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_client_options_from_env(self) -> Self {
+        let client_options = ClientOptions::default()
+            .with_timeout(Duration::from_secs(
+                parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
+            ))
+            .with_connect_timeout(Duration::from_secs(
+                parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS").unwrap_or(3),
+            ));
+
+        Self {
+            client_options: Some(client_options),
+            ..self
+        }
+    }
+
     #[must_use]
     pub fn get_s3_builder(&self) -> AmazonS3Builder {
         let mut s3_builder = AmazonS3Builder::new()
-            .with_conditional_put(object_store::aws::S3ConditionalPut::ETagMatch)
-            .with_client_options(
-                MetastoreSettingsConfig::get_object_store_config()
-                    .expect("Global settings are not initialized")
-                    .clone(),
-            );
+            .with_conditional_put(object_store::aws::S3ConditionalPut::ETagMatch);
+
+        if let Some(client_options) = &self.client_options {
+            s3_builder = s3_builder.with_client_options(client_options.clone());
+        }
 
         if let Some(region) = &self.region {
             s3_builder = s3_builder.with_region(region);
@@ -149,7 +192,7 @@ impl S3Volume {
     }
 }
 
-#[derive(Validate, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Validate, Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub struct S3TablesVolume {
     #[validate(regex(path = s3_endpoint_regex_func(), message="Endpoint must start with https:// or http:// .\n"))]
@@ -158,9 +201,45 @@ pub struct S3TablesVolume {
     pub credentials: AwsCredentials,
     #[validate(regex(path = s3tables_arn_regex_func(), message="ARN must start with arn:aws:s3tables: .\n"))]
     pub arn: String,
+    #[serde(skip)]
+    pub client_options: Option<ClientOptions>, // for object store timeout
+}
+
+impl Eq for S3TablesVolume {}
+
+impl PartialEq for S3TablesVolume {
+    fn eq(&self, other: &Self) -> bool {
+        self.endpoint == other.endpoint
+            && self.credentials == other.credentials
+            && self.arn == other.arn
+    }
 }
 
 impl S3TablesVolume {
+    #[must_use]
+    pub fn with_client_options(self, client_options: Option<ClientOptions>) -> Self {
+        Self {
+            client_options,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_client_options_from_env(self) -> Self {
+        let client_options = ClientOptions::default()
+            .with_timeout(Duration::from_secs(
+                parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
+            ))
+            .with_connect_timeout(Duration::from_secs(
+                parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS").unwrap_or(3),
+            ));
+
+        Self {
+            client_options: Some(client_options),
+            ..self
+        }
+    }
+
     #[must_use]
     pub fn s3_builder(&self) -> AmazonS3Builder {
         let s3_volume = S3Volume {
@@ -169,6 +248,7 @@ impl S3TablesVolume {
             // do not map `db_name` to the AmazonS3Builder
             endpoint: self.endpoint.clone(),
             credentials: Some(self.credentials.clone()),
+            client_options: self.client_options.clone(),
         };
         s3_volume.get_s3_builder()
     }
@@ -341,6 +421,7 @@ impl Volume {
 pub async fn create_object_store_from_url(
     url_str: &str,
     endpoint: Option<String>,
+    client_options: Option<ClientOptions>,
 ) -> Result<Arc<dyn ObjectStore + 'static>> {
     let url = url::Url::parse(url_str).context(metastore_error::UrlParseSnafu)?;
 
@@ -348,7 +429,9 @@ pub async fn create_object_store_from_url(
         "s3" => {
             let bucket = url.host_str().unwrap_or_default();
 
-            let region = resolve_bucket_region(bucket, &ClientOptions::default())
+            let client_options = client_options.unwrap_or_default();
+
+            let region = resolve_bucket_region(bucket, &client_options)
                 .await
                 .context(metastore_error::ObjectStoreSnafu)?;
 
@@ -357,6 +440,7 @@ pub async fn create_object_store_from_url(
                 bucket: Some(bucket.to_string()),
                 endpoint,
                 credentials: None,
+                client_options: Some(client_options),
             };
 
             let mut builder = s3_volume.get_s3_builder();

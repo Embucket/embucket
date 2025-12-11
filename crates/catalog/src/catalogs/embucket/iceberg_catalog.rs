@@ -1,6 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
-
-use crate::catalog_list::CatalogListConfig;
+use crate::catalog::CatalogConfig;
 use crate::error;
 use async_trait::async_trait;
 use catalog_metastore::error::{self as metastore_error, Result as MetastoreResult};
@@ -30,33 +28,24 @@ use iceberg_rust_spec::{
 };
 use object_store::ObjectStore;
 use snafu::ResultExt;
-
-#[derive(Debug)]
-pub struct EmbucketIcebergCatalogConfig {
-    pub object_store_timeout_secs: u64,
-    pub object_store_connect_timeout_secs: u64,
-}
-
-impl From<CatalogListConfig> for EmbucketIcebergCatalogConfig {
-    fn from(config: CatalogListConfig) -> Self {
-        Self {
-            object_store_timeout_secs: config.iceberg_catalog_timeout_secs,
-            object_store_connect_timeout_secs: config.iceberg_create_table_timeout_secs,
-        }
-    }
-}
+use std::{collections::HashMap, sync::Arc};
+use tokio::time::{Duration, timeout};
 
 #[derive(Debug)]
 pub struct EmbucketIcebergCatalog {
     pub metastore: Arc<dyn Metastore>,
     pub database: String,
     pub object_store: Arc<dyn ObjectStore>,
-    pub config: Option<EmbucketIcebergCatalogConfig>,
+    pub config: CatalogConfig,
 }
 
 impl EmbucketIcebergCatalog {
     #[tracing::instrument(name = "EmbucketIcebergCatalog::new", level = "trace", skip(metastore))]
-    pub async fn new(metastore: Arc<dyn Metastore>, database: String) -> MetastoreResult<Self> {
+    pub async fn new(
+        metastore: Arc<dyn Metastore>,
+        database: String,
+        config: CatalogConfig,
+    ) -> MetastoreResult<Self> {
         let db = metastore.get_database(&database).await?.ok_or_else(|| {
             metastore_error::DatabaseNotFoundSnafu {
                 db: database.clone(),
@@ -76,16 +65,8 @@ impl EmbucketIcebergCatalog {
             metastore,
             database,
             object_store,
-            config: None,
+            config,
         })
-    }
-
-    #[must_use]
-    pub fn with_config(self, config: EmbucketIcebergCatalogConfig) -> Self {
-        Self {
-            config: Some(config),
-            ..self
-        }
     }
 
     #[must_use]
@@ -471,19 +452,23 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
             properties: None,
         };
 
-        let table = self
-            .metastore
-            .create_table(&ident, table_create_request)
-            .await
-            .context(error::MetastoreSnafu)
-            .map_err(|e| IcebergError::External(Box::new(e)))?;
-        Ok(IcebergTable::new(
+        let table = timeout(
+            Duration::from_secs(self.config.iceberg_table_timeout_secs),
+            self.metastore.create_table(&ident, table_create_request),
+        )
+        .await
+        .context(error::TimeoutSnafu)
+        .map_err(Into::<IcebergError>::into)?
+        .context(error::MetastoreSnafu)
+        .map_err(Into::<IcebergError>::into)?;
+
+        IcebergTable::new(
             identifier.clone(),
             self.clone(),
             self.object_store.clone(),
             table.metadata.clone(),
         )
-        .await?)
+        .await
     }
 
     #[tracing::instrument(
@@ -537,20 +522,23 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
             updates: commit.updates,
         };
 
-        let rwobject = self
-            .metastore
-            .update_table(&table_ident, table_update)
-            .await
-            .map_err(|e| IcebergError::External(Box::new(e)))?;
+        let table = timeout(
+            Duration::from_secs(self.config.iceberg_table_timeout_secs),
+            self.metastore.update_table(&table_ident, table_update),
+        )
+        .await
+        .context(error::TimeoutSnafu)
+        .map_err(Into::<IcebergError>::into)?
+        .context(error::MetastoreSnafu)
+        .map_err(Into::<IcebergError>::into)?;
 
-        let iceberg_table = IcebergTable::new(
+        IcebergTable::new(
             commit.identifier.clone(),
             self.clone(),
             self.object_store.clone(),
-            rwobject.metadata.clone(),
+            table.metadata.clone(),
         )
-        .await?;
-        Ok(iceberg_table)
+        .await
     }
 
     #[tracing::instrument(

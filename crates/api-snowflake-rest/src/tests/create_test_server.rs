@@ -30,6 +30,12 @@ pub fn executor_default_cfg() -> UtilsConfig {
     UtilsConfig::default().with_max_concurrency_level(2)
 }
 
+pub fn metastore_default_settings_cfg() -> MetastoreSettingsConfig {
+    MetastoreSettingsConfig::default()
+        .with_object_store_connect_timeout(1)
+        .with_object_store_timeout(1)
+}
+
 #[allow(clippy::expect_used)]
 pub fn run_test_rest_api_server(
     rest_cfg: Option<RestApiConfig>,
@@ -37,9 +43,10 @@ pub fn run_test_rest_api_server(
     metastore_settings_cfg: Option<MetastoreSettingsConfig>,
     metastore_cfg: MetastoreConfig,
 ) -> SocketAddr {
-    let metastore_settings_cfg = metastore_settings_cfg.unwrap_or_default();
     let rest_cfg = rest_cfg.unwrap_or_else(|| rest_default_cfg("json"));
     let executor_cfg = executor_cfg.unwrap_or_else(executor_default_cfg);
+    let metastore_settings_cfg =
+        metastore_settings_cfg.unwrap_or_else(metastore_default_settings_cfg);
 
     let server_cond = Arc::new((Mutex::new(false), Condvar::new())); // Shared state with a condition 
     let server_cond_clone = Arc::clone(&server_cond);

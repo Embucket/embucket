@@ -88,6 +88,13 @@ pub enum Error {
     },
 }
 
+#[allow(clippy::from_over_into)]
+impl Into<IcebergError> for Error {
+    fn into(self) -> IcebergError {
+        IcebergError::External(Box::new(self))
+    }
+}
+
 #[derive(Debug)]
 pub enum UnsupportedFeature {
     DropS3TablesDatabase,

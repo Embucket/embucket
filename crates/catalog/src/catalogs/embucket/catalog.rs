@@ -1,10 +1,11 @@
 use super::schema::EmbucketSchema;
-use crate::catalog::CATALOG_TIMEOUT;
+use crate::catalog::CatalogConfig;
 use crate::{block_on_with_timeout, error};
 use catalog_metastore::{Metastore, SchemaIdent};
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use iceberg_rust::catalog::Catalog as IcebergCatalog;
 use snafu::ResultExt;
+use std::time::Duration;
 use std::{any::Any, sync::Arc};
 use tracing::error;
 
@@ -12,6 +13,7 @@ pub struct EmbucketCatalog {
     pub database: String,
     pub metastore: Arc<dyn Metastore>,
     pub iceberg_catalog: Arc<dyn IcebergCatalog>,
+    pub config: CatalogConfig,
 }
 
 impl EmbucketCatalog {
@@ -19,11 +21,13 @@ impl EmbucketCatalog {
         database: String,
         metastore: Arc<dyn Metastore>,
         iceberg_catalog: Arc<dyn IcebergCatalog>,
+        config: CatalogConfig,
     ) -> Self {
         Self {
             database,
             metastore,
             iceberg_catalog,
+            config,
         }
     }
 
@@ -67,7 +71,7 @@ impl CatalogProvider for EmbucketCatalog {
                     })
                     .context(error::MetastoreSnafu)
             },
-            CATALOG_TIMEOUT,
+            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
         )
         .expect("Catalog timeout on: list_schemas")
         .unwrap_or_else(|error| {
@@ -85,6 +89,7 @@ impl CatalogProvider for EmbucketCatalog {
         let iceberg_catalog = self.iceberg_catalog.clone();
         let database = self.database.clone();
         let schema_name = name.to_string();
+        let config = self.config.clone();
 
         #[allow(clippy::expect_used)]
         block_on_with_timeout(
@@ -100,12 +105,13 @@ impl CatalogProvider for EmbucketCatalog {
                         schema: schema_name,
                         metastore,
                         iceberg_catalog,
+                        config,
                     });
                     schema
                 });
                 Ok(provider)
             },
-            CATALOG_TIMEOUT,
+            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
         )
         .expect("Catalog timeout on: get_schema")
         .unwrap_or_else(|error: error::Error| {

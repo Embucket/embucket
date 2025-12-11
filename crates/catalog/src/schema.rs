@@ -1,3 +1,4 @@
+use crate::catalog::CatalogConfig;
 use crate::df_error::CatalogSnafu;
 use crate::table::{CachingTable, IcebergTableBuilder};
 use crate::{block_on_with_timeout, error};
@@ -14,15 +15,15 @@ use iceberg_rust_spec::namespace::Namespace;
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::error;
-
-pub const CATALOG_TIMEOUT: tokio::time::Duration = tokio::time::Duration::from_secs(35);
 
 pub struct CachingSchema {
     pub schema: Arc<dyn SchemaProvider>,
     pub iceberg_catalog: Option<Arc<dyn Catalog>>,
     pub name: String,
     pub tables_cache: DashMap<String, Arc<CachingTable>>,
+    pub config: CatalogConfig,
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -63,7 +64,7 @@ impl SchemaProvider for CachingSchema {
                             })
                             .context(error::IcebergSnafu)
                     },
-                    CATALOG_TIMEOUT,
+                    Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
                 )
                 .expect("Catalog timeout on: list_tabulars")
                 .unwrap_or_else(|error| {
@@ -128,7 +129,7 @@ impl SchemaProvider for CachingSchema {
                         Arc::new(DataFusionTable::new(tabular, None, None, None));
                     Ok(table_provider)
                 },
-                CATALOG_TIMEOUT,
+                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
             )
             .context(CatalogSnafu)?
             .map_err(|err: error::Error| DataFusionError::External(Box::new(err)))?
@@ -167,7 +168,7 @@ impl SchemaProvider for CachingSchema {
                                 .await
                                 .context(error::IcebergSnafu)
                         },
-                        CATALOG_TIMEOUT,
+                        Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
                     )
                     .context(CatalogSnafu)?
                     .map_err(|err| DataFusionError::External(Box::new(err)))?;
@@ -199,7 +200,7 @@ impl SchemaProvider for CachingSchema {
                         .await
                         .context(error::IcebergSnafu)
                 },
-                CATALOG_TIMEOUT,
+                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
             )
             .expect("Catalog timeout on: tabular_exists")
             .unwrap_or_else(|error| {

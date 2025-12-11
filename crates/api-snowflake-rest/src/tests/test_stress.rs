@@ -1,6 +1,5 @@
 use crate::server::core_state::MetastoreConfig;
 use crate::tests::sql_test_macro::{SqlTest, sql_test_wrapper};
-use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use tokio::task::JoinError;
 
 fn check_if_test_failed(results: Vec<std::result::Result<bool, JoinError>>) -> bool {
@@ -61,6 +60,8 @@ mod stress {
             "SQL compilation error: Schema 's3_table_db.schema1' does not exist or not authorized 002003",
             "Generic S3 error: Error performing GET",
             "Iceberg Object store: The operation lacked the necessary privileges to complete for path metadata",
+            // new error
+            "External error: Iceberg error: The operation lacked the necessary privileges to complete for path metadata",
             "Table test_table not found",
             // broken s3 tables error
             "External error: Iceberg error: service error",
@@ -86,7 +87,6 @@ mod stress {
                         "create table if not exists s3_table_db.schema1.test_table (id int)",
                         "drop table if exists s3_table_db.schema1.test_table",
                     ])
-                    .with_global_settings(MetastoreSettingsConfig::default())
                     .with_metastore_bootstrap_config(metastore_config)
                     .with_skip_login(),
                     move |sql_info, response| {
