@@ -19,17 +19,14 @@ pub mod utils;
 #[cfg(test)]
 pub mod tests;
 
-/// Executes an async future in a blocking context without causing Tokio runtime deadlocks.
+/// Runs an async future from synchronous code without triggering Tokio runtime deadlocks.
 ///
-/// This function is designed to safely run async code from synchronous call sites:
-/// - If no Tokio runtime is active, a new temporary runtime is created.
-/// - If running inside a multithreaded Tokio runtime, `block_in_place` is used.
-/// - If running inside a single-threaded runtime, the future is executed inside
-///   a `spawn_blocking` thread with its own temporary runtime to avoid self-deadlock.
+/// If already inside a Tokio runtime:
+///   - On a single-threaded runtime, the future is executed in a `spawn_blocking` worker
+///     using a non-Tokio executor to avoid nested `block_on`.
+///   - On a multithreaded runtime, `block_in_place` is used safely.
 ///
-/// The goal is to provide a reliable way to synchronously wait on async futures
-/// in contexts such as catalog operations or plugin layers, while preserving correct
-/// runtime behavior and avoiding nested `block_on` deadlocks.
+/// If no Tokio runtime is active, a new temporary runtime is created and used to run the future.
 #[instrument(level = "debug", skip(future), fields(future_type = ""))]
 pub fn block_in_new_runtime<F, R>(future: F) -> Result<R>
 where
