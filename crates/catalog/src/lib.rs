@@ -1,6 +1,7 @@
 use error::Result;
 use snafu::ResultExt;
-use tokio::runtime::Builder;
+use tokio::runtime::{Handle, RuntimeFlavor};
+use tracing::{Span, instrument};
 
 #[allow(clippy::module_inception)]
 pub mod catalog;
@@ -16,28 +17,72 @@ pub mod utils;
 #[cfg(test)]
 pub mod tests;
 
-// TBD: Should we move this into a separate crate? As this is duplicate implementation
-// of what we have in the functions crate.
+/// Executes an async future in a blocking context without causing Tokio runtime deadlocks.
+///
+/// This function is designed to safely run async code from synchronous call sites:
+/// - If no Tokio runtime is active, a new temporary runtime is created.
+/// - If running inside a multithreaded Tokio runtime, `block_in_place` is used.
+/// - If running inside a single-threaded runtime, the future is executed inside
+///   a `spawn_blocking` thread with its own temporary runtime to avoid self-deadlock.
+///
+/// The goal is to provide a reliable way to synchronously wait on async futures
+/// in contexts such as catalog operations or plugin layers, while preserving correct
+/// runtime behavior and avoiding nested `block_on` deadlocks.
+#[instrument(level = "debug", skip(future), fields(future_type = ""))]
 pub fn block_in_new_runtime<F, R>(future: F) -> Result<R>
 where
     F: Future<Output = Result<R>> + Send + 'static,
     R: Send + 'static,
 {
-    let handle = std::thread::spawn(move || {
-        // Try to create a dedicated Tokio runtime
-        let rt = Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .context(error::CreateTokioRuntimeSnafu)?;
-
-        // Execute the future and map its error
-        rt.block_on(future)
-    });
-
-    match handle.join() {
-        Ok(inner) => inner, // inner: Result<R, error::Error>
-        Err(_) => error::ThreadPanickedWhileExecutingFutureSnafu.fail()?,
+    Span::current().record("future_type", std::any::type_name::<F>());
+    match Handle::try_current() {
+        Ok(handle) => match handle.runtime_flavor() {
+            RuntimeFlavor::CurrentThread => run_inside_single_thread_rt(future),
+            _ => run_inside_multi_thread_rt(future, &handle),
+        },
+        Err(_) => run_outside_rt(future),
     }
+}
+
+#[instrument(level = "debug", skip(future))]
+fn run_inside_single_thread_rt<F, R>(future: F) -> Result<R>
+where
+    F: Future<Output = Result<R>> + Send + 'static,
+    R: Send + 'static,
+{
+    Handle::current().block_on(async {
+        tokio::task::spawn_blocking(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context(error::CreateTokioRuntimeSnafu)?;
+            rt.block_on(future)
+        })
+        .await
+        .map_err(|_| error::ThreadPanickedWhileExecutingFutureSnafu.build())?
+    })
+}
+
+#[instrument(level = "debug", skip(future, handle))]
+fn run_inside_multi_thread_rt<F, R>(future: F, handle: &Handle) -> Result<R>
+where
+    F: Future<Output = Result<R>> + Send + 'static,
+    R: Send + 'static,
+{
+    tokio::task::block_in_place(|| handle.block_on(future))
+}
+
+#[instrument(level = "debug", skip(future))]
+fn run_outside_rt<F, R>(future: F) -> Result<R>
+where
+    F: Future<Output = Result<R>> + Send + 'static,
+    R: Send + 'static,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context(error::CreateTokioRuntimeSnafu)?;
+    rt.block_on(future)
 }
 
 pub mod test_utils {
