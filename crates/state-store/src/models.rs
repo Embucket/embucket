@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -26,9 +27,9 @@ pub struct SessionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttl_seconds: Option<u64>,
     #[serde(default)]
-    pub variables: Vec<Variable>,
+    pub variables: HashMap<String, Variable>,
     #[serde(default)]
-    pub views: Vec<ViewRecord>,
+    pub views: HashMap<String, ViewRecord>,
     pub created_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<u64>,
@@ -37,17 +38,17 @@ pub struct SessionRecord {
 impl SessionRecord {
     /// Create a new session record with default values and a current timestamp.
     #[must_use]
-    pub fn new(session_id: String) -> Self {
+    pub fn new(session_id: &str) -> Self {
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
         Self {
-            session_id,
+            session_id: session_id.to_string(),
             ttl_seconds: None,
-            variables: Vec::new(),
-            views: Vec::new(),
+            variables: HashMap::new(),
+            views: HashMap::new(),
             created_at,
             updated_at: None,
         }

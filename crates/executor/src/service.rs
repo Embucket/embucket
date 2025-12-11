@@ -34,7 +34,7 @@ use crate::utils::{Config, MemPoolType};
 use catalog::catalog_list::EmbucketCatalogList;
 use catalog_metastore::{InMemoryMetastore, Metastore, TableIdent as MetastoreTableIdent};
 #[cfg(feature = "state-store")]
-use state_store::StateStore;
+use state_store::{DynamoDbStateStore, StateStore};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::Instrument;
@@ -149,7 +149,7 @@ pub struct CoreExecutionService {
     runtime_env: Arc<RuntimeEnv>,
     queries: Arc<RunningQueriesRegistry>,
     #[cfg(feature = "state-store")]
-    state_store: Arc<StateStore>,
+    state_store: Arc<dyn StateStore>,
 }
 
 impl CoreExecutionService {
@@ -165,7 +165,7 @@ impl CoreExecutionService {
         let catalog_list = Self::catalog_list(metastore.clone(), &config).await?;
         let runtime_env = Self::runtime_env(&config, catalog_list.clone())?;
         #[cfg(feature = "state-store")]
-        let state_store = StateStore::new_from_env()
+        let state_store = DynamoDbStateStore::new_from_env()
             .await
             .context(ex_error::StateStoreSnafu)?;
         Ok(Self {
@@ -283,7 +283,6 @@ impl ExecutionService for CoreExecutionService {
                 self.config.clone(),
                 self.catalog_list.clone(),
                 self.runtime_env.clone(),
-                #[cfg(feature = "state-store")]
                 session_id,
                 #[cfg(feature = "state-store")]
                 self.state_store.clone(),
@@ -298,7 +297,7 @@ impl ExecutionService for CoreExecutionService {
 
             #[cfg(feature = "state-store")]
             self.state_store
-                .put_new_session(session_id.to_string())
+                .put_new_session(session_id)
                 .await
                 .context(ex_error::StateStoreSnafu)?;
 

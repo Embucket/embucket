@@ -58,18 +58,20 @@ pub async fn handle_login_request(
 
     // set database, schema when provided
     if let Some(db) = params.database_name {
-        session.set_database(&db).context(SetVariableSnafu {
+        session.set_database(&db).await.context(SetVariableSnafu {
             variable: "database",
         })?;
     }
     if let Some(schema) = params.schema_name {
         session
             .set_schema(&schema)
+            .await
             .context(SetVariableSnafu { variable: "schema" })?;
     }
     if let Some(warehouse) = params.warehouse {
         session
             .set_warehouse(&warehouse)
+            .await
             .context(SetVariableSnafu {
                 variable: "warehouse",
             })?;

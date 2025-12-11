@@ -7253,6 +7253,7 @@ dependencies = [
 name = "state-store"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "aws-config",
  "aws-credential-types",
  "aws-sdk-dynamodb",

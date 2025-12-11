@@ -31,15 +31,13 @@ use functions::session_params::{SessionParams, SessionProperty};
 use functions::table::register_udtfs;
 use snafu::ResultExt;
 #[cfg(feature = "state-store")]
-use state_store::{StateStore, Variable};
+use state_store::{SessionRecord, StateStore, Variable};
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZero;
 use std::sync::atomic::AtomicI64;
 use std::sync::{Arc, RwLock};
 use std::thread::available_parallelism;
 use time::{Duration, OffsetDateTime};
-#[cfg(feature = "state-store")]
-use tracing::warn;
 
 pub const SESSION_INACTIVITY_EXPIRATION_SECONDS: i64 = 5 * 60;
 static MINIMUM_PARALLEL_OUTPUT_FILES: usize = 1;
@@ -54,7 +52,7 @@ pub const fn to_unix(t: OffsetDateTime) -> i64 {
 pub struct UserSession {
     pub metastore: Arc<dyn Metastore>,
     #[cfg(feature = "state-store")]
-    state_store: Arc<StateStore>,
+    state_store: Arc<dyn StateStore>,
     // running_queries contains all the queries running across sessions
     pub running_queries: Arc<dyn RunningQueries>,
     pub ctx: SessionContext,
@@ -65,6 +63,7 @@ pub struct UserSession {
     pub expiry: AtomicI64,
     pub session_params: Arc<SessionParams>,
     pub recent_queries: Arc<RwLock<VecDeque<QueryId>>>,
+    pub session_id: String,
 }
 
 impl UserSession {
@@ -75,8 +74,8 @@ impl UserSession {
         config: Arc<Config>,
         catalog_list: Arc<EmbucketCatalogList>,
         runtime_env: Arc<RuntimeEnv>,
-        #[cfg(feature = "state-store")] session_id: &str,
-        #[cfg(feature = "state-store")] state_store: Arc<StateStore>,
+        session_id: &str,
+        #[cfg(feature = "state-store")] state_store: Arc<dyn StateStore>,
     ) -> Result<Self> {
         let sql_parser_dialect = config
             .sql_parser_dialect
@@ -91,7 +90,8 @@ impl UserSession {
 
         let session_params = SessionParams::default();
         #[cfg(feature = "state-store")]
-        let session_params_arc = Self::session_params(session_id, state_store.clone()).await;
+        let session_params_arc =
+            Arc::new(Self::session_params(session_id, state_store.clone()).await);
         #[cfg(not(feature = "state-store"))]
         let session_params_arc = Arc::new(session_params.clone());
         let mut config_options = ConfigOptions::from_env().context(ex_error::DataFusionSnafu)?;
@@ -159,6 +159,7 @@ impl UserSession {
             )),
             session_params: session_params_arc,
             recent_queries: Arc::new(RwLock::new(VecDeque::new())),
+            session_id: session_id.to_string(),
         };
         Ok(session)
     }
@@ -166,45 +167,71 @@ impl UserSession {
     #[cfg(feature = "state-store")]
     pub async fn session_params(
         session_id: &str,
-        state_store: Arc<StateStore>,
-    ) -> Arc<SessionParams> {
+        state_store: Arc<dyn StateStore>,
+    ) -> SessionParams {
         let session_params = SessionParams::default();
         #[cfg(feature = "state-store")]
-        match state_store
-            .get_session(session_id)
+        if let Some(params) = Self::get_session_state_params(session_id, state_store).await {
+            session_params.set_properties(params);
+        }
+        session_params
+    }
+
+    #[cfg(feature = "state-store")]
+    pub async fn get_session_state_params(
+        session_id: &str,
+        state_store: Arc<dyn StateStore>,
+    ) -> Option<HashMap<String, SessionProperty>> {
+        state_store.get_session(session_id).await.ok().map(|sr| {
+            sr.variables
+                .into_iter()
+                .map(|(n, v)| (n, state_store_variable_to_property(v, session_id)))
+                .collect()
+        })
+    }
+
+    #[cfg(feature = "state-store")]
+    pub async fn set_session_state_params(
+        &self,
+        set: bool,
+        params: HashMap<String, SessionProperty>,
+    ) -> Result<()> {
+        let mut session_record =
+            if let Ok(session) = self.state_store.get_session(&self.session_id).await {
+                session
+            } else {
+                SessionRecord::new(&self.session_id)
+            };
+        let current_params: HashMap<String, SessionProperty> = session_record
+            .variables
+            .into_iter()
+            .map(|(n, v)| (n, state_store_variable_to_property(v, &self.session_id)))
+            .collect();
+        let session_params = SessionParams::default();
+        session_params.set_properties(current_params);
+
+        if set {
+            session_params.set_properties(params);
+        } else {
+            session_params.remove_properties(params);
+        }
+        session_record.variables = session_params_to_state_variables(&session_params);
+        self.state_store
+            .put_session(session_record)
             .await
             .context(ex_error::StateStoreSnafu)
-        {
-            Ok(session) => {
-                let params = session
-                    .variables
-                    .into_iter()
-                    .map(|v| {
-                        (
-                            v.name.clone(),
-                            state_store_variable_to_property(v, session_id),
-                        )
-                    })
-                    .collect();
-                session_params.set_properties(params);
-            }
-            Err(_) => {
-                warn!("Failed to retrieve session from state store for {session_id}");
-            }
-        }
-        Arc::new(session_params.clone())
     }
 
-    pub fn set_database(&self, database: &str) -> Result<()> {
-        self.set_variable("database", database)
+    pub async fn set_database(&self, database: &str) -> Result<()> {
+        self.set_variable("database", database).await
     }
 
-    pub fn set_schema(&self, schema: &str) -> Result<()> {
-        self.set_variable("schema", schema)
+    pub async fn set_schema(&self, schema: &str) -> Result<()> {
+        self.set_variable("schema", schema).await
     }
 
-    pub fn set_warehouse(&self, warehouse: &str) -> Result<()> {
-        self.set_variable("warehouse", warehouse)
+    pub async fn set_warehouse(&self, warehouse: &str) -> Result<()> {
+        self.set_variable("warehouse", warehouse).await
     }
 
     #[tracing::instrument(
@@ -213,17 +240,19 @@ impl UserSession {
         skip(self),
         err
     )]
-    fn set_variable(&self, key: &str, value: &str) -> Result<()> {
+    async fn set_variable(&self, key: &str, value: &str) -> Result<()> {
         if key.is_empty() || value.is_empty() {
             return ex_error::OnyUseWithVariablesSnafu.fail();
         }
-        let session_id = self.ctx.session_id();
         let params = HashMap::from([(
             key.to_string(),
-            SessionProperty::from_str_value(key.to_string(), value.to_string(), Some(session_id)),
+            SessionProperty::from_str_value(
+                key.to_string(),
+                value.to_string(),
+                Some(self.session_id.clone()),
+            ),
         )]);
-        self.set_session_variable(true, params)?;
-        Ok(())
+        self.set_session_variable(true, params).await
     }
 
     pub fn query<S>(self: &Arc<Self>, query: S, query_context: QueryContext) -> UserQuery
@@ -233,11 +262,15 @@ impl UserSession {
         UserQuery::new(self.clone(), query.into(), query_context)
     }
 
-    pub fn set_session_variable(
+    #[allow(clippy::unused_async)]
+    pub async fn set_session_variable(
         &self,
         set: bool,
         params: HashMap<String, SessionProperty>,
     ) -> Result<()> {
+        #[cfg(feature = "state-store")]
+        self.set_session_state_params(set, params.clone()).await?;
+
         let state = self.ctx.state_ref();
         let mut write = state.write();
 
@@ -263,8 +296,7 @@ impl UserSession {
             if set {
                 cfg.set_properties(session_params);
             } else {
-                cfg.remove_properties(session_params)
-                    .context(ex_error::DataFusionSnafu)?;
+                cfg.remove_properties(session_params);
             }
         }
         Ok(())
@@ -315,7 +347,7 @@ pub fn parse_bool(value: &str) -> Option<bool> {
 }
 
 #[cfg(feature = "state-store")]
-#[allow(clippy::as_conversions)]
+#[allow(clippy::as_conversions, clippy::cast_possible_wrap)]
 pub fn state_store_variable_to_property(var: Variable, session_id: &str) -> SessionProperty {
     SessionProperty {
         session_id: Some(session_id.to_string()),
@@ -333,4 +365,38 @@ pub fn state_store_variable_to_property(var: Variable, session_id: &str) -> Sess
         comment: var.comment,
         name: var.name,
     }
+}
+
+#[cfg(feature = "state-store")]
+#[allow(
+    clippy::as_conversions,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss
+)]
+#[must_use]
+pub fn session_params_to_state_variables(
+    session_params: &SessionParams,
+) -> HashMap<String, Variable> {
+    session_params
+        .properties
+        .iter()
+        .map(|entry| {
+            let key = entry.key().clone();
+            let prop = entry.value().clone();
+
+            let created_at = prop.created_on.timestamp() as u64;
+            let updated_at = Some(prop.updated_on.timestamp() as u64);
+
+            let var = Variable {
+                name: prop.name,
+                value: prop.value,
+                value_type: prop.property_type,
+                comment: prop.comment,
+                created_at,
+                updated_at,
+            };
+
+            (key, var)
+        })
+        .collect()
 }

@@ -14,14 +14,23 @@ const SK: &str = "SK";
 const ENTITY: &str = "Entity";
 const DATA: &str = "Data";
 
+#[async_trait::async_trait]
+pub trait StateStore: Send + Sync {
+    async fn put_new_session(&self, session_id: &str) -> Result<()>;
+    async fn put_session(&self, session: SessionRecord) -> Result<()>;
+    async fn get_session(&self, session_id: &str) -> Result<SessionRecord>;
+    async fn delete_session(&self, session_id: &str) -> Result<()>;
+    async fn update_session(&self, session: SessionRecord) -> Result<()>;
+}
+
 /// `DynamoDB` single-table client.
 #[derive(Clone, Debug)]
-pub struct StateStore {
+pub struct DynamoDbStateStore {
     client: Client,
     table_name: String,
 }
 
-impl StateStore {
+impl DynamoDbStateStore {
     /// Create a DynamoDB-backed statestore using environment variables.
     ///
     /// Expected variables:
@@ -50,13 +59,16 @@ impl StateStore {
     pub fn session_id_pk(key: &str) -> String {
         format!("SESSION#{key}")
     }
+}
 
-    pub async fn put_new_session(&self, session_id: String) -> Result<()> {
+#[async_trait::async_trait]
+impl StateStore for DynamoDbStateStore {
+    async fn put_new_session(&self, session_id: &str) -> Result<()> {
         self.put_session(SessionRecord::new(session_id)).await
     }
 
     /// Persist a session record.
-    pub async fn put_session(&self, session: SessionRecord) -> Result<()> {
+    async fn put_session(&self, session: SessionRecord) -> Result<()> {
         let mut item = HashMap::new();
         let key = Self::session_id_pk(&session.session_id.clone());
         item.insert(PK.to_string(), AttributeValue::S(key.clone()));
@@ -83,7 +95,7 @@ impl StateStore {
     }
 
     /// Fetch a session by id.
-    pub async fn get_session(&self, session_id: &str) -> Result<SessionRecord> {
+    async fn get_session(&self, session_id: &str) -> Result<SessionRecord> {
         let key = Self::session_id_pk(session_id);
         let item = self
             .client
@@ -101,7 +113,7 @@ impl StateStore {
     }
 
     /// Delete a session by id.
-    pub async fn delete_session(&self, session_id: &str) -> Result<()> {
+    async fn delete_session(&self, session_id: &str) -> Result<()> {
         let key = Self::session_id_pk(session_id);
         self.client
             .delete_item()
@@ -115,7 +127,7 @@ impl StateStore {
     }
 
     /// Update a session by replacing its stored document.
-    pub async fn update_session(&self, session: SessionRecord) -> Result<()> {
+    async fn update_session(&self, session: SessionRecord) -> Result<()> {
         self.put_session(session).await
     }
 }

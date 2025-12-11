@@ -189,11 +189,10 @@ impl SessionParams {
         }
     }
 
-    pub fn remove_properties(&self, properties: HashMap<String, SessionProperty>) -> DFResult<()> {
+    pub fn remove_properties(&self, properties: HashMap<String, SessionProperty>) {
         for (key, ..) in properties {
             self.properties.remove(&key);
         }
-        Ok(())
     }
 
     #[must_use]

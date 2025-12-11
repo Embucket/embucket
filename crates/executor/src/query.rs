@@ -283,7 +283,7 @@ impl UserQuery {
                         })
                         .collect();
 
-                    self.session.set_session_variable(set, params)?;
+                    self.session.set_session_variable(set, params).await?;
                     return self.status_response();
                 }
                 Statement::Use(entity) => {
@@ -432,7 +432,7 @@ impl UserQuery {
                 Some(self.session.ctx.session_id()),
             ),
         )]);
-        self.session.set_session_variable(true, params)?;
+        self.session.set_session_variable(true, params).await?;
         self.status_response()
     }
 
@@ -489,7 +489,9 @@ impl UserQuery {
             }?;
             session_params.insert(key, session_value);
         }
-        self.session.set_session_variable(true, session_params)?;
+        self.session
+            .set_session_variable(true, session_params)
+            .await?;
         self.status_response()
     }
 
@@ -538,7 +540,9 @@ impl UserQuery {
                 session_params.insert(name, session_value);
             }
 
-            self.session.set_session_variable(true, session_params)?;
+            self.session
+                .set_session_variable(true, session_params)
+                .await?;
         }
 
         self.status_response()
