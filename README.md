@@ -1,3 +1,5 @@
+[![Coverage Status](https://coveralls.io/repos/github/embucket/embucket/badge.svg?branch=master)](https://coveralls.io/github/embucket/embucket?branch=master)
+
 # Embucket
 
 **Run Snowflake SQL dialect on your data lake in 30 seconds. Zero dependencies.**
