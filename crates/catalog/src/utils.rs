@@ -1,6 +1,8 @@
-use datafusion::arrow::datatypes::Schema;
+use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::catalog::{SchemaProvider, TableProvider};
 use datafusion_common::Result as DataFusionResult;
+use datafusion_common::tree_node::{Transformed, TransformedResult, TreeNode};
+use datafusion_expr::Expr;
 use futures::stream::{self, StreamExt};
 use std::sync::Arc;
 use tracing::warn;
@@ -61,4 +63,30 @@ pub fn normalize_schema_case(schema: &Schema) -> Schema {
         })
         .collect::<Vec<_>>();
     Schema::new(fields)
+}
+
+pub fn rewrite_expr_case(schema: &Schema, expr: Expr) -> datafusion_common::Result<Expr> {
+    expr.transform_up(|e| {
+        if let Expr::Column(col) = &e {
+            let lookup = schema
+                .fields()
+                .iter()
+                .find(|field| field.name().eq_ignore_ascii_case(&col.name));
+
+            if let Some(field) = lookup {
+                let mut updated = col.clone();
+                updated.name.clone_from(field.name());
+                return Ok(Transformed::yes(Expr::Column(updated)));
+            }
+        }
+        Ok(Transformed::no(e))
+    })
+    .data()
+}
+#[must_use]
+pub fn case_sensitive_schema(schema: &SchemaRef) -> bool {
+    schema
+        .fields()
+        .iter()
+        .any(|field| field.name().eq(&field.name().to_ascii_uppercase()))
 }
