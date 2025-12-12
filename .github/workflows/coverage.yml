@@ -28,7 +28,7 @@ jobs:
         run: |
           # Install lcov if not already installed
           sudo apt-get install -y lcov
-          cargo install cargo-llvm-cov -y
+          cargo install cargo-llvm-cov
           rustup update
           rustup component add llvm-tools-preview
 

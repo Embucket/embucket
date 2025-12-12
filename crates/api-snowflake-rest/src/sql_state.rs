@@ -23,7 +23,6 @@ pub enum SqlState {
     FeatureNotSupported,
 }
 
-
 impl Display for SqlState {
     #[allow(clippy::as_conversions)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
