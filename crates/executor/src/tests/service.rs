@@ -404,7 +404,7 @@ async fn test_parallel_run() {
     assert_eq!(0, fails_count);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::expect_used)]
 async fn test_query_timeout() {
     let metastore = Arc::new(InMemoryMetastore::new());
