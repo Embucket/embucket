@@ -309,6 +309,15 @@ pub enum Error {
         location: Location,
     },
 
+    #[cfg(feature = "state-store")]
+    #[snafu(display("StateStore error: {error}"))]
+    StateStore {
+        #[snafu(source(from(state_store::Error, Box::new)))]
+        error: Box<state_store::Error>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+
     #[snafu(display("Failed to upload file: {message}"))]
     UploadFailed {
         message: String,

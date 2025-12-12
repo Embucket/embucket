@@ -183,18 +183,16 @@ impl SessionProperty {
 }
 
 impl SessionParams {
-    pub fn set_properties(&self, properties: HashMap<String, SessionProperty>) -> DFResult<()> {
+    pub fn set_properties(&self, properties: HashMap<String, SessionProperty>) {
         for (key, value) in properties {
             self.properties.insert(key, value);
         }
-        Ok(())
     }
 
-    pub fn remove_properties(&self, properties: HashMap<String, SessionProperty>) -> DFResult<()> {
+    pub fn remove_properties(&self, properties: HashMap<String, SessionProperty>) {
         for (key, ..) in properties {
             self.properties.remove(&key);
         }
-        Ok(())
     }
 
     #[must_use]

@@ -7,15 +7,18 @@ license-file.workspace = true
 [features]
 rest-catalog = ["catalog/rest-catalog"]
 dedicated-executor = []
+state-store = []
 
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }
+state-store = { path = "../state-store" }
 catalog = { path = "../catalog" }
 functions = { path = "../functions" } # features = ["geospatial"] 
 arrow-schema = { version = "56.1.0", features = ["serde"] }
 async-trait = { workspace = true }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }
+aws-sdk-dynamodb = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 dashmap = { workspace = true }
