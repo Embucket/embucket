@@ -5,7 +5,6 @@ use crate::config::EnvConfig;
 use crate::tracing_setup::{init_tracing, trace_flusher};
 use api_snowflake_rest::server::core_state::CoreState;
 use api_snowflake_rest::server::core_state::MetastoreConfig;
-use api_snowflake_rest::server::layer::require_auth;
 use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;

@@ -1,15 +1,15 @@
 use api_snowflake_rest::server::error;
-use api_snowflake_rest_sessions::layer::Host;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
-use tracing::{instrument, Subscriber};
+use std::collections::HashMap;
+use tracing::Subscriber;
 use tracing_subscriber::filter::{EnvFilter, FilterExt, filter_fn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
@@ -24,11 +24,22 @@ pub fn init_tracing() -> SdkTracerProvider {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     let otlp_endpoint = std::env::var("OPENTELEMETRY_ENDPOINT_URL")
-        .unwrap_or_else(|_| "http://localhost:4317".to_string());
+        .unwrap_or_else(|_| "https://api.honeycomb.io/".to_string());
+
+    // --> START: Honeycomb-specific configuration
+    let api_key = std::env::var("HONEYCOMB_API_KEY").expect("HONEYCOMB_API_KEY must be set");
+    let dataset = std::env::var("HONEYCOMB_DATASET").expect("HONEYCOMB_DATASET must be set");
+
+    let mut headers = HashMap::with_capacity(2);
+    headers.insert("x-honeycomb-team".to_string(), api_key.parse().unwrap());
+    headers.insert("x-honeycomb-dataset".to_string(), dataset.parse().unwrap());
 
     let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
+        .with_http()
         .with_endpoint(otlp_endpoint)
+        .with_http_client(reqwest::Client::new())
+        .with_headers(headers)
+        .with_timeout(std::time::Duration::from_secs(3))
         .build()
         .expect("Failed to create OTLP SpanExporter");
 
@@ -54,44 +65,43 @@ pub fn init_tracing() -> SdkTracerProvider {
 /// Creates a Resource that identifies this service in observability tools
 fn resource() -> Resource {
     let service_name =
-        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "embucketd-lambda-api".to_string());
+        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "embucket-lambda-api".to_string());
     Resource::builder().with_service_name(service_name).build()
 }
 
 /// Builds the log formatting layer, preserving the json/pretty logic
-fn build_fmt_layer<S>() -> impl tracing_subscriber::Layer<S>
+fn build_fmt_layer<S>() -> impl Layer<S>
 where
     S: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
     // RUST_LOG
     let fmt_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let span_events_filter = filter_fn(|meta| meta.is_span());
-    let log_events_filter = filter_fn(|meta| meta.is_event());
+    let span_events_filter = filter_fn(|meta| meta.is_event() || meta.is_span());
 
-    let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
+    let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
 
     if log_format == "json" {
         tracing_subscriber::fmt::layer()
             .json()
-            .with_target(true)
-            .with_current_span(true)
-            .with_span_list(true)
+            .with_target(false)
+            .with_ansi(false)
+            .with_current_span(false)
+            .with_span_list(false)
+            .without_time()
             // Apply the filter only to log events, not span open/close.
-            .with_filter(span_events_filter.or(log_events_filter.and(fmt_filter)))
+            .with_filter(span_events_filter.and(fmt_filter))
             .boxed()
     } else {
         tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_target(true)
             .with_span_events(FmtSpan::CLOSE)
-            .with_filter(span_events_filter.or(log_events_filter.and(fmt_filter)))
+            .with_filter(span_events_filter.and(fmt_filter))
             .boxed()
     }
 }
-#[lambda_http::tracing::instrument(name = "lambda_handle_event", skip_all, fields(
-        flush_result = tracing::field::Empty,
-))]
+#[lambda_http::tracing::instrument]
 pub async fn trace_flusher(
     State(state): State<SdkTracerProvider>,
     req: Request,
@@ -101,7 +111,7 @@ pub async fn trace_flusher(
 
     let flush_result = state.force_flush();
 
-    tracing::Span::current().record("flush_result", format!("{:#?}", flush_result));
+    tracing::Span::current().record("flush_result", format!("{flush_result:#?}"));
 
     Ok(response)
 }
