@@ -28,6 +28,9 @@ jobs:
         run: |
           # Install lcov if not already installed
           sudo apt-get install -y lcov
+          cargo install cargo-llvm-cov -y
+          rustup update
+          rustup component add llvm-tools-preview
 
       - name: Create coverage info
         run: |
