@@ -29,7 +29,7 @@ use iceberg_rust_spec::{
 use object_store::ObjectStore;
 use snafu::ResultExt;
 use std::{collections::HashMap, sync::Arc};
-use tokio::time::{Duration, timeout};
+use tokio::time::timeout;
 
 #[derive(Debug)]
 pub struct EmbucketIcebergCatalog {
@@ -453,7 +453,7 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
         };
 
         let table = timeout(
-            Duration::from_secs(self.config.iceberg_table_timeout_secs),
+            self.config.table_timeout(),
             self.metastore.create_table(&ident, table_create_request),
         )
         .await
@@ -523,7 +523,7 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
         };
 
         let table = timeout(
-            Duration::from_secs(self.config.iceberg_table_timeout_secs),
+            self.config.table_timeout(),
             self.metastore.update_table(&table_ident, table_update),
         )
         .await

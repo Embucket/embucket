@@ -5,7 +5,6 @@ use catalog_metastore::{Metastore, SchemaIdent};
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use iceberg_rust::catalog::Catalog as IcebergCatalog;
 use snafu::ResultExt;
-use std::time::Duration;
 use std::{any::Any, sync::Arc};
 use tracing::error;
 
@@ -71,7 +70,7 @@ impl CatalogProvider for EmbucketCatalog {
                     })
                     .context(error::MetastoreSnafu)
             },
-            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+            self.config.catalog_timeout(),
         )
         .expect("Catalog timeout on: list_schemas")
         .unwrap_or_else(|error| {
@@ -111,7 +110,7 @@ impl CatalogProvider for EmbucketCatalog {
                 });
                 Ok(provider)
             },
-            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+            self.config.catalog_timeout(),
         )
         .expect("Catalog timeout on: get_schema")
         .unwrap_or_else(|error: error::Error| {

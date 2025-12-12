@@ -15,7 +15,6 @@ use iceberg_rust_spec::namespace::Namespace;
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::error;
 
 pub struct CachingSchema {
@@ -64,7 +63,7 @@ impl SchemaProvider for CachingSchema {
                             })
                             .context(error::IcebergSnafu)
                     },
-                    Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                    self.config.catalog_timeout(),
                 )
                 .expect("Catalog timeout on: list_tabulars")
                 .unwrap_or_else(|error| {
@@ -129,7 +128,7 @@ impl SchemaProvider for CachingSchema {
                         Arc::new(DataFusionTable::new(tabular, None, None, None));
                     Ok(table_provider)
                 },
-                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                self.config.catalog_timeout(),
             )
             .context(CatalogSnafu)?
             .map_err(|err: error::Error| DataFusionError::External(Box::new(err)))?
@@ -168,7 +167,7 @@ impl SchemaProvider for CachingSchema {
                                 .await
                                 .context(error::IcebergSnafu)
                         },
-                        Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                        self.config.catalog_timeout(),
                     )
                     .context(CatalogSnafu)?
                     .map_err(|err| DataFusionError::External(Box::new(err)))?;
@@ -200,7 +199,7 @@ impl SchemaProvider for CachingSchema {
                         .await
                         .context(error::IcebergSnafu)
                 },
-                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                self.config.catalog_timeout(),
             )
             .expect("Catalog timeout on: tabular_exists")
             .unwrap_or_else(|error| {

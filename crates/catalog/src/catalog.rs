@@ -85,6 +85,18 @@ impl From<CatalogListConfig> for CatalogConfig {
     }
 }
 
+impl CatalogConfig {
+    #[must_use]
+    pub const fn table_timeout(&self) -> Duration {
+        Duration::from_secs(self.iceberg_table_timeout_secs)
+    }
+
+    #[must_use]
+    pub const fn catalog_timeout(&self) -> Duration {
+        Duration::from_secs(self.iceberg_catalog_timeout_secs)
+    }
+}
+
 impl CachingCatalog {
     pub fn new(
         catalog_provider: Arc<dyn CatalogProvider>,
@@ -158,7 +170,7 @@ impl CachingCatalog {
                     .await
                     .context(error::IcebergSnafu)
             },
-            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+            self.config.catalog_timeout(),
         )
         .expect("Catalog timeout on namespace_exists")
         .unwrap_or_else(|error| {
@@ -220,7 +232,7 @@ impl CatalogProvider for CachingCatalog {
                                 namespaces.into_iter().map(|ns| ns.to_string()).collect()
                             })
                     },
-                    Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                    self.config.catalog_timeout(),
                 )
                 .expect("Catalog timeout on: list_namespaces")
                 .unwrap_or_else(|error| {
@@ -317,7 +329,7 @@ impl CatalogProvider for CachingCatalog {
                         .await
                         .context(error::IcebergSnafu)
                 },
-                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                self.config.catalog_timeout(),
             )
             .expect("Catalog timeout on: create_namespace")
             .map_err(|err| DataFusionError::External(Box::new(err)))?;
@@ -363,7 +375,7 @@ impl CatalogProvider for CachingCatalog {
                         .await
                         .context(error::IcebergSnafu)
                 },
-                Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+                self.config.catalog_timeout(),
             )
             .expect("Catalog timeout on: drop_namespace")
             .map_err(|err| DataFusionError::External(Box::new(err)))?;

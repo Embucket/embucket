@@ -11,7 +11,6 @@ use iceberg_rust::{catalog::tabular::Tabular as IcebergTabular, table::Table as 
 use snafu::ResultExt;
 use std::any::Any;
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::error;
 
 pub struct EmbucketSchema {
@@ -60,7 +59,7 @@ impl SchemaProvider for EmbucketSchema {
                     .map(|tables| tables.into_iter().map(|s| s.ident.table.clone()).collect())
                     .context(error::MetastoreSnafu)
             },
-            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+            self.config.catalog_timeout(),
         )
         .expect("Catalog timeout on: list_tables")
         .unwrap_or_else(|error| {
@@ -128,7 +127,7 @@ impl SchemaProvider for EmbucketSchema {
                     .await
                     .context(error::IcebergSnafu)
             },
-            Duration::from_secs(self.config.iceberg_catalog_timeout_secs),
+            self.config.catalog_timeout(),
         )
         .expect("Catalog timeout on: tabular_exists")
         .unwrap_or_else(|error| {

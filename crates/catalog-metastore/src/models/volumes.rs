@@ -132,6 +132,16 @@ where
     env::var(name).ok().and_then(|value| value.parse().ok())
 }
 
+fn client_options_from_env() -> ClientOptions {
+    ClientOptions::default()
+        .with_timeout(Duration::from_secs(
+            parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
+        ))
+        .with_connect_timeout(Duration::from_secs(
+            parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS").unwrap_or(3),
+        ))
+}
+
 impl S3Volume {
     #[must_use]
     pub fn with_client_options(self, client_options: Option<ClientOptions>) -> Self {
@@ -143,16 +153,8 @@ impl S3Volume {
 
     #[must_use]
     pub fn with_client_options_from_env(self) -> Self {
-        let client_options = ClientOptions::default()
-            .with_timeout(Duration::from_secs(
-                parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
-            ))
-            .with_connect_timeout(Duration::from_secs(
-                parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS").unwrap_or(3),
-            ));
-
         Self {
-            client_options: Some(client_options),
+            client_options: Some(client_options_from_env()),
             ..self
         }
     }
@@ -226,16 +228,8 @@ impl S3TablesVolume {
 
     #[must_use]
     pub fn with_client_options_from_env(self) -> Self {
-        let client_options = ClientOptions::default()
-            .with_timeout(Duration::from_secs(
-                parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
-            ))
-            .with_connect_timeout(Duration::from_secs(
-                parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS").unwrap_or(3),
-            ));
-
         Self {
-            client_options: Some(client_options),
+            client_options: Some(client_options_from_env()),
             ..self
         }
     }
