@@ -80,7 +80,7 @@ pub async fn snow_sql(
             {
                 let async_res = spawn_task_get_query_result(
                     *server_addr,
-                    access_token.to_string(),
+                    access_token.clone(),
                     query_id.clone(),
                 );
                 return (res, Some(async_res));
