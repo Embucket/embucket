@@ -29,6 +29,11 @@ jobs:
           # Install lcov if not already installed
           sudo apt-get install -y lcov
 
+      - name: Create coverage info
+        run: |
+          # Run coverage test
+          cargo cov
+
       - name: Upload to coveralls
         uses: coverallsapp/github-action@master
         with:
