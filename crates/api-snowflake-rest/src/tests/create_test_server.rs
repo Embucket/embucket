@@ -4,6 +4,7 @@ use crate::server::core_state::MetastoreConfig;
 use crate::server::make_snowflake_router;
 use crate::server::server_models::RestApiConfig;
 use crate::server::state::AppState;
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use executor::utils::Config as UtilsConfig;
 use std::net::SocketAddr;
 use std::net::TcpListener;
@@ -29,14 +30,23 @@ pub fn executor_default_cfg() -> UtilsConfig {
     UtilsConfig::default().with_max_concurrency_level(2)
 }
 
+pub fn metastore_default_settings_cfg() -> MetastoreSettingsConfig {
+    MetastoreSettingsConfig::default()
+        .with_object_store_connect_timeout(1)
+        .with_object_store_timeout(1)
+}
+
 #[allow(clippy::expect_used)]
 pub fn run_test_rest_api_server(
     rest_cfg: Option<RestApiConfig>,
     executor_cfg: Option<UtilsConfig>,
+    metastore_settings_cfg: Option<MetastoreSettingsConfig>,
     metastore_cfg: MetastoreConfig,
 ) -> SocketAddr {
     let rest_cfg = rest_cfg.unwrap_or_else(|| rest_default_cfg("json"));
     let executor_cfg = executor_cfg.unwrap_or_else(executor_default_cfg);
+    let metastore_settings_cfg =
+        metastore_settings_cfg.unwrap_or_else(metastore_default_settings_cfg);
 
     let server_cond = Arc::new((Mutex::new(false), Condvar::new())); // Shared state with a condition 
     let server_cond_clone = Arc::clone(&server_cond);
@@ -57,6 +67,7 @@ pub fn run_test_rest_api_server(
             let () = run_test_rest_api_server_with_config(
                 rest_cfg,
                 executor_cfg,
+                metastore_settings_cfg,
                 metastore_cfg,
                 listener,
                 server_cond_clone,
@@ -163,6 +174,7 @@ fn setup_tracing() {
 pub async fn run_test_rest_api_server_with_config(
     snowflake_rest_cfg: RestApiConfig,
     execution_cfg: UtilsConfig,
+    metastore_settings_cfg: MetastoreSettingsConfig,
     metastore_cfg: MetastoreConfig,
     listener: std::net::TcpListener,
     server_cond: Arc<(Mutex<bool>, Condvar)>,
@@ -172,9 +184,14 @@ pub async fn run_test_rest_api_server_with_config(
     setup_tracing();
     tracing::info!("Starting server at {addr}");
 
-    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_cfg)
-        .await
-        .expect("Core state creation error");
+    let core_state = CoreState::new(
+        execution_cfg,
+        snowflake_rest_cfg,
+        metastore_settings_cfg,
+        metastore_cfg,
+    )
+    .await
+    .expect("Core state creation error");
 
     let app = make_snowflake_router(AppState::from(&core_state))
         .into_make_service_with_connect_info::<SocketAddr>();

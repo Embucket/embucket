@@ -78,6 +78,21 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+
+    #[snafu(display("Timeout occured: {error:?}"))]
+    Timeout {
+        #[snafu(source(from(tokio::time::error::Elapsed, std::io::Error::from)))]
+        error: std::io::Error,
+        #[snafu(implicit)]
+        location: Location,
+    },
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<IcebergError> for Error {
+    fn into(self) -> IcebergError {
+        IcebergError::External(Box::new(self))
+    }
 }
 
 #[derive(Debug)]

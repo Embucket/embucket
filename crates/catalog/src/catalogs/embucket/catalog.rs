@@ -1,5 +1,6 @@
 use super::schema::EmbucketSchema;
-use crate::{block_in_new_runtime, error};
+use crate::catalog::CatalogConfig;
+use crate::{block_on_with_timeout, error};
 use catalog_metastore::{Metastore, SchemaIdent};
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use iceberg_rust::catalog::Catalog as IcebergCatalog;
@@ -11,6 +12,7 @@ pub struct EmbucketCatalog {
     pub database: String,
     pub metastore: Arc<dyn Metastore>,
     pub iceberg_catalog: Arc<dyn IcebergCatalog>,
+    pub config: CatalogConfig,
 }
 
 impl EmbucketCatalog {
@@ -18,11 +20,13 @@ impl EmbucketCatalog {
         database: String,
         metastore: Arc<dyn Metastore>,
         iceberg_catalog: Arc<dyn IcebergCatalog>,
+        config: CatalogConfig,
     ) -> Self {
         Self {
             database,
             metastore,
             iceberg_catalog,
+            config,
         }
     }
 
@@ -52,18 +56,23 @@ impl CatalogProvider for EmbucketCatalog {
         let metastore = self.metastore.clone();
         let database = self.database.clone();
 
-        block_in_new_runtime(async move {
-            metastore
-                .list_schemas(&database)
-                .await
-                .map(|schemas| {
-                    schemas
-                        .into_iter()
-                        .map(|s| s.ident.schema.clone())
-                        .collect()
-                })
-                .context(error::MetastoreSnafu)
-        })
+        #[allow(clippy::expect_used)]
+        block_on_with_timeout(
+            async move {
+                metastore
+                    .list_schemas(&database)
+                    .await
+                    .map(|schemas| {
+                        schemas
+                            .into_iter()
+                            .map(|s| s.ident.schema.clone())
+                            .collect()
+                    })
+                    .context(error::MetastoreSnafu)
+            },
+            self.config.catalog_timeout(),
+        )
+        .expect("Catalog timeout on: list_schemas")
         .unwrap_or_else(|error| {
             error!(
                 ?error,
@@ -79,25 +88,32 @@ impl CatalogProvider for EmbucketCatalog {
         let iceberg_catalog = self.iceberg_catalog.clone();
         let database = self.database.clone();
         let schema_name = name.to_string();
+        let config = self.config.clone();
 
-        block_in_new_runtime(async move {
-            let schema_opt = metastore
-                .get_schema(&SchemaIdent::new(database.clone(), schema_name.clone()))
-                .await
-                .context(error::MetastoreSnafu)?;
+        #[allow(clippy::expect_used)]
+        block_on_with_timeout(
+            async move {
+                let schema_opt = metastore
+                    .get_schema(&SchemaIdent::new(database.clone(), schema_name.clone()))
+                    .await
+                    .context(error::MetastoreSnafu)?;
 
-            let provider = schema_opt.map(|_| {
-                let schema: Arc<dyn SchemaProvider> = Arc::new(EmbucketSchema {
-                    database,
-                    schema: schema_name,
-                    metastore,
-                    iceberg_catalog,
+                let provider = schema_opt.map(|_| {
+                    let schema: Arc<dyn SchemaProvider> = Arc::new(EmbucketSchema {
+                        database,
+                        schema: schema_name,
+                        metastore,
+                        iceberg_catalog,
+                        config,
+                    });
+                    schema
                 });
-                schema
-            });
-            Ok(provider)
-        })
-        .unwrap_or_else(|error| {
+                Ok(provider)
+            },
+            self.config.catalog_timeout(),
+        )
+        .expect("Catalog timeout on: get_schema")
+        .unwrap_or_else(|error: error::Error| {
             error!(?error, "Failed to get schema; assuming missing");
             None
         })

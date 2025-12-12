@@ -56,6 +56,20 @@ where
     }
 }
 
+fn block_on_with_timeout<F>(future: F, timeout_duration: tokio::time::Duration) -> Result<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let future_with_timeout = async move {
+        tokio::time::timeout(timeout_duration, future)
+            .await
+            .context(error::TimeoutSnafu)
+    };
+
+    block_in_new_runtime(future_with_timeout)
+}
+
 pub mod test_utils {
     use datafusion::arrow::array::{ArrayRef, RecordBatch};
     use datafusion::arrow::compute::{

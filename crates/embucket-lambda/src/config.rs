@@ -17,6 +17,13 @@ pub struct EnvConfig {
     pub metastore_config: Option<PathBuf>,
     pub jwt_secret: Option<String>,
     pub max_concurrent_table_fetches: usize,
+    pub aws_sdk_connect_timeout_secs: u64,
+    pub aws_sdk_operation_timeout_secs: u64,
+    pub aws_sdk_operation_attempt_timeout_secs: u64,
+    pub iceberg_table_timeout_secs: u64,
+    pub iceberg_catalog_timeout_secs: u64,
+    pub object_store_timeout_secs: u64,
+    pub object_store_connect_timeout_secs: u64,
 }
 
 impl EnvConfig {
@@ -37,6 +44,19 @@ impl EnvConfig {
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
             max_concurrent_table_fetches: parse_env("MAX_CONCURRENT_TABLE_FETCHES").unwrap_or(5),
+            aws_sdk_connect_timeout_secs: parse_env("AWS_SDK_CONNECT_TIMEOUT_SECS").unwrap_or(3),
+            aws_sdk_operation_timeout_secs: parse_env("AWS_SDK_OPERATION_TIMEOUT_SECS")
+                .unwrap_or(30),
+            aws_sdk_operation_attempt_timeout_secs: parse_env(
+                "AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS",
+            )
+            .unwrap_or(10),
+            iceberg_table_timeout_secs: parse_env("ICEBERG_CREATE_TABLE_TIMEOUT_SECS")
+                .unwrap_or(30),
+            iceberg_catalog_timeout_secs: parse_env("ICEBERG_CATALOG_TIMEOUT_SECS").unwrap_or(10),
+            object_store_timeout_secs: parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
+            object_store_connect_timeout_secs: parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS")
+                .unwrap_or(3),
         }
     }
 
@@ -52,6 +72,14 @@ impl EnvConfig {
             mem_enable_track_consumers_pool: self.mem_enable_track_consumers_pool,
             disk_pool_size_mb: self.disk_pool_size_mb,
             max_concurrent_table_fetches: self.max_concurrent_table_fetches,
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_connect_timeout_secs: self.aws_sdk_connect_timeout_secs,
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_operation_timeout_secs: self.aws_sdk_operation_timeout_secs,
+            #[cfg(not(feature = "rest-catalog"))]
+            aws_sdk_operation_attempt_timeout_secs: self.aws_sdk_operation_attempt_timeout_secs,
+            iceberg_table_timeout_secs: self.iceberg_table_timeout_secs,
+            iceberg_catalog_timeout_secs: self.iceberg_catalog_timeout_secs,
         }
     }
 }

@@ -437,6 +437,7 @@ fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
                 endpoint: None,
                 credentials,
                 arn,
+                client_options: None,
             })
         }
         "s3" => {
@@ -450,12 +451,16 @@ fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
                 aws_secret_access_key: secret_key,
             });
 
-            VolumeType::S3(S3Volume {
-                region: None,
-                bucket: Some(ident.clone()),
-                endpoint: None,
-                credentials: Some(credentials),
-            })
+            VolumeType::S3(
+                S3Volume {
+                    region: None,
+                    bucket: Some(ident.clone()),
+                    endpoint: None,
+                    credentials: Some(credentials),
+                    client_options: None,
+                }
+                .with_client_options_from_env(),
+            )
         }
         "memory" => VolumeType::Memory,
         other => {

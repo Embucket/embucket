@@ -5,7 +5,8 @@ use crate::server::server_models::RestApiConfig;
 use api_snowflake_rest_sessions::session::SessionStore;
 use catalog_metastore::InMemoryMetastore;
 use catalog_metastore::Metastore;
-use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
+use catalog_metastore::metastore_bootstrap_config::MetastoreBootstrapConfig;
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use executor::service::CoreExecutionService;
 use executor::utils::Config as ExecutionConfig;
 use snafu::ResultExt;
@@ -31,10 +32,11 @@ impl CoreState {
     pub async fn new(
         execution_cfg: ExecutionConfig,
         rest_api_config: RestApiConfig,
-        metastore_config: MetastoreConfig,
+        metastore_settings_config: MetastoreSettingsConfig,
+        metastore_bootstrap_config: MetastoreConfig,
     ) -> Result<Self> {
-        let metastore = create_metastore();
-        apply_metastore_config(metastore.clone(), metastore_config).await?;
+        let metastore = create_metastore(metastore_settings_config);
+        apply_metastore_bootstrap_config(metastore.clone(), metastore_bootstrap_config).await?;
         let executor = create_executor(metastore.clone(), execution_cfg).await?;
         Ok(Self {
             executor,
@@ -59,15 +61,15 @@ impl CoreState {
 }
 
 #[must_use]
-pub fn create_metastore() -> Arc<InMemoryMetastore> {
-    Arc::new(InMemoryMetastore::new())
+fn create_metastore(metastore_settings_config: MetastoreSettingsConfig) -> Arc<InMemoryMetastore> {
+    Arc::new(InMemoryMetastore::new().with_settings_config(metastore_settings_config))
 }
 
-async fn apply_metastore_config(
+async fn apply_metastore_bootstrap_config(
     metastore: Arc<InMemoryMetastore>,
-    metastore_config: MetastoreConfig,
+    metastore_bootstrap_config: MetastoreConfig,
 ) -> Result<()> {
-    match metastore_config {
+    match metastore_bootstrap_config {
         MetastoreConfig::ConfigPath(path) => {
             tracing::info!(
                 path = %path.display(),
@@ -102,7 +104,7 @@ async fn apply_metastore_config(
     Ok(())
 }
 
-pub async fn create_executor(
+async fn create_executor(
     metastore: Arc<dyn Metastore>,
     execution_cfg: ExecutionConfig,
 ) -> Result<Arc<CoreExecutionService>> {

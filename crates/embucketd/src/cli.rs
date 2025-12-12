@@ -160,6 +160,62 @@ pub struct CliOpts {
         help = "The maximum number of concurrent requests to get tables details"
     )]
     pub max_concurrent_table_fetches: usize,
+
+    #[arg(
+        long,
+        env = "AWS_SDK_CONNECT_TIMEOUT_SECS",
+        default_value = "3",
+        help = "AWS SDK connect timeout in seconds"
+    )]
+    pub aws_sdk_connect_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "AWS_SDK_OPERATION_TIMEOUT_SECS",
+        default_value = "30",
+        help = "AWS SDK operation timeout in seconds"
+    )]
+    pub aws_sdk_operation_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "AWS_SDK_OPERATION_ATTEMPT_TIMEOUT_SECS",
+        default_value = "10",
+        help = "AWS SDK operation attempt timeout in seconds"
+    )]
+    pub aws_sdk_operation_attempt_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "ICEBERG_CREATE_TABLE_TIMEOUT_SECS",
+        default_value = "30",
+        help = "Iceberg create table timeout in seconds"
+    )]
+    pub iceberg_table_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "ICEBERG_CATALOG_TIMEOUT_SECS",
+        default_value = "10",
+        help = "Iceberg catalog timeout in seconds"
+    )]
+    pub iceberg_catalog_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "OBJECT_STORE_TIMEOUT_SECS",
+        default_value = "10",
+        help = "Object store timeout in seconds"
+    )]
+    pub object_store_timeout_secs: u64,
+
+    #[arg(
+        long,
+        env = "OBJECT_STORE_CONNECT_TIMEOUT_SECS",
+        default_value = "3",
+        help = "Object store connect timeout in seconds"
+    )]
+    pub object_store_connect_timeout_secs: u64,
 }
 
 impl CliOpts {

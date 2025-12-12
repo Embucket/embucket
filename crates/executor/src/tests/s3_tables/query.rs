@@ -4,7 +4,7 @@ use crate::service::CoreExecutionService;
 use crate::session::UserSession;
 use crate::utils::Config;
 use catalog_metastore::InMemoryMetastore;
-use catalog_metastore::metastore_config::MetastoreBootstrapConfig;
+use catalog_metastore::metastore_bootstrap_config::MetastoreBootstrapConfig;
 use datafusion::prelude::SessionContext;
 use std::sync::Arc;
 

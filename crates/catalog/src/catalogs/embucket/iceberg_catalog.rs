@@ -1,5 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
-
+use crate::catalog::CatalogConfig;
 use crate::error;
 use async_trait::async_trait;
 use catalog_metastore::error::{self as metastore_error, Result as MetastoreResult};
@@ -29,17 +28,24 @@ use iceberg_rust_spec::{
 };
 use object_store::ObjectStore;
 use snafu::ResultExt;
+use std::{collections::HashMap, sync::Arc};
+use tokio::time::timeout;
 
 #[derive(Debug)]
 pub struct EmbucketIcebergCatalog {
     pub metastore: Arc<dyn Metastore>,
     pub database: String,
     pub object_store: Arc<dyn ObjectStore>,
+    pub config: CatalogConfig,
 }
 
 impl EmbucketIcebergCatalog {
     #[tracing::instrument(name = "EmbucketIcebergCatalog::new", level = "trace", skip(metastore))]
-    pub async fn new(metastore: Arc<dyn Metastore>, database: String) -> MetastoreResult<Self> {
+    pub async fn new(
+        metastore: Arc<dyn Metastore>,
+        database: String,
+        config: CatalogConfig,
+    ) -> MetastoreResult<Self> {
         let db = metastore.get_database(&database).await?.ok_or_else(|| {
             metastore_error::DatabaseNotFoundSnafu {
                 db: database.clone(),
@@ -59,6 +65,7 @@ impl EmbucketIcebergCatalog {
             metastore,
             database,
             object_store,
+            config,
         })
     }
 
@@ -445,19 +452,23 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
             properties: None,
         };
 
-        let table = self
-            .metastore
-            .create_table(&ident, table_create_request)
-            .await
-            .context(error::MetastoreSnafu)
-            .map_err(|e| IcebergError::External(Box::new(e)))?;
-        Ok(IcebergTable::new(
+        let table = timeout(
+            self.config.table_timeout(),
+            self.metastore.create_table(&ident, table_create_request),
+        )
+        .await
+        .context(error::TimeoutSnafu)
+        .map_err(Into::<IcebergError>::into)?
+        .context(error::MetastoreSnafu)
+        .map_err(Into::<IcebergError>::into)?;
+
+        IcebergTable::new(
             identifier.clone(),
             self.clone(),
             self.object_store.clone(),
             table.metadata.clone(),
         )
-        .await?)
+        .await
     }
 
     #[tracing::instrument(
@@ -511,20 +522,23 @@ impl IcebergCatalog for EmbucketIcebergCatalog {
             updates: commit.updates,
         };
 
-        let rwobject = self
-            .metastore
-            .update_table(&table_ident, table_update)
-            .await
-            .map_err(|e| IcebergError::External(Box::new(e)))?;
+        let table = timeout(
+            self.config.table_timeout(),
+            self.metastore.update_table(&table_ident, table_update),
+        )
+        .await
+        .context(error::TimeoutSnafu)
+        .map_err(Into::<IcebergError>::into)?
+        .context(error::MetastoreSnafu)
+        .map_err(Into::<IcebergError>::into)?;
 
-        let iceberg_table = IcebergTable::new(
+        IcebergTable::new(
             commit.identifier.clone(),
             self.clone(),
             self.object_store.clone(),
-            rwobject.metadata.clone(),
+            table.metadata.clone(),
         )
-        .await?;
-        Ok(iceberg_table)
+        .await
     }
 
     #[tracing::instrument(

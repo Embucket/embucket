@@ -30,7 +30,7 @@ mod stress {
                             "create table if not exists embucket.public.test_table (id int)",
                             "drop table if exists embucket.public.test_table",
                         ])
-                        .with_metastore_config(MetastoreConfig::DefaultConfig)
+                        .with_metastore_bootstrap_config(MetastoreConfig::DefaultConfig)
                         .with_skip_login(),
                         move |(sql, _), response| {
                             let err_msg = response.message.clone().unwrap_or_default();
@@ -60,7 +60,11 @@ mod stress {
             "SQL compilation error: Schema 's3_table_db.schema1' does not exist or not authorized 002003",
             "Generic S3 error: Error performing GET",
             "Iceberg Object store: The operation lacked the necessary privileges to complete for path metadata",
+            // new error
+            "External error: Iceberg error: The operation lacked the necessary privileges to complete for path metadata",
             "Table test_table not found",
+            // broken s3 tables error
+            "External error: Iceberg error: service error",
             // create table if not exists
             "External error: The operation lacked the necessary privileges to complete for path metadata",
             // create table if not exists
@@ -83,7 +87,7 @@ mod stress {
                         "create table if not exists s3_table_db.schema1.test_table (id int)",
                         "drop table if exists s3_table_db.schema1.test_table",
                     ])
-                    .with_metastore_config(metastore_config)
+                    .with_metastore_bootstrap_config(metastore_config)
                     .with_skip_login(),
                     move |sql_info, response| {
                         let sql = sql_info.0;

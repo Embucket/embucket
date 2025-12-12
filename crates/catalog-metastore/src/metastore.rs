@@ -1,4 +1,5 @@
 use crate::error::{self as metastore_error, Result};
+use crate::metastore_settings_config::MetastoreSettingsConfig;
 use crate::models::{
     RwObject,
     database::{Database, DatabaseIdent},
@@ -72,6 +73,7 @@ pub trait Metastore: std::fmt::Debug + Send + Sync {
     async fn table_exists(&self, ident: &TableIdent) -> Result<bool>;
     async fn url_for_table(&self, ident: &TableIdent) -> Result<String>;
     async fn volume_for_table(&self, ident: &TableIdent) -> Result<Option<RwObject<Volume>>>;
+    fn settings_config(&self) -> Option<MetastoreSettingsConfig>;
 }
 
 #[derive(Debug, Default)]
@@ -86,6 +88,7 @@ struct MetastoreState {
 pub struct InMemoryMetastore {
     state: RwLock<MetastoreState>,
     object_store_cache: DashMap<VolumeIdent, Arc<dyn ObjectStore>>,
+    settings_config: Option<MetastoreSettingsConfig>,
 }
 
 impl InMemoryMetastore {
@@ -94,6 +97,16 @@ impl InMemoryMetastore {
         Self {
             state: RwLock::new(MetastoreState::default()),
             object_store_cache: DashMap::new(),
+            settings_config: None,
+        }
+    }
+
+    #[allow(clippy::expect_used)]
+    #[must_use]
+    pub fn with_settings_config(self, settings: MetastoreSettingsConfig) -> Self {
+        Self {
+            settings_config: Some(settings),
+            ..self
         }
     }
 
@@ -727,6 +740,10 @@ impl Metastore for InMemoryMetastore {
         } else {
             Ok(None)
         }
+    }
+
+    fn settings_config(&self) -> Option<MetastoreSettingsConfig> {
+        self.settings_config.clone()
     }
 }
 

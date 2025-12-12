@@ -16,6 +16,7 @@ use axum::{
     Json, Router,
     routing::{get, post},
 };
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use clap::Parser;
 use dotenv::dotenv;
 use executor::service::{ExecutionService, TIMEOUT_SIGNAL_INTERVAL_SECONDS};
@@ -120,18 +121,36 @@ async fn async_main(
         mem_enable_track_consumers_pool: opts.mem_enable_track_consumers_pool,
         disk_pool_size_mb: opts.disk_pool_size_mb,
         max_concurrent_table_fetches: opts.max_concurrent_table_fetches,
+        #[cfg(not(feature = "rest-catalog"))]
+        aws_sdk_operation_timeout_secs: opts.aws_sdk_operation_timeout_secs,
+        #[cfg(not(feature = "rest-catalog"))]
+        aws_sdk_operation_attempt_timeout_secs: opts.aws_sdk_operation_attempt_timeout_secs,
+        #[cfg(not(feature = "rest-catalog"))]
+        aws_sdk_connect_timeout_secs: opts.aws_sdk_connect_timeout_secs,
+        iceberg_table_timeout_secs: opts.iceberg_table_timeout_secs,
+        iceberg_catalog_timeout_secs: opts.iceberg_catalog_timeout_secs,
     };
+
     let host = opts.host.clone().unwrap();
     let port = opts.port.unwrap();
+
+    let metatore_settings_config = MetastoreSettingsConfig::default()
+        .with_object_store_timeout(opts.object_store_timeout_secs)
+        .with_object_store_connect_timeout(opts.object_store_connect_timeout_secs);
 
     let metastore_cfg = if let Some(config_path) = &opts.metastore_config {
         MetastoreConfig::ConfigPath(config_path.clone())
     } else {
         MetastoreConfig::None
     };
-    let core_state = CoreState::new(execution_cfg, snowflake_rest_cfg, metastore_cfg)
-        .await
-        .expect("Core state creation error");
+    let core_state = CoreState::new(
+        execution_cfg,
+        snowflake_rest_cfg,
+        metatore_settings_config,
+        metastore_cfg,
+    )
+    .await
+    .expect("Core state creation error");
 
     core_state
         .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
