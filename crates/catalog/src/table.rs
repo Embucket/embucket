@@ -1,14 +1,18 @@
 use crate::df_error;
+use crate::utils::{case_sensitive_schema, normalize_schema_case, rewrite_expr_case};
 use async_trait::async_trait;
 use datafusion::arrow::datatypes::{Schema, SchemaRef};
 use datafusion::catalog::{Session, TableProvider};
 use datafusion::datasource::{ViewTable, provider_as_source};
 use datafusion::execution::SessionState;
+use datafusion::physical_expr::PhysicalExpr;
+use datafusion::physical_expr::expressions::Column;
 use datafusion_common::tree_node::{Transformed, TreeNode};
-use datafusion_common::{Statistics, plan_err};
+use datafusion_common::{Statistics, plan_err, project_schema};
 use datafusion_expr::dml::InsertOp;
 use datafusion_expr::{Expr, LogicalPlan, TableProviderFilterPushDown, TableScan, TableType};
 use datafusion_physical_plan::ExecutionPlan;
+use datafusion_physical_plan::projection::ProjectionExec;
 use iceberg_rust::catalog::create::CreateTableBuilder;
 use once_cell::sync::OnceCell;
 use snafu::OptionExt;
@@ -19,24 +23,83 @@ use std::sync::Arc;
 
 pub struct CachingTable {
     pub schema: OnceCell<SchemaRef>,
+    pub normalized_schema: OnceCell<SchemaRef>,
     pub name: String,
     pub table: Arc<dyn TableProvider>,
+    pub case_sensitive_schema: OnceCell<bool>,
 }
 
 impl CachingTable {
     pub fn new(name: String, table: Arc<dyn TableProvider>) -> Self {
         Self {
             schema: OnceCell::new(),
+            normalized_schema: OnceCell::new(),
+            name,
+            table,
+            case_sensitive_schema: OnceCell::new(),
+        }
+    }
+    pub fn new_with_schema(name: String, schema: SchemaRef, table: Arc<dyn TableProvider>) -> Self {
+        let normalized_schema = Arc::new(normalize_schema_case(&schema));
+        Self {
+            case_sensitive_schema: OnceCell::from(case_sensitive_schema(&schema)),
+            schema: OnceCell::from(schema),
+            normalized_schema: OnceCell::from(normalized_schema),
             name,
             table,
         }
     }
-    pub fn new_with_schema(name: String, schema: SchemaRef, table: Arc<dyn TableProvider>) -> Self {
-        Self {
-            schema: OnceCell::from(schema),
-            name,
-            table,
+
+    pub fn schema(&self) -> SchemaRef {
+        self.schema.get_or_init(|| self.table.schema()).clone()
+    }
+
+    pub fn normalized_schema(&self) -> SchemaRef {
+        self.normalized_schema
+            .get_or_init(|| Arc::new(normalize_schema_case(&self.table.schema())))
+            .clone()
+    }
+
+    pub fn case_sensitive_schema(&self) -> bool {
+        *self
+            .case_sensitive_schema
+            .get_or_init(|| case_sensitive_schema(&self.table.schema()))
+    }
+
+    #[allow(clippy::as_conversions)]
+    async fn rewrite_case_sensitive_scan(
+        &self,
+        state: &dyn Session,
+        projection: Option<&Vec<usize>>,
+        filters: &[Expr],
+        limit: Option<usize>,
+    ) -> datafusion_common::Result<Arc<dyn ExecutionPlan>> {
+        let rewritten_filters = filters
+            .iter()
+            .map(|expr| rewrite_expr_case(self.schema().as_ref(), expr.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let plan = self
+            .table
+            .scan(state, projection, &rewritten_filters, limit)
+            .await?;
+
+        let target_schema = if let Some(indices) = projection {
+            project_schema(&self.normalized_schema(), Some(indices))?
+        } else {
+            Arc::clone(&self.normalized_schema())
+        };
+
+        let mut projection_exprs = Vec::with_capacity(plan.schema().fields().len());
+        for (idx, field) in plan.schema().fields().iter().enumerate() {
+            let target_name = target_schema.field(idx).name().clone();
+            projection_exprs.push((
+                Arc::new(Column::new(field.name(), idx)) as Arc<dyn PhysicalExpr>,
+                target_name,
+            ));
         }
+        let projected_plan = ProjectionExec::try_new(projection_exprs, plan)?;
+        Ok(Arc::new(projected_plan))
     }
 }
 
@@ -44,8 +107,10 @@ impl Debug for CachingTable {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Table")
             .field("schema", &"")
+            .field("normalized_schema", &"")
             .field("name", &self.name)
             .field("table", &"")
+            .field("case_sensitive_schema", &self.case_sensitive_schema)
             .finish()
     }
 }
@@ -57,7 +122,7 @@ impl TableProvider for CachingTable {
     }
 
     fn schema(&self) -> SchemaRef {
-        self.schema.get_or_init(|| self.table.schema()).clone()
+        self.normalized_schema()
     }
 
     fn table_type(&self) -> TableType {
@@ -82,6 +147,17 @@ impl TableProvider for CachingTable {
             let new_view_plan = rewrite_view_source(state, view.logical_plan().clone()).await?;
             let updated_view = ViewTable::new(new_view_plan, view.definition().cloned());
             return updated_view.scan(state, projection, filters, limit).await;
+        }
+
+        // If the underlying table schema is case-sensitive, we must rewrite all filter
+        // expressions to match the exact column name casing defined in the table schema.
+        // DataFusion treats column identifiers as case-sensitive in this scenario, so
+        // without rewriting, queries that use a different case would fail to resolve
+        // column references correctly.
+        if self.case_sensitive_schema() {
+            return self
+                .rewrite_case_sensitive_scan(state, projection, filters, limit)
+                .await;
         }
         self.table.scan(state, projection, filters, limit).await
     }
