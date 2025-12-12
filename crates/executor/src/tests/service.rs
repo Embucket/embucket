@@ -393,8 +393,9 @@ async fn test_parallel_run() {
         futures.push(future);
     }
 
-    let results = join_all(futures)
+    let results = tokio::time::timeout(std::time::Duration::from_secs(5), join_all(futures))
         .await
+        .expect("Test timed out")
         .into_iter()
         .map(|r| r.expect("Task panicked"))
         // .map(|_| Ok::<String, Error>(String::from("OK")))
