@@ -141,7 +141,7 @@ async fn async_main(
     let metastore_cfg = if let Some(config_path) = &opts.metastore_config {
         MetastoreConfig::ConfigPath(config_path.clone())
     } else {
-        MetastoreConfig::None
+        MetastoreConfig::Env
     };
     let core_state = CoreState::new(
         execution_cfg,
