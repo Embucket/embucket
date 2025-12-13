@@ -14,11 +14,20 @@ use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
+use tracing::instrument::WithSubscriber;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::trace::BatchSpanProcessor;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use tracing_subscriber::filter::{FilterExt, LevelFilter, Targets, filter_fn};
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
         use lambda_http::run_with_streaming_response as run;
@@ -29,11 +38,15 @@ cfg_if::cfg_if! {
 
 type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+const DISABLED_TARGETS: [&str; 2] = ["h2", "aws_smithy_runtime"];
+
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
-    init_tracing();
-
     let env_config = EnvConfig::from_env();
+
+    init_tracing(&env_config);
+    init_tracing_and_logs(&env_config);
+
     info!(
         data_format = %env_config.data_format,
         max_concurrency = env_config.max_concurrency_level,
@@ -212,14 +225,83 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
         .map(|ip| SocketAddr::new(ip, 0))
 }
 
-fn init_tracing() {
+#[allow(clippy::expect_used, clippy::redundant_closure_for_method_calls)]
+fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
+    let exporter = if config.otel_grpc {
+        // Initialize OTLP exporter using gRPC (Tonic)
+        opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .build()
+            .expect("Failed to create OTLP gRPC exporter")
+    } else {
+        // Initialize OTLP exporter using HTTP
+        opentelemetry_otlp::SpanExporter::builder()
+            .with_http()
+            .build()
+            .expect("Failed to create OTLP HTTP exporter")
+    };
+
+    let resource = Resource::builder().build();
+
+    let tracing_provider = SdkTracerProvider::builder()
+        .with_span_processor(BatchSpanProcessor::builder(exporter).build())
+        .with_resource(resource)
+        .build();
+
+    let targets_with_level =
+        |targets: &[&'static str], level: LevelFilter| -> Vec<(&str, LevelFilter)> {
+            // let default_log_targets: Vec<(String, LevelFilter)> =
+            targets.iter().map(|t| ((*t), level)).collect()
+        };
+
+        
+    let registry = tracing_subscriber::registry()
+        // Telemetry filtering
+        .with(
+            tracing_opentelemetry::OpenTelemetryLayer::new(tracing_provider.tracer("embucket"))
+                .with_level(true)
+                .with_filter(
+                    Targets::default()
+                        .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
+                        .with_default(config.tracing_level.parse().unwrap_or(tracing::Level::INFO)),
+                ),
+        );
+    // Logs filtering
+    // fmt::layer has different types for json vs plain
+    if config.log_format == "json" {
+        registry.with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_ansi(false)
+                .json()
+                .with_current_span(true)
+                .with_span_list(true)
+        )
+        .with(EnvFilter::new(config.log_filter.clone()))
+        .init();
+    } else {
+        registry.with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_ansi(std::io::stdout().is_terminal())
+                .with_span_events(
+                    tracing_subscriber::fmt::format::FmtSpan::ENTER
+                        | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+                )
+        )
+        .with(EnvFilter::new(config.log_filter.clone()))
+        .init();
+    };
+
+    tracing_provider
+}
+
+
+fn init_tracing(config: &EnvConfig) {
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let emit_ansi = std::io::stdout().is_terminal();
-
     // Use json format if requested via env var, otherwise use pretty format with span events
-    let format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
-
-    if format == "json" {
+    if config.log_format == "json" {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(filter)
             .with_target(true)
