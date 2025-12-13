@@ -120,6 +120,14 @@ pub struct CliOpts {
 
     #[arg(
         long,
+        env = "OTEL_GRPC",
+        default_value = "true",
+        help = "Enable OTLP gRPC exporter (requires 'otel-grpc' feature)"
+    )]
+    pub otel_grpc: bool,
+
+    #[arg(
+        long,
         value_enum,
         env = "TRACING_LEVEL",
         default_value = "info",
