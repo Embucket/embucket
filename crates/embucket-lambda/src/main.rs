@@ -38,7 +38,20 @@ type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
     //Has `Arc` inside
-    let tracer_provider = init_tracing();
+    // let tracer_provider = init_tracing();
+
+    tracing_subscriber::fmt().json()
+        .with_max_level(tracing::Level::INFO)
+        // this needs to be set to remove duplicated information in the log.
+        .with_current_span(false)
+        // this needs to be set to false, otherwise ANSI color codes will
+        // show up in a confusing manner in CloudWatch logs.
+        .with_ansi(false)
+        // disabling time is handy because CloudWatch will add the ingestion time.
+        .without_time()
+        // remove the name of the function from every log entry
+        .with_target(false)
+        .init();
 
     // tracing::init_default_subscriber();
 
@@ -60,7 +73,7 @@ async fn main() -> Result<(), LambdaError> {
     );
 
     let app = Arc::new(
-        LambdaApp::initialize(env_config, tracer_provider.clone())
+        LambdaApp::initialize(env_config)
             .await
             .map_err(|err| {
                 error!(error = %err, "Failed to initialize Lambda services");
@@ -88,7 +101,7 @@ impl LambdaApp {
         data_format = %config.data_format,
         max_concurrency = config.max_concurrency_level
     ))]
-    async fn initialize(config: EnvConfig, tracer_provider: SdkTracerProvider) -> InitResult<Self> {
+    async fn initialize(config: EnvConfig) -> InitResult<Self> {
         let snowflake_cfg = SnowflakeServerConfig::new(
             &config.data_format,
             config.jwt_secret.clone().unwrap_or_default(),
@@ -121,11 +134,11 @@ impl LambdaApp {
 
         let appstate = AppState::from(&core_state);
         let router = make_snowflake_router(appstate)
-            .layer(tower_http::trace::TraceLayer::new_for_http())
-            .layer(middleware::from_fn_with_state(
-                tracer_provider.clone(),
-                trace_flusher,
-            ));
+            .layer(tower_http::trace::TraceLayer::new_for_http());
+            // .layer(middleware::from_fn_with_state(
+            //     tracer_provider.clone(),
+            //     trace_flusher,
+            // ));
         info!("Initialized Lambda Snowflake REST services");
 
         Ok(Self { router })

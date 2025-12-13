@@ -19,7 +19,7 @@ use tracing_subscriber::Registry;
 pub fn init_tracing() -> SdkTracerProvider {
     // Service name visible in Honeycomb
     let service_name = std::env::var("OTEL_SERVICE_NAME")
-        .unwrap_or_else(|_| "embucket-lambda".to_string());
+        .unwrap_or_else(|_| "embucket-lambda-api".to_string());
 
     // Select endpoint and protocol from env (defaults: HTTP, US endpoint)
     let endpoint = std::env::var("HONEYCOMB_API_ENDPOINT")
