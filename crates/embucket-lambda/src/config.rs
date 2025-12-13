@@ -25,6 +25,10 @@ pub struct EnvConfig {
     pub iceberg_catalog_timeout_secs: u64,
     pub object_store_timeout_secs: u64,
     pub object_store_connect_timeout_secs: u64,
+    pub otel_grpc: bool,
+    pub tracing_level: String,
+    pub log_format: String,
+    pub log_filter: String,
 }
 
 impl EnvConfig {
@@ -58,6 +62,10 @@ impl EnvConfig {
             object_store_timeout_secs: parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
             object_store_connect_timeout_secs: parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS")
                 .unwrap_or(3),
+            otel_grpc: parse_env("OTEL_GRPC").unwrap_or(true),
+            tracing_level: env_or_default("TRACING_LEVEL", "INFO"),
+            log_format: env_or_default("LOG_FORMAT", "pretty"),
+            log_filter: parse_env("RUST_LOG").unwrap_or("INFO".to_string()),
         }
     }
 

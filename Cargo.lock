@@ -3314,6 +3314,9 @@ dependencies = [
  "http 1.4.0",
  "http-body-util",
  "lambda_http",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -3321,6 +3324,8 @@ dependencies = [
  "tower 0.5.2",
  "tower-http",
  "tracing",
+ "tracing-allocations",
+ "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
 ]
