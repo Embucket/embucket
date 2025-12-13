@@ -15,7 +15,6 @@ use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
-use tracing::instrument::WithSubscriber;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -25,9 +24,8 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use tracing_subscriber::filter::{FilterExt, LevelFilter, Targets, filter_fn};
+use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {

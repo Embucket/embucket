@@ -2,6 +2,8 @@
 debug/
 target/
 data/
+collector-config/
+extensions/
 
 .env
 metastore.yaml
