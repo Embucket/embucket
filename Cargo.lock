@@ -1110,11 +1110,11 @@ dependencies = [
  "aws-credential-types",
  "aws-runtime",
  "aws-smithy-async",
- "aws-smithy-http 0.62.5",
+ "aws-smithy-http 0.62.6",
  "aws-smithy-json",
  "aws-smithy-runtime",
  "aws-smithy-runtime-api",
- "aws-smithy-types 1.3.4",
+ "aws-smithy-types 1.3.5",
  "aws-types",
  "bytes",
  "fastrand",
@@ -1790,6 +1790,10 @@ dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
 ]
+
+[[package]]
+name = "build-info"
+version = "0.1.0"
 
 [[package]]
 name = "bumpalo"
@@ -3302,6 +3306,7 @@ dependencies = [
  "api-snowflake-rest-sessions",
  "axum 0.8.7",
  "base64 0.22.1",
+ "build-info",
  "catalog-metastore",
  "cfg-if",
  "executor",
@@ -3327,6 +3332,7 @@ dependencies = [
  "api-snowflake-rest",
  "api-snowflake-rest-sessions",
  "axum 0.8.7",
+ "build-info",
  "catalog-metastore",
  "clap",
  "console-subscriber",
