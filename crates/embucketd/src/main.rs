@@ -16,6 +16,7 @@ use axum::{
     Json, Router,
     routing::{get, post},
 };
+use build_info::BuildInfo;
 use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use clap::Parser;
 use dotenv::dotenv;
@@ -100,6 +101,15 @@ async fn async_main(
     opts: cli::CliOpts,
     tracing_provider: SdkTracerProvider,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Log version and build information on startup
+    tracing::info!(
+        version = %BuildInfo::GIT_DESCRIBE,
+        git_sha = %BuildInfo::GIT_SHA_SHORT,
+        git_branch = %BuildInfo::GIT_BRANCH,
+        build_timestamp = %BuildInfo::BUILD_TIMESTAMP,
+        "embucketd started"
+    );
+
     let data_format = opts
         .data_format
         .clone()
@@ -112,7 +122,7 @@ async fn async_main(
         );
 
     let execution_cfg = ExecutionConfig {
-        embucket_version: "0.1.0".to_string(),
+        embucket_version: BuildInfo::VERSION.to_string(),
         sql_parser_dialect: opts.sql_parser_dialect.clone(),
         query_timeout_secs: opts.query_timeout_secs,
         max_concurrency_level: opts.max_concurrency_level,

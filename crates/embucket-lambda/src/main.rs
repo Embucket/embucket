@@ -10,6 +10,7 @@ use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
 use axum::Router;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
+use build_info::BuildInfo;
 use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use http::HeaderMap;
 use http_body_util::BodyExt;
@@ -32,6 +33,15 @@ type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
     init_tracing();
+
+    // Log version and build information on startup
+    info!(
+        version = %BuildInfo::GIT_DESCRIBE,
+        git_sha = %BuildInfo::GIT_SHA_SHORT,
+        git_branch = %BuildInfo::GIT_BRANCH,
+        build_timestamp = %BuildInfo::BUILD_TIMESTAMP,
+        "embucket-lambda started"
+    );
 
     let env_config = EnvConfig::from_env();
     info!(

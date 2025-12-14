@@ -1,3 +1,4 @@
+use build_info::BuildInfo;
 use executor::utils::{Config as ExecutionConfig, MemPoolType};
 use std::{env, path::PathBuf};
 
@@ -40,7 +41,7 @@ impl EnvConfig {
             mem_pool_size_mb: parse_env("MEM_POOL_SIZE_MB"),
             mem_enable_track_consumers_pool: parse_env("MEM_ENABLE_TRACK_CONSUMERS_POOL"),
             disk_pool_size_mb: parse_env("DISK_POOL_SIZE_MB"),
-            embucket_version: env_or_default("EMBUCKET_VERSION", "0.1.0"),
+            embucket_version: env_or_default("EMBUCKET_VERSION", BuildInfo::VERSION),
             metastore_config: env::var("METASTORE_CONFIG").ok().map(PathBuf::from),
             jwt_secret: env::var("JWT_SECRET").ok(),
             max_concurrent_table_fetches: parse_env("MAX_CONCURRENT_TABLE_FETCHES").unwrap_or(5),
