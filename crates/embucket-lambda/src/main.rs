@@ -79,7 +79,11 @@ struct LambdaApp {
 impl LambdaApp {
     #[tracing::instrument(name = "lambda_app_initialize", skip_all, fields(
         data_format = %config.data_format,
-        max_concurrency = config.max_concurrency_level
+        max_concurrency = config.max_concurrency_level,
+        version = %BuildInfo::GIT_DESCRIBE,
+        git_sha = %BuildInfo::GIT_SHA_SHORT,
+        git_branch = %BuildInfo::GIT_BRANCH,
+        build_timestamp = %BuildInfo::BUILD_TIMESTAMP,
     ))]
     async fn initialize(config: EnvConfig) -> InitResult<Self> {
         let snowflake_cfg = SnowflakeServerConfig::new(
@@ -123,7 +127,11 @@ impl LambdaApp {
         http.method = %request.method(),
         http.uri = %request.uri(),
         http.request_id = tracing::field::Empty,
-        http.status_code = tracing::field::Empty
+        http.status_code = tracing::field::Empty,
+        version = %BuildInfo::GIT_DESCRIBE,
+        git_sha = %BuildInfo::GIT_SHA_SHORT,
+        git_branch = %BuildInfo::GIT_BRANCH,
+        build_timestamp = %BuildInfo::BUILD_TIMESTAMP,
     ))]
     async fn handle_event(&self, request: Request) -> Result<Response<LambdaBody>, LambdaError> {
         let (parts, body) = request.into_parts();
