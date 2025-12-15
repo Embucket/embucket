@@ -30,6 +30,7 @@ pub fn executor_default_cfg() -> UtilsConfig {
     UtilsConfig::default().with_max_concurrency_level(2)
 }
 
+#[must_use]
 pub fn metastore_default_settings_cfg() -> MetastoreSettingsConfig {
     MetastoreSettingsConfig::default()
         .with_object_store_connect_timeout(1)

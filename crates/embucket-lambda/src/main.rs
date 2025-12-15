@@ -22,7 +22,6 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use opentelemetry_otlp::WithExportConfig;
 use tower::ServiceExt;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -163,10 +162,6 @@ impl LambdaApp {
             );
         }
 
-        // if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
-        //     return Ok(snowflake_error_response(&err));
-        // }
-
         let mut axum_request = to_axum_request(parts, body_bytes);
         if let Some(addr) = extract_socket_addr(axum_request.headers()) {
             axum_request.extensions_mut().insert(ConnectInfo(addr));
@@ -245,19 +240,17 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
         // Initialize OTLP exporter using gRPC (Tonic)
         opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
-            .with_endpoint("http://127.0.0.1:4317".to_string())
             .build()
             .expect("Failed to create OTLP gRPC exporter")
     } else {
         // Initialize OTLP exporter using HTTP
         opentelemetry_otlp::SpanExporter::builder()
             .with_http()
-            .with_endpoint("http://127.0.0.1:4318".to_string())
             .build()
             .expect("Failed to create OTLP HTTP exporter")
     };
 
-    let resource = Resource::builder().with_service_name("embucket-lambda-api").build();
+    let resource = Resource::builder().build();
 
     let tracing_provider = SdkTracerProvider::builder()
         .with_span_processor(BatchSpanProcessor::builder(exporter).build())
