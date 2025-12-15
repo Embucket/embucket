@@ -65,7 +65,7 @@ impl EnvConfig {
             otel_grpc: parse_env("OTEL_GRPC").unwrap_or(true),
             tracing_level: env_or_default("TRACING_LEVEL", "INFO"),
             log_format: env_or_default("LOG_FORMAT", "pretty"),
-            log_filter: parse_env("RUST_LOG").unwrap_or("INFO".to_string()),
+            log_filter: parse_env("RUST_LOG").unwrap_or_else(|| "INFO".to_string()),
         }
     }
 

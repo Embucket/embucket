@@ -15,17 +15,17 @@ use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{Body as LambdaBody, Error as LambdaError, Request, Response, service_fn};
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::trace::BatchSpanProcessor;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
-use opentelemetry::trace::TracerProvider;
-use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::trace::BatchSpanProcessor;
-use opentelemetry_sdk::trace::SdkTracerProvider;
-use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
@@ -41,21 +41,9 @@ const DISABLED_TARGETS: [&str; 2] = ["h2", "aws_smithy_runtime"];
 
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
-    init_tracing();
-
-    // Log version and build information on startup
-    info!(
-        version = %BuildInfo::GIT_DESCRIBE,
-        git_sha = %BuildInfo::GIT_SHA_SHORT,
-        git_branch = %BuildInfo::GIT_BRANCH,
-        build_timestamp = %BuildInfo::BUILD_TIMESTAMP,
-        "embucket-lambda started"
-    );
-
     let env_config = EnvConfig::from_env();
 
-    init_tracing(&env_config);
-    init_tracing_and_logs(&env_config);
+    let tracing_provider = init_tracing_and_logs(&env_config);
 
     info!(
         data_format = %env_config.data_format,
@@ -78,11 +66,18 @@ async fn main() -> Result<(), LambdaError> {
         err
     })?);
 
-    run(service_fn(move |event: Request| {
+    let err = run(service_fn(move |event: Request| {
         let app = Arc::clone(&app);
         async move { app.handle_event(event).await }
     }))
-    .await
+    .await;
+
+    tracing_provider.shutdown().map_err(|err| {
+        error!(error = %err, "Failed to shutdown TracerProvider");
+        err
+    })?;
+
+    err
 }
 
 struct LambdaApp {
@@ -287,29 +282,31 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
     // Logs filtering
     // fmt::layer has different types for json vs plain
     if config.log_format == "json" {
-        registry.with(
-            tracing_subscriber::fmt::layer()
-                .with_target(true)
-                .with_ansi(false)
-                .json()
-                .with_current_span(true)
-                .with_span_list(true)
-        )
-        .with(EnvFilter::new(config.log_filter.clone()))
-        .init();
+        registry
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_target(true)
+                    .with_ansi(false)
+                    .json()
+                    .with_current_span(true)
+                    .with_span_list(true),
+            )
+            .with(EnvFilter::new(config.log_filter.clone()))
+            .init();
     } else {
-        registry.with(
-            tracing_subscriber::fmt::layer()
-                .with_target(true)
-                .with_ansi(std::io::stdout().is_terminal())
-                .with_span_events(
-                    tracing_subscriber::fmt::format::FmtSpan::ENTER
-                        | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
-                )
-        )
-        .with(EnvFilter::new(config.log_filter.clone()))
-        .init();
-    };
+        registry
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_target(true)
+                    .with_ansi(std::io::stdout().is_terminal())
+                    .with_span_events(
+                        tracing_subscriber::fmt::format::FmtSpan::ENTER
+                            | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+                    ),
+            )
+            .with(EnvFilter::new(config.log_filter.clone()))
+            .init();
+    }
 
     tracing_provider
 }
