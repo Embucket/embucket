@@ -102,7 +102,7 @@ impl LambdaApp {
         let metastore_cfg = if let Some(config_path) = &config.metastore_config {
             MetastoreConfig::ConfigPath(config_path.clone())
         } else {
-            MetastoreConfig::None
+            MetastoreConfig::Env
         };
 
         let metastore_settings_config = MetastoreSettingsConfig::default()

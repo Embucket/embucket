@@ -2,6 +2,7 @@
 
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
 FUNCTION_NAME ?= embucket-lambda
+ENV_FILE ?= .env
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
