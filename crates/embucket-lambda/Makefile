@@ -15,7 +15,7 @@ deploy: build deploy-only
 # Quick deploy without rebuild
 deploy-only:
 	cd ../.. && cargo lambda deploy --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:19
- --binary-name bootstrap $(FUNCTION_NAME)
+ --binary-name bootstrap $(FUNCTION_NAME) --env-file $(ENV_FILE)
 
 # Watch locally for development
 watch:
