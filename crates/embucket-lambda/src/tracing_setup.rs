@@ -4,22 +4,22 @@ use axum::response::IntoResponse;
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_otlp::WithTonicConfig;
 use opentelemetry_otlp::WithHttpConfig;
+use opentelemetry_otlp::WithTonicConfig;
+use opentelemetry_otlp::tonic_types::metadata::MetadataMap;
+use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
-use opentelemetry_sdk::Resource;
-use opentelemetry_otlp::tonic_types::metadata::MetadataMap;
 use std::collections::HashMap;
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
+use tracing_subscriber::layer::SubscriberExt;
 
 /// Configure OpenTelemetry OTLP exporter to Honeycomb and return the tracer provider.
 /// In Lambda, this should be called once during init; remember to force_flush after each invocation.
 pub fn init_tracing() -> SdkTracerProvider {
     // Service name visible in Honeycomb
-    let service_name = std::env::var("OTEL_SERVICE_NAME")
-        .unwrap_or_else(|_| "embucket-lambda-api".to_string());
+    let service_name =
+        std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "embucket-lambda-api".to_string());
 
     // Select endpoint and protocol from env (defaults: HTTP, US endpoint)
     let endpoint = std::env::var("HONEYCOMB_API_ENDPOINT")
@@ -43,79 +43,90 @@ pub fn init_tracing() -> SdkTracerProvider {
     let span_exporter = if sdk_disabled {
         tracing::warn!("OTEL_SDK_DISABLED is set; OpenTelemetry exporter disabled");
         None
-    } else { match (hc_api_key.as_deref(), hc_dataset.as_deref()) {
-        (Some(api_key), Some(dataset)) => {
-            if protocol.eq_ignore_ascii_case("grpc") {
-                // gRPC to Honeycomb
-                let mut builder = opentelemetry_otlp::SpanExporterBuilder::default()
-                    .with_tonic()
-                    .with_endpoint(&endpoint);
+    } else {
+        match (hc_api_key.as_deref(), hc_dataset.as_deref()) {
+            (Some(api_key), Some(dataset)) => {
+                if protocol.eq_ignore_ascii_case("grpc") {
+                    // gRPC to Honeycomb
+                    let mut builder = opentelemetry_otlp::SpanExporterBuilder::default()
+                        .with_tonic()
+                        .with_endpoint(&endpoint);
 
-                let mut md = MetadataMap::with_capacity(2);
-                if let Ok(v) = api_key.parse() { md.insert("x-honeycomb-team", v); }
-                if let Ok(v) = dataset.parse() { md.insert("x-honeycomb-dataset", v); }
-                builder = builder.with_metadata(md);
-
-                match builder
-                    .with_timeout(std::time::Duration::from_secs(10))
-                    .build()
-                {
-                    Ok(exp) => {
-                        tracing::info!(endpoint=%endpoint, dataset=%dataset, protocol="grpc", "Configured Honeycomb OTLP exporter");
-                        Some(exp)
-                    },
-                    Err(err) => {
-                        tracing::error!(%err, endpoint=%endpoint, protocol=%protocol, "Failed to create OTLP gRPC span exporter for Honeycomb; continuing without exporter");
-                        None
+                    let mut md = MetadataMap::with_capacity(2);
+                    if let Ok(v) = api_key.parse() {
+                        md.insert("x-honeycomb-team", v);
                     }
-                }
-            } else {
-                // HTTP/protobuf to Honeycomb (default)
-                // Ensure we send to the OTLP HTTP traces path.
-                let http_endpoint = if endpoint.contains("/v1/traces") {
-                    endpoint.clone()
-                } else if endpoint.ends_with('/') {
-                    format!("{}v1/traces", endpoint)
+                    if let Ok(v) = dataset.parse() {
+                        md.insert("x-honeycomb-dataset", v);
+                    }
+                    builder = builder.with_metadata(md);
+
+                    match builder
+                        .with_timeout(std::time::Duration::from_secs(10))
+                        .build()
+                    {
+                        Ok(exp) => {
+                            tracing::info!(endpoint=%endpoint, dataset=%dataset, protocol="grpc", "Configured Honeycomb OTLP exporter");
+                            Some(exp)
+                        }
+                        Err(err) => {
+                            tracing::error!(%err, endpoint=%endpoint, protocol=%protocol, "Failed to create OTLP gRPC span exporter for Honeycomb; continuing without exporter");
+                            None
+                        }
+                    }
                 } else {
-                    format!("{}/v1/traces", endpoint)
-                };
+                    // HTTP/protobuf to Honeycomb (default)
+                    // Ensure we send to the OTLP HTTP traces path.
+                    let http_endpoint = if endpoint.contains("/v1/traces") {
+                        endpoint.clone()
+                    } else if endpoint.ends_with('/') {
+                        format!("{}v1/traces", endpoint)
+                    } else {
+                        format!("{}/v1/traces", endpoint)
+                    };
 
-                let mut builder = opentelemetry_otlp::SpanExporterBuilder::default()
-                    .with_http()
-                    .with_endpoint(&http_endpoint);
+                    let mut builder = opentelemetry_otlp::SpanExporterBuilder::default()
+                        .with_http()
+                        .with_endpoint(&http_endpoint);
 
-                let mut headers = HashMap::with_capacity(2);
-                headers.insert("x-honeycomb-team".to_string(), api_key.to_string());
-                headers.insert("x-honeycomb-dataset".to_string(), dataset.to_string());
-                builder = builder.with_headers(headers);
+                    let mut headers = HashMap::with_capacity(2);
+                    headers.insert("x-honeycomb-team".to_string(), api_key.to_string());
+                    headers.insert("x-honeycomb-dataset".to_string(), dataset.to_string());
+                    builder = builder.with_headers(headers);
 
-                match builder
-                    .with_timeout(std::time::Duration::from_secs(10))
-                    .build()
-                {
-                    Ok(exp) => {
-                        tracing::info!(endpoint=%http_endpoint, dataset=%dataset, protocol="http/protobuf", "Configured Honeycomb OTLP exporter");
-                        Some(exp)
-                    },
-                    Err(err) => {
-                        tracing::error!(%err, endpoint=%http_endpoint, protocol=%protocol, "Failed to create OTLP HTTP span exporter for Honeycomb; continuing without exporter");
-                        None
+                    match builder
+                        .with_timeout(std::time::Duration::from_secs(10))
+                        .build()
+                    {
+                        Ok(exp) => {
+                            tracing::info!(endpoint=%http_endpoint, dataset=%dataset, protocol="http/protobuf", "Configured Honeycomb OTLP exporter");
+                            Some(exp)
+                        }
+                        Err(err) => {
+                            tracing::error!(%err, endpoint=%http_endpoint, protocol=%protocol, "Failed to create OTLP HTTP span exporter for Honeycomb; continuing without exporter");
+                            None
+                        }
                     }
                 }
             }
+            _ => {
+                tracing::info!(
+                    "HONEYCOMB_API_KEY or HONEYCOMB_DATASET not set; OpenTelemetry exporter disabled"
+                );
+                None
+            }
         }
-        _ => {
-            tracing::info!("HONEYCOMB_API_KEY or HONEYCOMB_DATASET not set; OpenTelemetry exporter disabled");
-            None
-        }
-    }};
+    };
 
-    let mut provider_builder = SdkTracerProvider::builder()
-        .with_resource(Resource::builder().with_service_name(service_name.clone()).build());
+    let mut provider_builder = SdkTracerProvider::builder().with_resource(
+        Resource::builder()
+            .with_service_name(service_name.clone())
+            .build(),
+    );
 
     if let Some(exporter) = span_exporter {
-        provider_builder = provider_builder
-            .with_span_processor(BatchSpanProcessor::builder(exporter).build());
+        provider_builder =
+            provider_builder.with_span_processor(BatchSpanProcessor::builder(exporter).build());
     } else {
         tracing::warn!("OpenTelemetry exporter not configured; traces will not be sent");
     }

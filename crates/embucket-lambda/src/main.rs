@@ -11,9 +11,9 @@ use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
-use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use axum::middleware::from_fn_with_state;
 use axum::{Router, middleware};
+use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
 use http::HeaderMap;
 use http_body_util::BodyExt;
 use lambda_http::{
@@ -40,7 +40,8 @@ async fn main() -> Result<(), LambdaError> {
     //Has `Arc` inside
     // let tracer_provider = init_tracing();
 
-    tracing_subscriber::fmt().json()
+    tracing_subscriber::fmt()
+        .json()
         .with_max_level(tracing::Level::INFO)
         // this needs to be set to remove duplicated information in the log.
         .with_current_span(false)
@@ -72,14 +73,10 @@ async fn main() -> Result<(), LambdaError> {
         "Loaded Lambda configuration"
     );
 
-    let app = Arc::new(
-        LambdaApp::initialize(env_config)
-            .await
-            .map_err(|err| {
-                error!(error = %err, "Failed to initialize Lambda services");
-                err
-            })?,
-    );
+    let app = Arc::new(LambdaApp::initialize(env_config).await.map_err(|err| {
+        error!(error = %err, "Failed to initialize Lambda services");
+        err
+    })?);
 
     run(service_fn(move |event: Request| {
         let app = Arc::clone(&app);
@@ -133,12 +130,12 @@ impl LambdaApp {
             .with_session_timeout(tokio::time::Duration::from_secs(SESSION_EXPIRATION_SECONDS))?;
 
         let appstate = AppState::from(&core_state);
-        let router = make_snowflake_router(appstate)
-            .layer(tower_http::trace::TraceLayer::new_for_http());
-            // .layer(middleware::from_fn_with_state(
-            //     tracer_provider.clone(),
-            //     trace_flusher,
-            // ));
+        let router =
+            make_snowflake_router(appstate).layer(tower_http::trace::TraceLayer::new_for_http());
+        // .layer(middleware::from_fn_with_state(
+        //     tracer_provider.clone(),
+        //     trace_flusher,
+        // ));
         info!("Initialized Lambda Snowflake REST services");
 
         Ok(Self { router })
