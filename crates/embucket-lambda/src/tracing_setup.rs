@@ -1,15 +1,14 @@
 use api_snowflake_rest::server::error;
-use api_snowflake_rest_sessions::layer::Host;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, WithTonicConfig};
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
-use tracing::{Subscriber, instrument};
+use tracing::Subscriber;
 use tracing_subscriber::filter::{EnvFilter, FilterExt, filter_fn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
