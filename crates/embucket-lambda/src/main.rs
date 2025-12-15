@@ -21,6 +21,7 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use opentelemetry_otlp::WithExportConfig;
 use tower::ServiceExt;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -235,17 +236,19 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
         // Initialize OTLP exporter using gRPC (Tonic)
         opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
+            .with_endpoint("http://127.0.0.1:4317".to_string())
             .build()
             .expect("Failed to create OTLP gRPC exporter")
     } else {
         // Initialize OTLP exporter using HTTP
         opentelemetry_otlp::SpanExporter::builder()
             .with_http()
+            .with_endpoint("http://127.0.0.1:4318".to_string())
             .build()
             .expect("Failed to create OTLP HTTP exporter")
     };
 
-    let resource = Resource::builder().build();
+    let resource = Resource::builder().with_service_name("embucket-lambda-api").build();
 
     let tracing_provider = SdkTracerProvider::builder()
         .with_span_processor(BatchSpanProcessor::builder(exporter).build())
@@ -275,11 +278,12 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
         registry
             .with(
                 tracing_subscriber::fmt::layer()
-                    .with_target(true)
-                    .with_ansi(false)
                     .json()
-                    .with_current_span(true)
-                    .with_span_list(true),
+                    .with_target(false)
+                    .with_ansi(false)
+                    .with_current_span(false)
+                    .with_span_list(false)
+                    .without_time(),
             )
             .with(EnvFilter::new(config.log_filter.clone()))
             .init();
