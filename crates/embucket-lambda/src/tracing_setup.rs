@@ -9,13 +9,13 @@ use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, WithTonicConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
-use tracing::{instrument, Subscriber};
+use tracing::{Subscriber, instrument};
 use tracing_subscriber::filter::{EnvFilter, FilterExt, filter_fn};
 use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, Registry};
-use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 /// Configures and initializes tracing, returning a provider for graceful shutdown
 ///
