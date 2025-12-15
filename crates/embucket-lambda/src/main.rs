@@ -7,7 +7,7 @@ use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
-use axum::Router;
+use axum::{middleware, Router};
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
@@ -27,6 +27,9 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use axum::extract::{Request as AxumRequest, State};
+use axum::middleware::Next;
+use axum::response::IntoResponse;
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
         use lambda_http::run_with_streaming_response as run;
@@ -236,14 +239,12 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
         // Initialize OTLP exporter using gRPC (Tonic)
         opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
-            .with_endpoint("http://127.0.0.1:4317".to_string())
             .build()
             .expect("Failed to create OTLP gRPC exporter")
     } else {
         // Initialize OTLP exporter using HTTP
         opentelemetry_otlp::SpanExporter::builder()
             .with_http()
-            .with_endpoint("http://127.0.0.1:4318".to_string())
             .build()
             .expect("Failed to create OTLP HTTP exporter")
     };
