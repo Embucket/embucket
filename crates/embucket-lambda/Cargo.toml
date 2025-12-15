@@ -29,7 +29,6 @@ opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.0", features = ["grpc-tonic", "http-proto"] }
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio", "http"] }
 tracing-opentelemetry = "0.32.0"
-reqwest = { version = "0.12.24", default-features = false, features = ["rustls-tls"] }
 
 [lints]
 workspace = true

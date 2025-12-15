@@ -42,7 +42,6 @@ pub fn init_tracing() -> SdkTracerProvider {
 
         opentelemetry_otlp::SpanExporter::builder()
             .with_http()
-            .with_http_client(reqwest::Client::default())
             .with_endpoint(endpoint)
             .build()
             .expect("Failed to create OTLP HTTP SpanExporter")
