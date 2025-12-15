@@ -10,12 +10,12 @@ build:
 
 # Deploy to AWS (must run from workspace root for include paths to work)
 deploy: build
-	cd ../.. && cargo lambda deploy --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:17
+	cd ../.. && cargo lambda deploy --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:19
  --binary-name bootstrap $(FUNCTION_NAME)
 
 # Quick deploy without rebuild
 deploy-only:
-	cd ../.. && cargo lambda deploy --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:17
+	cd ../.. && cargo lambda deploy --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1 arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:19
  --binary-name bootstrap $(FUNCTION_NAME)
 
 # Watch locally for development
