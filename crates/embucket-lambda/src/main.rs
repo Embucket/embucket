@@ -241,9 +241,7 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
             .expect("Failed to create OTLP HTTP exporter")
     };
 
-    let resource = Resource::builder()
-        .with_service_name("embucket-lambda-api")
-        .build();
+    let resource = Resource::builder().build();
 
     let tracing_provider = SdkTracerProvider::builder()
         .with_span_processor(BatchSpanProcessor::builder(exporter).build())
