@@ -2,6 +2,7 @@
 
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
 FUNCTION_NAME ?= embucket-lambda
+ENV_FILE ?= .env
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
@@ -9,12 +10,12 @@ build:
 	cd ../.. && cargo lambda build --release --arm64 --manifest-path crates/embucket-lambda/Cargo.toml $(FEATURES_PARAM)
 
 # Deploy to AWS (must run from workspace root for include paths to work)
-deploy: build
-	cd ../.. && cargo lambda deploy --binary-name bootstrap $(FUNCTION_NAME)
+deploy: build deploy-only
+	@echo "Deployed $(FUNCTION_NAME) to AWS"
 
 # Quick deploy without rebuild
 deploy-only:
-	cd ../.. && cargo lambda deploy --binary-name bootstrap $(FUNCTION_NAME)
+	cd ../.. && cargo lambda deploy --binary-name bootstrap $(FUNCTION_NAME) --env-file $(ENV_FILE)
 
 # Watch locally for development
 watch:
