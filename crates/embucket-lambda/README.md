@@ -68,8 +68,14 @@ cargo lambda deploy --binary-name bootstrap
 **Other Settings** (in `Cargo.toml`):
 - Memory: `memory = 3008`
 - Timeout: `timeout = 30`
-- Environment variables: `[package.metadata.lambda.deploy.env]`
 - Included files: `include = ["config"]`
+
+**Environment Variables**
+- Set envs using `ENV_FILE=.env` environment variable: 
+  ``` sh
+  ENV_FILE=".env.dev" make deploy
+  ```
+- It will deploy envs from `.env` if `ENV_FILE` not specified
 
 ### Test locally
 
