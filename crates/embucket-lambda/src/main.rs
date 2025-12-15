@@ -7,7 +7,7 @@ use api_snowflake_rest::server::make_snowflake_router;
 use api_snowflake_rest::server::server_models::RestApiConfig as SnowflakeServerConfig;
 use api_snowflake_rest::server::state::AppState;
 use api_snowflake_rest_sessions::session::SESSION_EXPIRATION_SECONDS;
-use axum::{middleware, Router};
+use axum::Router;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::ConnectInfo;
 use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
@@ -21,15 +21,11 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use opentelemetry_otlp::WithExportConfig;
 use tower::ServiceExt;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
-use axum::extract::{Request as AxumRequest, State};
-use axum::middleware::Next;
-use axum::response::IntoResponse;
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
         use lambda_http::run_with_streaming_response as run;
@@ -157,10 +153,6 @@ impl LambdaApp {
             );
         }
 
-        // if let Err(err) = ensure_session_header(&mut parts.headers, &self.state).await {
-        //     return Ok(snowflake_error_response(&err));
-        // }
-
         let mut axum_request = to_axum_request(parts, body_bytes);
         if let Some(addr) = extract_socket_addr(axum_request.headers()) {
             axum_request.extensions_mut().insert(ConnectInfo(addr));
@@ -249,7 +241,9 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
             .expect("Failed to create OTLP HTTP exporter")
     };
 
-    let resource = Resource::builder().with_service_name("embucket-lambda-api").build();
+    let resource = Resource::builder()
+        .with_service_name("embucket-lambda-api")
+        .build();
 
     let tracing_provider = SdkTracerProvider::builder()
         .with_span_processor(BatchSpanProcessor::builder(exporter).build())
