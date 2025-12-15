@@ -15,6 +15,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{Layer, Registry};
+use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 /// Configures and initializes tracing, returning a provider for graceful shutdown
 ///
@@ -23,30 +24,34 @@ use tracing_subscriber::{Layer, Registry};
 pub fn init_tracing() -> SdkTracerProvider {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let otlp_endpoint = std::env::var("OPENTELEMETRY_ENDPOINT_URL")
-        .unwrap_or_else(|_| "http://localhost:4317".to_string());
+    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .unwrap_or_else(|_| "http://127.0.0.1:4317".to_string());
+
+    let protocol = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
+        .unwrap_or_else(|_| "http/protobuf".to_string());
 
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
-        .with_endpoint(otlp_endpoint)
+        .with_endpoint(endpoint)
         .build()
-        .expect("Failed to create OTLP SpanExporter");
+        .expect("Failed to create OTLP HTTP SpanExporter");
 
     let tracer_provider = SdkTracerProvider::builder()
         .with_span_processor(BatchSpanProcessor::builder(exporter).build())
         .with_resource(resource())
         .build();
 
-    let tracer = tracer_provider.tracer("embucket-lambda"); // The name of the tracer
+    let tracer = tracer_provider.tracer("embucket-lambda");
     global::set_tracer_provider(tracer_provider.clone());
 
     let otel_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer)
         .with_filter(EnvFilter::from_default_env());
 
-    let fmt_layer = build_fmt_layer();
-
-    Registry::default().with(otel_layer).with(fmt_layer).init();
+    Registry::default()
+        .with(otel_layer)
+        .with(tracing_subscriber::fmt::layer().json().with_ansi(false))
+        .init();
 
     tracer_provider
 }
@@ -66,32 +71,33 @@ where
     // RUST_LOG
     let fmt_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let span_events_filter = filter_fn(|meta| meta.is_span());
-    let log_events_filter = filter_fn(|meta| meta.is_event());
+    let span_events_filter = filter_fn(|meta| meta.is_span() || meta.is_event());
 
-    let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
+    let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
 
     if log_format == "json" {
         tracing_subscriber::fmt::layer()
             .json()
-            .with_target(true)
-            .with_current_span(true)
-            .with_span_list(true)
-            // Apply the filter only to log events, not span open/close.
-            .with_filter(span_events_filter.or(log_events_filter.and(fmt_filter)))
+            // this needs to be set to remove duplicated information in the log.
+            .with_current_span(false)
+            // this needs to be set to false, otherwise ANSI color codes will
+            // show up in a confusing manner in CloudWatch logs.
+            .with_ansi(false)
+            // disabling time is handy because CloudWatch will add the ingestion time.
+            .without_time()
+            // remove the name of the function from every log entry
+            .with_target(false)
             .boxed()
     } else {
         tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_target(true)
             .with_span_events(FmtSpan::CLOSE)
-            .with_filter(span_events_filter.or(log_events_filter.and(fmt_filter)))
+            .with_filter(span_events_filter.and(fmt_filter))
             .boxed()
     }
 }
-#[lambda_http::tracing::instrument(name = "lambda_handle_event", skip_all, fields(
-        flush_result = tracing::field::Empty,
-))]
+#[lambda_http::tracing::instrument]
 pub async fn trace_flusher(
     State(state): State<SdkTracerProvider>,
     req: Request,
@@ -100,8 +106,6 @@ pub async fn trace_flusher(
     let response = next.run(req).await;
 
     let flush_result = state.force_flush();
-
-    tracing::Span::current().record("flush_result", format!("{:#?}", flush_result));
 
     Ok(response)
 }
