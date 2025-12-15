@@ -5,7 +5,7 @@ use axum::middleware::Next;
 use axum::response::IntoResponse;
 use opentelemetry::global;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, WithTonicConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
@@ -24,17 +24,29 @@ use tracing_subscriber::fmt::writer::MakeWriterExt;
 pub fn init_tracing() -> SdkTracerProvider {
     global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
-        .unwrap_or_else(|_| "http://127.0.0.1:4317".to_string());
-
     let protocol = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
         .unwrap_or_else(|_| "http/protobuf".to_string());
 
-    let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
-        .with_endpoint(endpoint)
-        .build()
-        .expect("Failed to create OTLP HTTP SpanExporter");
+    let exporter = if protocol == "grpc" {
+        let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+            .unwrap_or_else(|_| "http://127.0.0.1:4317".to_string());
+
+        opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .with_endpoint(endpoint)
+            .build()
+            .expect("Failed to create OTLP HTTP SpanExporter")
+    } else {
+        let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+            .unwrap_or_else(|_| "http://127.0.0.1:4318".to_string());
+
+        opentelemetry_otlp::SpanExporter::builder()
+            .with_http()
+            .with_http_client(reqwest::Client::default())
+            .with_endpoint(endpoint)
+            .build()
+            .expect("Failed to create OTLP HTTP SpanExporter")
+    };
 
     let tracer_provider = SdkTracerProvider::builder()
         .with_span_processor(BatchSpanProcessor::builder(exporter).build())
@@ -105,7 +117,7 @@ pub async fn trace_flusher(
 ) -> error::Result<impl IntoResponse> {
     let response = next.run(req).await;
 
-    let flush_result = state.force_flush();
+    let _ = state.force_flush();
 
     Ok(response)
 }
