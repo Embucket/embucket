@@ -20,7 +20,7 @@ cd crates/embucket-lambda
 make deploy
 
 # Deploy to a different function
-make deploy my-other-function
+make deploy FUNCTION_NAME=my-other-function
 
 # Deploy without rebuilding
 make deploy-only
