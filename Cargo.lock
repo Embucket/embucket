@@ -1792,6 +1792,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "build-info"
+version = "0.1.0"
+
+[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3302,6 +3306,7 @@ dependencies = [
  "api-snowflake-rest-sessions",
  "axum 0.8.7",
  "base64 0.22.1",
+ "build-info",
  "catalog-metastore",
  "cfg-if",
  "executor",
@@ -3327,6 +3332,7 @@ dependencies = [
  "api-snowflake-rest",
  "api-snowflake-rest-sessions",
  "axum 0.8.7",
+ "build-info",
  "catalog-metastore",
  "clap",
  "console-subscriber",

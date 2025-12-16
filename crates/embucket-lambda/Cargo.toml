@@ -9,6 +9,7 @@ api-snowflake-rest = { path = "../api-snowflake-rest" }
 api-snowflake-rest-sessions = { path = "../api-snowflake-rest-sessions" }
 catalog-metastore = { path = "../catalog-metastore" }
 executor = { path = "../executor" }
+build-info = { path = "../build-info" }
 lambda_http = "0.17"
 tokio = { workspace = true }
 tracing = { workspace = true }
