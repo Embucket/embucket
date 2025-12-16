@@ -2,6 +2,16 @@
 
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
 FUNCTION_NAME ?=
+
+# Allow: make deploy my-function   (without writing FUNCTION_NAME=...)
+EXTRA_GOALS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+ifneq ($(strip $(EXTRA_GOALS)),)
+  FUNCTION_NAME := $(word 1,$(EXTRA_GOALS))
+endif
+
+# Swallow the extra goal(s) so make doesn't treat them as real targets
+$(eval $(EXTRA_GOALS):;@:)
+
 ENV_FILE ?= embucket-lambda/.env
 IAM_ROLE ?= arn:aws:iam::767397688925:role/EmbucketLambdaExecRole
 # --layer-arn required for flexibiity
@@ -18,6 +28,7 @@ deploy: build deploy-only
 
 # Quick deploy without rebuild
 deploy-only:
+	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make deploy <function-name>" >&2; exit 1)
 	cd ../.. && cargo lambda deploy --layer-arn $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
 
 # Watch locally for development
@@ -30,6 +41,7 @@ test:
 
 # Tail lambda logs
 logs:
+	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make deploy <function-name>" >&2; exit 1)
 	aws logs tail /aws/lambda/$(FUNCTION_NAME) --since 5m --follow
 
 # Verify deployment with snow CLI
