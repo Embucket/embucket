@@ -29,7 +29,7 @@ deploy: build deploy-only
 # Quick deploy without rebuild
 deploy-only:
 	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make deploy <function-name>" >&2; exit 1)
-	cd ../.. && cargo lambda deploy --layer-arn $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME) && aws logs create-log-group --log-group-name /aws/lambda/$(FUNCTION_NAME)
+	cd ../.. && cargo lambda deploy --layer-arn $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME) && aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)"
 
 # Watch locally for development
 watch:
