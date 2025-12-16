@@ -1,0 +1,3 @@
+[alias]
+lambda-deploy = "!sh -c 'make -C crates/embucket-lambda deploy \"$1\"' --"
+lambda-deploy-only = "!sh -c 'make -C crates/embucket-lambda deploy-only \"$1\"' --"
