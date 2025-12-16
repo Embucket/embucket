@@ -30,6 +30,22 @@ deploy: build deploy-only
 deploy-only:
 	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make deploy <function-name>" >&2; exit 1)
 	cd ../.. && cargo lambda deploy --layer-arn $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME) && aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)"
+	@$(MAKE) url FUNCTION_NAME=$(FUNCTION_NAME)
+
+url:
+	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make url <function-name>" >&2; exit 1)
+	@set -e; \
+	echo "Ensuring Function URL config exists for $(FUNCTION_NAME) (auth: NONE)..." ; \
+	aws lambda create-function-url-config --function-name "$(FUNCTION_NAME)" --auth-type NONE >/dev/null 2>&1 || \
+	  aws lambda update-function-url-config --function-name "$(FUNCTION_NAME)" --auth-type NONE >/dev/null ; \
+	echo "Ensuring public invoke permission exists..." ; \
+	aws lambda add-permission --function-name "$(FUNCTION_NAME)" \
+	  --statement-id AllowPublicURLInvoke \
+	  --action lambda:InvokeFunctionUrl \
+	  --principal "*" \
+	  --function-url-auth-type NONE >/dev/null 2>&1 || true ; \
+	URL="$$(aws lambda get-function-url-config --function-name "$(FUNCTION_NAME)" --query 'FunctionUrl' --output text)"; \
+	echo "$$URL"
 
 # Watch locally for development
 watch:
