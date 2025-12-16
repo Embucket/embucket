@@ -1,21 +1,12 @@
 .PHONY: build deploy test logs clean
 
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
-FUNCTION_NAME ?=
-
-# Allow: make deploy my-function   (without writing FUNCTION_NAME=...)
-EXTRA_GOALS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-ifneq ($(strip $(EXTRA_GOALS)),)
-  FUNCTION_NAME := $(word 1,$(EXTRA_GOALS))
-endif
-
-# Swallow the extra goal(s) so make doesn't treat them as real targets
-$(eval $(EXTRA_GOALS):;@:)
+FUNCTION_NAME ?= embucket-lambda
 
 ENV_FILE ?= crates/embucket-lambda/.env
 IAM_ROLE ?= arn:aws:iam::767397688925:role/EmbucketLambdaExecRole
 # --layer-arn required for flexibiity
-OTEL_COLLECTOR_LAYER ?= arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:21
+OTEL_COLLECTOR_LAYER ?= --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:21
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
@@ -29,8 +20,8 @@ deploy: build deploy-only
 # Quick deploy without rebuild
 deploy-only:
 	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make deploy <function-name>" >&2; exit 1)
-	cd ../.. && cargo lambda deploy --layer-arn $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
-	aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)"
+	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
+	aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)" >/dev/null 2>&1 || true
 	@$(MAKE) url FUNCTION_NAME=$(FUNCTION_NAME)
 
 url:
