@@ -20,7 +20,7 @@ cd crates/embucket-lambda
 make deploy
 
 # Deploy to a different function
-make deploy FUNCTION_NAME=my-other-function
+make deploy my-other-function
 
 # Deploy without rebuilding
 make deploy-only
@@ -31,6 +31,9 @@ make verify
 # Watch logs
 make logs
 ```
+
+`make deploy` will build, deploy with .env vars and with the iam-role in the makefile, add logs group, create a url, add allow uri access policy. And volia - it works. 
+P.S. Don't forget to change host url in the `snowcli` config.
 
 The function name defaults to `embucket-lambda` but can be overridden:
 - Via Makefile variable: `make deploy FUNCTION_NAME=my-function`
