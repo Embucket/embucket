@@ -77,6 +77,22 @@ cargo lambda deploy --binary-name bootstrap
   ```
 - It will deploy envs from `.env` if `ENV_FILE` not specified
 
+### Observability
+
+
+#### AWS traces
+We send events, spans to stdout log in json format, and in case if AWS X-Ray is enabled it enhances traces.
+- `RUST_LOG` - Controls verbosity log level. Default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
+
+#### Exporting telemetry spans to [**honeycomb.io**](https://docs.honeycomb.io/send-data/opentelemetry/collector/)
+- Required environment variables configuring remote Observability platform:
+  * `HONEYCOMB_API_KEY`
+  * `HONEYCOMB_DATASET`
+  * `ENDPOINT_URL` (should become `HONEYCOMB_ENDPOINT_URL`)
+- Optional:
+  * `OTEL_SERVICE_NAME`
+  - `TRACING_LEVEL` - verbosity level, default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
+
 ### Test locally
 
 ```bash
@@ -107,5 +123,6 @@ aws logs tail /aws/lambda/embucket-lambda --since 5m --follow
 - `LOG_FORMAT`: json
 - `METASTORE_CONFIG`: config/metastore.yaml
 - `RUST_LOG`: (optional) Set logging level, defaults to "info"
+- `TRACING_LEVEL`: (optional) Set tracing level, defaults to "info"
 
 
