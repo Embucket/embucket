@@ -263,7 +263,6 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
             targets.iter().map(|t| ((*t), level)).collect()
         };
 
-
     let registry = tracing_subscriber::registry()
         // Telemetry filtering
         .with(
@@ -306,31 +305,4 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
     }
 
     tracing_provider
-}
-
-
-fn init_tracing(config: &EnvConfig) {
-    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    let emit_ansi = std::io::stdout().is_terminal();
-    // Use json format if requested via env var, otherwise use pretty format with span events
-    if config.log_format == "json" {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .with_target(true)
-            .with_ansi(false)
-            .json()
-            .with_current_span(true)
-            .with_span_list(true)
-            .try_init();
-    } else {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .with_target(true)
-            .with_ansi(emit_ansi)
-            .with_span_events(
-                tracing_subscriber::fmt::format::FmtSpan::ENTER
-                    | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
-            )
-            .try_init();
-    }
 }
