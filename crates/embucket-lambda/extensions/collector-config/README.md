@@ -7,7 +7,3 @@ To update the layer config:
 --zip-file fileb://config/layer-root/otel-collector-config-layer.zip  
 --compatible-runtimes provided.al2 provided.al2023   
 --compatible-architectures arm64`
-
-
-
-
