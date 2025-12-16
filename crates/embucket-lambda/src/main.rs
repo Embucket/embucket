@@ -19,8 +19,10 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::SdkTracerProvider;
+use std::fs;
 use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
+use std::path::Path;
 use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
@@ -39,11 +41,26 @@ type InitResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 const DISABLED_TARGETS: [&str; 2] = ["h2", "aws_smithy_runtime"];
 
+fn list_dir(path: &str) -> std::io::Result<Vec<String>> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(Path::new(path))? {
+        files.push(entry?.path().display().to_string());
+    }
+    Ok(files)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
     let env_config = EnvConfig::from_env();
 
     let tracing_provider = init_tracing_and_logs(&env_config);
+
+    // for unknown reason following printed in some strange way
+    info!(
+        lambda_configs = ?list_dir("/var/task/config").unwrap_or_default(),
+        lambda_extensions_configs = ?list_dir("/opt").unwrap_or_default(),
+        "Lambda files"
+    );
 
     info!(
         data_format = %env_config.data_format,

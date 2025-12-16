@@ -6,7 +6,12 @@ FUNCTION_NAME ?= embucket-lambda
 ENV_FILE ?= config/.env
 IAM_ROLE ?= arn:aws:iam::767397688925:role/EmbucketLambdaExecRole
 # --layer-arn required for flexibiity
-OTEL_COLLECTOR_LAYER ?= --layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:22
+# otel-collector-config goes second as it overrides original config  from opentelemetry-collector 
+OTEL_COLLECTOR_LAYERS ?= \
+	--layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1\
+	--layer-arn arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:22\
+	--layer-arn arn:aws:lambda:us-east-2:580247275435:layer:LambdaInsightsExtension-Arm64:33
+
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
@@ -20,7 +25,7 @@ deploy: build deploy-only
 # Quick deploy without rebuild
 deploy-only:
 	@test -n "$(FUNCTION_NAME)" || (echo "ERROR: Missing function name. Use: make deploy <function-name>" >&2; exit 1)
-	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYER) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
+	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYERS) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
 	aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)" >/dev/null 2>&1 || true
 	@$(MAKE) url FUNCTION_NAME=$(FUNCTION_NAME)
 

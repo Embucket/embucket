@@ -90,8 +90,7 @@ We send events, spans to stdout log in json format, and in case if AWS X-Ray is 
 #### Exporting telemetry spans to [**honeycomb.io**](https://docs.honeycomb.io/send-data/opentelemetry/collector/)
 - Required environment variables configuring remote Observability platform:
   * `HONEYCOMB_API_KEY`
-  * `HONEYCOMB_DATASET`
-  * `ENDPOINT_URL` (should become `HONEYCOMB_ENDPOINT_URL`)
+  * `HONEYCOMB_ENDPOINT_URL`
 - Optional:
   * `OTEL_SERVICE_NAME`
   - `TRACING_LEVEL` - verbosity level, default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
