@@ -15,7 +15,7 @@ $(eval $(EXTRA_GOALS):;@:)
 ENV_FILE ?= crates/embucket-lambda/.env
 IAM_ROLE ?= arn:aws:iam::767397688925:role/EmbucketLambdaExecRole
 # --layer-arn required for flexibiity
-OTEL_COLLECTOR_LAYER ?= arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:20
+OTEL_COLLECTOR_LAYER ?= arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:us-east-2:767397688925:layer:otel-collector-config:21
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
