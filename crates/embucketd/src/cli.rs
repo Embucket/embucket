@@ -120,11 +120,11 @@ pub struct CliOpts {
 
     #[arg(
         long,
-        env = "OTEL_GRPC",
-        default_value = "true",
-        help = "Enable OTLP gRPC exporter (requires 'otel-grpc' feature)"
+        env = "OTEL_EXPORTER_OTLP_PROTOCOL",
+        default_value = "grpc",
+        help = "OpenTelemetry Exporter Protocol"
     )]
-    pub otel_grpc: bool,
+    pub otel_exporter_otlp_protocol: String,
 
     #[arg(
         long,

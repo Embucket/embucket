@@ -12,14 +12,13 @@ build:
 	cd ../.. && cargo lambda build --release -p embucket-lambda --arm64 -o zip --manifest-path crates/embucket-lambda/Cargo.toml $(FEATURES_PARAM)
 
 # Deploy to AWS (must run from workspace root for include paths to work)
-deploy: build deploy-only
+deploy: build deploy-only public-url
 	@echo "Deployed $(FUNCTION_NAME) to AWS"
 
 # Quick deploy without rebuild
 deploy-only:
 	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYERS) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
 	aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)" >/dev/null 2>&1 || true
-	@$(MAKE) public-url FUNCTION_NAME=$(FUNCTION_NAME)
 
 public-url:
 	@set -e; \

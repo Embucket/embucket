@@ -245,7 +245,7 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
 
 #[allow(clippy::expect_used, clippy::redundant_closure_for_method_calls)]
 fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
-    let exporter = match config.otel_exporter_otlp_protocol.as_str() {
+    let exporter = match config.otel_exporter_otlp_protocol.to_lowercase().as_str() {
         "grpc" => {
             // Initialize OTLP exporter using gRPC (Tonic)
             opentelemetry_otlp::SpanExporter::builder()
