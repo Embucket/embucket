@@ -19,12 +19,10 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use std::io::IsTerminal;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::{FilterExt, LevelFilter, Targets, filter_fn};
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
@@ -247,18 +245,22 @@ fn extract_socket_addr(headers: &HeaderMap) -> Option<SocketAddr> {
 
 #[allow(clippy::expect_used, clippy::redundant_closure_for_method_calls)]
 fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
-    let exporter = if config.otel_grpc {
-        // Initialize OTLP exporter using gRPC (Tonic)
-        opentelemetry_otlp::SpanExporter::builder()
-            .with_tonic()
-            .build()
-            .expect("Failed to create OTLP gRPC exporter")
-    } else {
-        // Initialize OTLP exporter using HTTP
-        opentelemetry_otlp::SpanExporter::builder()
-            .with_http()
-            .build()
-            .expect("Failed to create OTLP HTTP exporter")
+    let exporter = match config.otel_exporter_otlp_protocol.as_str() {
+        "grpc" => {
+            // Initialize OTLP exporter using gRPC (Tonic)
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .build()
+                .expect("Failed to create OTLP gRPC exporter")
+        }
+        "http/json" => {
+            // Initialize OTLP exporter using HTTP
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .build()
+                .expect("Failed to create OTLP HTTP exporter")
+        }
+        protocol => panic!("Unsupported OTLP exporter protocol: {protocol}"),
     };
 
     let resource = Resource::builder().build();
