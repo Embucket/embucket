@@ -25,8 +25,10 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::filter::{filter_fn, FilterExt, LevelFilter, Targets};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::fmt::format::FmtSpan;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
         use lambda_http::run_with_streaming_response as run;
@@ -282,36 +284,36 @@ fn init_tracing_and_logs(config: &EnvConfig) -> SdkTracerProvider {
                         .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
                         .with_default(config.tracing_level.parse().unwrap_or(tracing::Level::INFO)),
                 ),
-        );
-    // Logs filtering
-    // fmt::layer has different types for json vs plain
-    if config.log_format == "json" {
-        registry
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .json()
-                    .with_target(false)
-                    .with_ansi(false)
-                    .with_current_span(false)
-                    .with_span_list(false)
-                    .without_time(),
-            )
-            .with(EnvFilter::new(config.log_filter.clone()))
-            .init();
-    } else {
-        registry
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_target(true)
-                    .with_ansi(std::io::stdout().is_terminal())
-                    .with_span_events(
-                        tracing_subscriber::fmt::format::FmtSpan::ENTER
-                            | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
-                    ),
-            )
-            .with(EnvFilter::new(config.log_filter.clone()))
-            .init();
-    }
+        )
+        .with({
+            let fmt_filter = match std::env::var("RUST_LOG") {
+                Ok(val) => match val.parse::<Targets>() {
+                    Ok(log_targets_from_env) => log_targets_from_env,
+                    Err(err) => {
+                        eprintln!("Failed to parse RUST_LOG: {err:?}");
+                        Targets::default()
+                            .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
+                            .with_default(LevelFilter::DEBUG)
+                    }
+                },
+                _ => Targets::default()
+                    .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
+                    .with_default(LevelFilter::INFO),
+            };
+            // Skip memory allocations spans
+            let spans_always = filter_fn(|meta| meta.is_span());
+            let not_alloc_event = filter_fn(|meta| {
+                meta.target() != "alloc" && meta.target() != "tracing_allocations"
+            });
 
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_level(true)
+                .with_span_events(FmtSpan::NONE)
+                .json()
+                .with_filter(spans_always.or(not_alloc_event.and(fmt_filter)))
+        });
+
+    registry.init();
     tracing_provider
 }

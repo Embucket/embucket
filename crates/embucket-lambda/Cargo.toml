@@ -58,7 +58,7 @@ timeout = 30
 tracing = "Active"
 # Note: include path is relative to workspace root
 # Must run deploy from workspace root: cargo lambda deploy --binary-name bootstrap
-include = ["config", "collector-config", "extensions"]
+include = ["config"]
 
 [package.metadata.lambda.deploy.env]
 LOG_FORMAT = "json"

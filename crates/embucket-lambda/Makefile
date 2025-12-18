@@ -3,13 +3,13 @@
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
 FUNCTION_NAME ?= embucket-lambda
 ENV_FILE ?= config/.env
-IAM_ROLE ?= arn:aws:iam::767397688925:role/EmbucketLambdaExecRole
+IAM_ROLE ?=
 OTEL_COLLECTOR_LAYERS ?=
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
 build:
-	cd ../.. && cargo lambda build --release -p embucket-lambda --arm64 -o zip --include config/metastore.yaml --manifest-path crates/embucket-lambda/Cargo.toml $(FEATURES_PARAM)
+	cd ../.. && cargo lambda build --release -p embucket-lambda --arm64 -o zip --manifest-path crates/embucket-lambda/Cargo.toml $(FEATURES_PARAM)
 
 # Deploy to AWS (must run from workspace root for include paths to work)
 deploy: build deploy-only
