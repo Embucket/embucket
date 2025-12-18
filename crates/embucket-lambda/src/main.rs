@@ -25,9 +25,9 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-use tracing_subscriber::filter::{filter_fn, FilterExt, LevelFilter, Targets};
-use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::filter::{FilterExt, LevelFilter, Targets, filter_fn};
 use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "streaming")] {
@@ -46,7 +46,7 @@ async fn main() -> Result<(), LambdaError> {
     let env_config = EnvConfig::from_env();
 
     let tracing_provider = init_tracing_and_logs(&env_config);
-  
+
     // Log version and build information on startup
     info!(
         version = %BuildInfo::GIT_DESCRIBE,
