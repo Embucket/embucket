@@ -83,7 +83,7 @@ cargo lambda deploy --binary-name bootstrap
 We send events, spans to stdout log in json format, and in case if AWS X-Ray is enabled it enhances traces.
 - `RUST_LOG` - Controls verbosity log level. Default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
 
-#### Exporting telemetry 
+#### OpenTelemetry configuration
 
 To work with Opentelemtry, you need an Opentelemetry Collector running in your environment with open telemetry config. 
 The easiest way is to add two layers to your lambda deployment. One of which would be your config file with the remote exporter.
