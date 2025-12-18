@@ -1,0 +1,11 @@
+[package]
+name = "build-info"
+version = "0.1.0"
+edition = "2021"
+license-file.workspace = true
+
+[dependencies]
+# No runtime dependencies - all info comes from env!() at compile time
+
+[lints]
+workspace = true
