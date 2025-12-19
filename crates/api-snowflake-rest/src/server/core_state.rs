@@ -73,7 +73,9 @@ async fn apply_metastore_bootstrap_config(
     match metastore_bootstrap_config {
         MetastoreConfig::Env => {
             tracing::info!("Bootstrapping metastore from environment");
-            let config = MetastoreBootstrapConfig::load_from_env().context(MetastoreConfigSnafu)?;
+            let config = MetastoreBootstrapConfig::load_from_env()
+                .await
+                .context(MetastoreConfigSnafu)?;
             config
                 .apply(metastore.clone())
                 .await
@@ -95,6 +97,7 @@ async fn apply_metastore_bootstrap_config(
         MetastoreConfig::ConfigJson(data) => {
             tracing::info!("Bootstrapping metastore from config json");
             let config = MetastoreBootstrapConfig::load_from_json_data(&data)
+                .await
                 .context(MetastoreConfigSnafu)?;
             config
                 .apply(metastore.clone())
