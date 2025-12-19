@@ -9,6 +9,8 @@ error-stack-trace = { path = "../error-stack-trace" }
 error-stack = { path = "../error-stack" }
 
 async-trait = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { version = "1.2.11" }
 chrono = { workspace = true }
 dashmap = { workspace = true }
 iceberg-rust = { workspace = true }

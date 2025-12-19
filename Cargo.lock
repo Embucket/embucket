@@ -1923,6 +1923,8 @@ name = "catalog-metastore"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "aws-config",
+ "aws-credential-types",
  "bytes",
  "chrono",
  "dashmap",

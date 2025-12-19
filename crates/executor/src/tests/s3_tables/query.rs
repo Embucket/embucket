@@ -15,8 +15,9 @@ use std::sync::Arc;
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 pub async fn create_s3_tables_df_session() -> Arc<UserSession> {
     let metastore = Arc::new(InMemoryMetastore::new());
-    let metastore_config =
-        MetastoreBootstrapConfig::load_from_env().expect("Failed to load volume config");
+    let metastore_config = MetastoreBootstrapConfig::load_from_env()
+        .await
+        .expect("Failed to load volume config");
     assert!(
         metastore_config.contains_s3_tables_volume(),
         "Failed to load volume config"

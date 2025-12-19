@@ -2,6 +2,8 @@ use crate::{
     AwsAccessKeyCredentials, AwsCredentials, Database, Metastore, S3TablesVolume, S3Volume, Schema,
     SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent, VolumeType,
 };
+use aws_config::meta::credentials::CredentialsProviderChain;
+use aws_credential_types::provider::ProvideCredentials;
 use iceberg_rust::spec::table_metadata::TableMetadata;
 use iceberg_rust::spec::util::strip_prefix;
 use serde::Deserialize;
@@ -144,23 +146,23 @@ impl MetastoreBootstrapConfig {
             path: path.to_path_buf(),
         })?;
 
-        if let Some(volume) = load_volume_from_env()? {
+        if let Some(volume) = load_volume_from_env().await? {
             config.volumes.push(volume);
         }
         Ok(config)
     }
 
-    pub fn load_from_json_data(data: &str) -> Result<Self, ConfigError> {
+    pub async fn load_from_json_data(data: &str) -> Result<Self, ConfigError> {
         let mut config: Self = serde_json::from_str(data).context(ParseJsonConfigSnafu)?;
-        if let Some(volume) = load_volume_from_env()? {
+        if let Some(volume) = load_volume_from_env().await? {
             config.volumes.push(volume);
         }
         Ok(config)
     }
 
-    pub fn load_from_env() -> Result<Self, ConfigError> {
+    pub async fn load_from_env() -> Result<Self, ConfigError> {
         let mut config = Self::default();
-        if let Some(volume) = load_volume_from_env()? {
+        if let Some(volume) = load_volume_from_env().await? {
             config.volumes.push(volume);
         }
         Ok(config)
@@ -405,7 +407,7 @@ fn patch_missing_operation(mut value: Value) -> Result<Value, ConfigError> {
     Ok(value)
 }
 
-fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
+async fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
     let volume_type = match env::var("VOLUME_TYPE") {
         Ok(v) if !v.trim().is_empty() => v.to_lowercase(),
         _ => return Ok(None),
@@ -423,15 +425,9 @@ fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
     let volume_type = match volume_type.as_str() {
         "s3tables" | "s3_tables" | "s3-tables" => {
             let arn = env::var("VOLUME_ARN").map_err(|_| missing_var_error("VOLUME_ARN"))?;
-            let access_key = env::var("VOLUME_ACCESS_KEY")
-                .map_err(|_| missing_var_error("VOLUME_ACCESS_KEY"))?;
-            let secret_key = env::var("VOLUME_SECRET_KEY")
-                .map_err(|_| missing_var_error("VOLUME_SECRET_KEY"))?;
 
-            let credentials = AwsCredentials::AccessKey(AwsAccessKeyCredentials {
-                aws_access_key_id: access_key,
-                aws_secret_access_key: secret_key,
-            });
+            let credentials =
+                credentials_from_env_or_provider("VOLUME_ACCESS_KEY", "VOLUME_SECRET_KEY").await?;
 
             VolumeType::S3Tables(S3TablesVolume {
                 endpoint: None,
@@ -477,5 +473,38 @@ fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
         },
         database,
         should_refresh: false,
+    }))
+}
+
+async fn credentials_from_env_or_provider(
+    access_key_env: &str,
+    secret_key_env: &str,
+) -> Result<AwsCredentials, ConfigError> {
+    if let (Ok(access_key), Ok(secret_key)) = (env::var(access_key_env), env::var(secret_key_env)) {
+        return Ok(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
+            aws_access_key_id: access_key,
+            aws_secret_access_key: secret_key,
+        }));
+    }
+
+    // Default AWS Credential Provider Chain
+    // Resolution order:
+    // 1. Environment variables
+    // 2. Shared config (`~/.aws/config`, `~/.aws/credentials`)
+    // 3. Web Identity Tokens
+    // 4. ECS (IAM Roles for Tasks) & General HTTP credentials
+    // 5. EC2 IMDSv2
+    let provider = CredentialsProviderChain::default_provider().await;
+
+    let creds = provider
+        .provide_credentials()
+        .await
+        .map_err(|e| ConfigError::EnvConfig {
+            reason: format!("Failed to resolve AWS credentials: {e}"),
+        })?;
+
+    Ok(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
+        aws_access_key_id: creds.access_key_id().to_string(),
+        aws_secret_access_key: creds.secret_access_key().to_string(),
     }))
 }
