@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
 use crate::config::DynamoDbConfig;
-use crate::error::DynamoDbPutItemSnafu;
 use crate::error::Result;
-use crate::error::{DynamoDbDeleteItemSnafu, DynamoDbGetItemSnafu, Error, FailedToParseJsonSnafu};
-use crate::models::SessionRecord;
+use crate::error::{
+    DynamoDbDeleteItemSnafu, DynamoDbGetItemSnafu, DynamoDbPutItemSnafu, DynamoDbQueryOutputSnafu,
+    Error, FailedToParseJsonSnafu,
+};
+use crate::models::{Query, SessionRecord};
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
+use chrono::{DateTime, FixedOffset};
 use serde::de::DeserializeOwned;
 use snafu::ResultExt;
 
@@ -13,6 +16,11 @@ const PK: &str = "PK";
 const SK: &str = "SK";
 const ENTITY: &str = "Entity";
 const DATA: &str = "Data";
+const QUERY_ID: &str = "query_id";
+const REQUEST_ID: &str = "request_id";
+const SESSION_ID: &str = "session_id";
+const QUERY_ID_INDEX: &str = "GSI_QUERY_ID_INDEX";
+const REQUEST_ID_INDEX: &str = "GSI_REQUEST_ID_INDEX";
 
 #[async_trait::async_trait]
 pub trait StateStore: Send + Sync {
@@ -21,6 +29,11 @@ pub trait StateStore: Send + Sync {
     async fn get_session(&self, session_id: &str) -> Result<SessionRecord>;
     async fn delete_session(&self, session_id: &str) -> Result<()>;
     async fn update_session(&self, session: SessionRecord) -> Result<()>;
+    async fn put_query(&self, query: Query) -> Result<()>;
+    async fn get_query(&self, query_id: &str) -> Result<Query>;
+    async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query>;
+    async fn delete_query(&self, query_id: &str) -> Result<()>;
+    async fn update_query(&self, query: Query) -> Result<()>;
 }
 
 /// `DynamoDB` single-table client.
@@ -58,6 +71,61 @@ impl DynamoDbStateStore {
     #[must_use]
     pub fn session_id_pk(key: &str) -> String {
         format!("SESSION#{key}")
+    }
+
+    fn query_pk(start_time: &DateTime<FixedOffset>) -> String {
+        format!("QUERY#{}", start_time.format("%Y-%m-%d"))
+    }
+
+    fn query_sk(start_time: &DateTime<FixedOffset>) -> String {
+        start_time.timestamp_millis().to_string()
+    }
+
+    fn parse_start_time(start_time: &str) -> Result<DateTime<FixedOffset>> {
+        DateTime::parse_from_rfc3339(start_time).map_err(|_| Error::InvalidTime {
+            value: start_time.to_string(),
+        })
+    }
+    async fn query_item_by_query_id(
+        &self,
+        query_id: &str,
+    ) -> Result<HashMap<String, AttributeValue>> {
+        let items = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .index_name(QUERY_ID_INDEX)
+            .key_condition_expression("#query_id = :query_id")
+            .expression_attribute_names("#query_id", QUERY_ID)
+            .expression_attribute_values(":query_id", AttributeValue::S(query_id.to_string()))
+            .send()
+            .await
+            .context(DynamoDbQueryOutputSnafu)?
+            .items
+            .unwrap_or_default();
+
+        items.into_iter().next().ok_or(Error::NotFound)
+    }
+
+    async fn query_item_by_request_id(
+        &self,
+        request_id: &str,
+    ) -> Result<HashMap<String, AttributeValue>> {
+        let items = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .index_name(REQUEST_ID_INDEX)
+            .key_condition_expression("#request_id = :request_id")
+            .expression_attribute_names("#request_id", REQUEST_ID)
+            .expression_attribute_values(":request_id", AttributeValue::S(request_id.to_string()))
+            .send()
+            .await
+            .context(DynamoDbQueryOutputSnafu)?
+            .items
+            .unwrap_or_default();
+
+        items.into_iter().next().ok_or(Error::NotFound)
     }
 }
 
@@ -130,6 +198,73 @@ impl StateStore for DynamoDbStateStore {
     async fn update_session(&self, session: SessionRecord) -> Result<()> {
         self.put_session(session).await
     }
+
+    async fn put_query(&self, query: Query) -> Result<()> {
+        let mut item = HashMap::new();
+        let parsed_start_time = Self::parse_start_time(&query.start_time)?;
+        let pk = Self::query_pk(&parsed_start_time);
+        let sk = Self::query_sk(&parsed_start_time);
+        item.insert(PK.to_string(), AttributeValue::S(pk));
+        item.insert(SK.to_string(), AttributeValue::S(sk));
+        item.insert(ENTITY.to_string(), AttributeValue::S(query.entity()));
+        item.insert(
+            DATA.to_string(),
+            AttributeValue::S(serde_json::to_string(&query).context(FailedToParseJsonSnafu)?),
+        );
+        item.insert(
+            QUERY_ID.to_string(),
+            AttributeValue::S(query.query_id.clone()),
+        );
+        item.insert(
+            SESSION_ID.to_string(),
+            AttributeValue::S(query.session_id.clone()),
+        );
+        if let Some(request_id) = &query.request_id {
+            item.insert(
+                REQUEST_ID.to_string(),
+                AttributeValue::S(request_id.clone()),
+            );
+        }
+
+        self.client
+            .put_item()
+            .table_name(&self.table_name)
+            .set_item(Some(item))
+            .send()
+            .await
+            .context(DynamoDbPutItemSnafu)?;
+
+        Ok(())
+    }
+
+    async fn get_query(&self, query_id: &str) -> Result<Query> {
+        let item = self.query_item_by_query_id(query_id).await?;
+        deserialize_data(item)
+    }
+
+    async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query> {
+        let item = self.query_item_by_request_id(request_id).await?;
+        deserialize_data(item)
+    }
+
+    async fn delete_query(&self, query_id: &str) -> Result<()> {
+        let item = self.query_item_by_query_id(query_id).await?;
+        let pk = required_string_attr(&item, PK)?;
+        let sk = required_string_attr(&item, SK)?;
+        self.client
+            .delete_item()
+            .table_name(&self.table_name)
+            .key(PK, AttributeValue::S(pk))
+            .key(SK, AttributeValue::S(sk))
+            .send()
+            .await
+            .context(DynamoDbDeleteItemSnafu)?;
+        Ok(())
+    }
+
+    async fn update_query(&self, query: Query) -> Result<()> {
+        self.put_query(query).await
+    }
 }
 
 fn deserialize_data<T: DeserializeOwned>(mut item: HashMap<String, AttributeValue>) -> Result<T> {
@@ -139,4 +274,11 @@ fn deserialize_data<T: DeserializeOwned>(mut item: HashMap<String, AttributeValu
         .ok_or(Error::MissingData)?;
 
     serde_json::from_str(&data).context(FailedToParseJsonSnafu)
+}
+
+fn required_string_attr(item: &HashMap<String, AttributeValue>, key: &str) -> Result<String> {
+    item.get(key)
+        .and_then(|attr| attr.as_s().ok())
+        .map(std::string::ToString::to_string)
+        .ok_or(Error::MissingData)
 }
