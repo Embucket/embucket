@@ -3,6 +3,7 @@ use aws_sdk_dynamodb::error::SdkError;
 use aws_sdk_dynamodb::operation::delete_item::DeleteItemError;
 use aws_sdk_dynamodb::operation::get_item::GetItemError;
 use aws_sdk_dynamodb::operation::put_item::PutItemError;
+use aws_sdk_dynamodb::operation::query::QueryError;
 use snafu::{Location, Snafu};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -42,8 +43,17 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Dynamodb query error: {error}"))]
+    DynamoDbQueryOutput {
+        #[snafu(source(from(SdkError<QueryError, HttpResponse>, Box::new)))]
+        error: Box<SdkError<QueryError, HttpResponse>>,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("item not found"))]
     NotFound,
     #[snafu(display("data attribute missing from DynamoDB item"))]
     MissingData,
+    #[snafu(display("invalid time: {value}"))]
+    InvalidTime { value: String },
 }
