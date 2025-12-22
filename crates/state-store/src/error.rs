@@ -46,4 +46,10 @@ pub enum Error {
     NotFound,
     #[snafu(display("data attribute missing from DynamoDB item"))]
     MissingData,
+    #[snafu(display("Error: {name} not implemented"))]
+    NotImplemented {
+        name: String,
+        #[snafu(implicit)]
+        location: Location,
+    },
 }

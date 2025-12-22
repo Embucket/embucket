@@ -1,13 +1,15 @@
-use std::collections::HashMap;
-
 use crate::config::DynamoDbConfig;
-use crate::error::DynamoDbPutItemSnafu;
 use crate::error::Result;
 use crate::error::{DynamoDbDeleteItemSnafu, DynamoDbGetItemSnafu, Error, FailedToParseJsonSnafu};
-use crate::models::SessionRecord;
+use crate::error::{DynamoDbPutItemSnafu, NotImplementedSnafu};
+use crate::models::Entity;
+use crate::models::queries::QueryRecord;
+use crate::models::sessions::SessionRecord;
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use serde::de::DeserializeOwned;
 use snafu::ResultExt;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 const PK: &str = "PK";
 const SK: &str = "SK";
@@ -21,6 +23,11 @@ pub trait StateStore: Send + Sync {
     async fn get_session(&self, session_id: &str) -> Result<SessionRecord>;
     async fn delete_session(&self, session_id: &str) -> Result<()>;
     async fn update_session(&self, session: SessionRecord) -> Result<()>;
+
+    async fn add_query(&self, record: &QueryRecord) -> Result<()>;
+    async fn get_query(&self, query_id: Uuid) -> Result<Option<QueryRecord>>;
+    async fn get_query_by_request_id(&self, request_id: Uuid) -> Result<Option<QueryRecord>>;
+    async fn update_query(&self, record: &QueryRecord) -> Result<()>;
 }
 
 /// `DynamoDB` single-table client.
@@ -129,6 +136,28 @@ impl StateStore for DynamoDbStateStore {
     /// Update a session by replacing its stored document.
     async fn update_session(&self, session: SessionRecord) -> Result<()> {
         self.put_session(session).await
+    }
+
+    async fn add_query(&self, _record: &QueryRecord) -> Result<()> {
+        NotImplementedSnafu { name: "add_query" }.fail()
+    }
+
+    async fn get_query(&self, _query_id: Uuid) -> Result<Option<QueryRecord>> {
+        NotImplementedSnafu { name: "get_query" }.fail()
+    }
+
+    async fn get_query_by_request_id(&self, _request_id: Uuid) -> Result<Option<QueryRecord>> {
+        NotImplementedSnafu {
+            name: "get_query_by_request_id",
+        }
+        .fail()
+    }
+
+    async fn update_query(&self, _record: &QueryRecord) -> Result<()> {
+        NotImplementedSnafu {
+            name: "update_query",
+        }
+        .fail()
     }
 }
 

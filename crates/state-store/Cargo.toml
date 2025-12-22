@@ -15,6 +15,13 @@ aws-sdk-dynamodb = { workspace = true }
 serde = { workspace = true }
 serde_json = {workspace = true}
 snafu = { workspace = true }
+cfg-if = { workspace = true }
+mockall = { workspace = true }
+uuid = { workspace = true }
+
+[features]
+default = ["statestore-queries"]
+statestore-queries = []
 
 [lints]
 workspace = true

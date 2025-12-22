@@ -1,24 +1,7 @@
+use crate::models::{Entities, Entity};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Entities {
-    Session,
-    View,
-    Query,
-}
-
-impl Display for Entities {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Session => write!(f, "session"),
-            Self::View => write!(f, "view"),
-            Self::Query => write!(f, "query"),
-        }
-    }
-}
 
 /// Session entity persisted in `DynamoDB`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,6 +16,12 @@ pub struct SessionRecord {
     pub created_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<u64>,
+}
+
+impl Entity for SessionRecord {
+    fn entity(&self) -> String {
+        Entities::Session.to_string()
+    }
 }
 
 impl SessionRecord {
@@ -52,11 +41,6 @@ impl SessionRecord {
             created_at,
             updated_at: None,
         }
-    }
-
-    #[must_use]
-    pub fn entity(&self) -> String {
-        Entities::Session.to_string()
     }
 }
 
@@ -79,6 +63,12 @@ pub struct ViewRecord {
     pub updated_at: Option<u64>,
 }
 
+impl Entity for ViewRecord {
+    fn entity(&self) -> String {
+        Entities::View.to_string()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Variable {
     /// full name of the variable with the name space
@@ -90,4 +80,10 @@ pub struct Variable {
     pub created_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<u64>,
+}
+
+impl Entity for Variable {
+    fn entity(&self) -> String {
+        Entities::Variable.to_string()
+    }
 }
