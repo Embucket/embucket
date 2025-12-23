@@ -90,12 +90,12 @@ The easiest way is to add two layers to your lambda deployment. One of which wou
 
 1. Create a folder called collector-config and add a file called `config.yml` with the OpenTelemetry Collector [**configuration**](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/).
 2. After which zip the folder with this ocmmand: `zip -r <filename>.zip collector-config`
-3. Then publish it to AWS (change the file name nad layer name if you want): `aws lambda publish-layer-version 
+3. Then publish it to AWS (change the file name and layer name if you want): `aws lambda publish-layer-version 
   --layer-name <layername> 
   --zip-file fileb://<filename>.zip 
   --compatible-runtimes provided.al2 provided.al2023 
   --compatible-architectures arm64`
-4. After which add this to the Makefile (the first layer is the collector itself): `OTEL_COLLECTOR_LAYERS ?= \
+4. After which provide this as an external env variable (the first layer is the collector itself): `OTEL_COLLECTOR_LAYERS ?= \
 	--layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1\
 	--layer-arn arn:aws:lambda:<region>:<account_id>:layer:<layername>:<version>`
 5. Now you can deploy the function with the new layer. 
