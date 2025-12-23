@@ -1,5 +1,5 @@
 use super::snowflake_error::SnowflakeError;
-use crate::query_types::{QueryId, QueryStatus};
+use crate::query_types::{ExecutionStatus, QueryId};
 use catalog::error::Error as CatalogError;
 use datafusion_common::DataFusionError;
 use error_stack_trace;
@@ -592,7 +592,7 @@ pub enum Error {
     },
 
     #[snafu(display("Query {query_id} result notify error: {error}"))]
-    QueryStatusRecv {
+    ExecutionStatusRecv {
         query_id: QueryId,
         #[snafu(source)]
         error: tokio::sync::watch::error::RecvError,
@@ -601,10 +601,10 @@ pub enum Error {
     },
 
     #[snafu(display("Query {query_id} status notify error: {error}"))]
-    NotifyQueryStatus {
+    NotifyExecutionStatus {
         query_id: QueryId,
         #[snafu(source)]
-        error: tokio::sync::watch::error::SendError<QueryStatus>,
+        error: tokio::sync::watch::error::SendError<ExecutionStatus>,
         #[snafu(implicit)]
         location: Location,
     },

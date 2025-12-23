@@ -8,6 +8,7 @@ license-file.workspace = true
 rest-catalog = ["catalog/rest-catalog"]
 dedicated-executor = []
 state-store = []
+state-store-query = ["state-store"]
 
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }
