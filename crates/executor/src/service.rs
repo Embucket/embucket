@@ -26,9 +26,7 @@ use super::error::{self as ex_error, Result};
 use super::models::{QueryContext, QueryResult};
 use super::running_queries::{RunningQueries, RunningQueriesRegistry, RunningQuery};
 use super::session::UserSession;
-#[cfg(feature = "state-store-query")]
-use crate::error_code::ErrorCode;
-use crate::query_task_result::query_task_execution_result;
+use crate::query_task_result::ExecutionTaskResult;
 use crate::query_types::QueryId;
 use crate::running_queries::RunningQueryId;
 use crate::session::{SESSION_INACTIVITY_EXPIRATION_SECONDS, to_unix};
@@ -156,6 +154,27 @@ pub struct CoreExecutionService {
 }
 
 impl CoreExecutionService {
+    #[cfg(feature = "state-store")]
+    pub async fn new_test_executor(
+        metastore: Arc<dyn Metastore>,
+        state_store: Arc<dyn StateStore>,
+        config: Arc<Config>,
+    ) -> Result<Self> {
+        Self::initialize_datafusion_tracer();
+
+        let catalog_list = Self::catalog_list(metastore.clone(), &config).await?;
+        let runtime_env = Self::runtime_env(&config, catalog_list.clone())?;
+        Ok(Self {
+            metastore,
+            df_sessions: Arc::new(RwLock::new(HashMap::new())),
+            config,
+            catalog_list,
+            runtime_env,
+            queries: Arc::new(RunningQueriesRegistry::new()),
+            state_store,
+        })
+    }
+
     #[tracing::instrument(
         name = "CoreExecutionService::new",
         level = "debug",
@@ -493,19 +512,35 @@ impl ExecutionService for CoreExecutionService {
     ) -> Result<QueryId> {
         let user_session = self.get_session(session_id).await?;
 
-        #[cfg(feature = "state-store-query")]
-        let mut query = state_store::Query::new(query_text.to_string());
-
-        if self.queries.count() >= self.config.max_concurrency_level {
-            #[cfg(feature = "state-store-query")]
-            {
-                query.set_execution_status(state_store::ExecutionStatus::Incident);
-                query.set_error_code(ErrorCode::LimitExceeded.to_string());
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "state-store-query")] {
+                let mut query = state_store::Query::new(query_text.to_string());
+                let query_id = query.query_id.parse::<Uuid>().expect("Got bad query_id from state-store");
+            } else {
+                let query_id = Uuid::new_v4();
             }
-            return ex_error::ConcurrencyLimitSnafu.fail();
         }
 
-        let query_id = Uuid::new_v4();
+        if self.queries.count() >= self.config.max_concurrency_level {
+            let limit_exceeded = ExecutionTaskResult::from_query_limit_exceeded(query_id);
+            #[cfg(feature = "state-store-query")]
+            {
+                // query created with failed status already
+                limit_exceeded.assign_query_attributes(&mut query);
+                self.state_store
+                    .put_query(&query)
+                    .await
+                    .context(ex_error::StateStoreSnafu)?;
+            }
+            // here we always return error, but Ok should fit Result type too
+            return limit_exceeded.result.map(|_| query_id);
+        }
+
+        #[cfg(feature = "state-store-query")]
+        self.state_store
+            .put_query(&query)
+            .await
+            .context(ex_error::StateStoreSnafu)?;
 
         // Record the result as part of the current span.
         tracing::Span::current()
@@ -513,11 +548,7 @@ impl ExecutionService for CoreExecutionService {
             .record("with_timeout_secs", self.config.query_timeout_secs);
 
         let request_id = query_context.request_id;
-        let query_text = query_text.to_string();
-        let query_timeout_secs = self.config.query_timeout_secs;
-        let queries_clone = self.queries.clone();
         let query_token = CancellationToken::new();
-        let query_token_clone = query_token.clone();
 
         let task_span = tracing::info_span!("spawn_query_task");
 
@@ -527,7 +558,12 @@ impl ExecutionService for CoreExecutionService {
             query_id = %query_id,
             session_id = %session_id
         );
-        let handle = tokio::spawn(
+        let handle = tokio::spawn({
+            let state_store = self.state_store.clone();
+            let query_text = query_text.to_string();
+            let query_timeout = Duration::from_secs(self.config.query_timeout_secs);
+            let queries_registry = self.queries.clone();
+            let query_token = query_token.clone();
             async move {
                 let sub_task_span = tracing::info_span!("spawn_query_sub_task");
                 let mut query_obj =
@@ -535,16 +571,36 @@ impl ExecutionService for CoreExecutionService {
 
                 // Create nested task so in case of abort/timeout it can be aborted
                 // and result is handled properly (status / query result saved)
-                let subtask_fut =
+                let task_future =
                     task::spawn(async move { query_obj.execute().instrument(sub_task_span).await });
 
-                let execution_result = query_task_execution_result(
-                    subtask_fut,
-                    query_token_clone,
-                    query_id,
-                    Duration::from_secs(query_timeout_secs),
-                )
-                .await;
+                let subtask_abort_handle = task_future.abort_handle();
+                // wait for any future to be resolved
+                let execution_result = tokio::select! {
+                    finished = task_future => {
+                        match finished {
+                            Ok(inner_result) => ExecutionTaskResult::from_query_result(query_id, inner_result),
+                            Err(task_error) => {
+                                tracing::error!("Query {query_id} sub task join error: {task_error:?}");
+                                ExecutionTaskResult::from_failed_query_task(query_id, task_error)
+                            },
+                        }
+                    },
+                    () = query_token.cancelled() => {
+                        tracing::info_span!("abort_cancelled_query");
+                        subtask_abort_handle.abort();
+                        ExecutionTaskResult::from_cancelled_query_task(query_id)
+                    },
+                    // Execute the query with a timeout to prevent long-running or stuck queries
+                    // from blocking system resources indefinitely. If the timeout is exceeded,
+                    // convert the timeout into a standard QueryTimeout error so it can be handled
+                    // and recorded like any other execution failure
+                    () = tokio::time::sleep(query_timeout) => {
+                        tracing::info_span!("query_timeout_received_do_abort");
+                        subtask_abort_handle.abort();
+                        ExecutionTaskResult::from_timeout_query_task(query_id)
+                    }
+                };
 
                 let _ = tracing::info_span!(
                     "finished_query_status",
@@ -554,17 +610,26 @@ impl ExecutionService for CoreExecutionService {
                 )
                 .entered();
 
-                user_session.record_query_id(query_id);
+                cfg_if::cfg_if! {
+                    if #[cfg(feature = "state-store-query")] {
+                        // just log error and do not raise it from task
+                        if let Err(err) = state_store.update_query(&query).await {
+                            tracing::error!("Failed to update query {query_id}: {err:?}");
+                        }
+                    } else {
+                        user_session.record_query_id(query_id);
+                    }
+                }
 
                 // Notify subscribers query finishes and result is ready.
                 // Do not immediately remove query from running queries registry
                 // as RunningQuery contains result handle that caller should consume.
-                queries_clone.notify_query_finished(query_id, execution_result.execution_status)?;
+                queries_registry.notify_query_finished(query_id, execution_result.execution_status)?;
 
                 // Discard results after short timeout, to prevent memory leaks
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(TIMEOUT_DISCARD_INTERVAL_SECONDS)).await;
-                    let running_query = queries_clone.remove(query_id);
+                    let running_query = queries_registry.remove(query_id);
                     if let Ok(RunningQuery {
                         result_handle: Some(result_handle),
                         ..
@@ -581,8 +646,8 @@ impl ExecutionService for CoreExecutionService {
                 execution_result.result
             }
             .instrument(alloc_span)
-            .instrument(task_span),
-        );
+            .instrument(task_span)
+        });
 
         self.queries.add(
             RunningQuery::new(query_id)

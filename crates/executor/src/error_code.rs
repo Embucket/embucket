@@ -9,6 +9,7 @@ use std::fmt::Display;
 // Do not set values for error codes, they are assigned in Display trait
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum ErrorCode {
+    None,
     Db,
     Metastore,
     #[cfg(feature = "state-store")]
