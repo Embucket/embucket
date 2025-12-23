@@ -16,6 +16,8 @@ serde = { workspace = true }
 serde_json = {workspace = true}
 snafu = { workspace = true }
 chrono = { workspace = true }
+mockall = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

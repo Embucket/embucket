@@ -22,6 +22,7 @@ const SESSION_ID: &str = "session_id";
 const QUERY_ID_INDEX: &str = "GSI_QUERY_ID_INDEX";
 const REQUEST_ID_INDEX: &str = "GSI_REQUEST_ID_INDEX";
 
+#[mockall::automock]
 #[async_trait::async_trait]
 pub trait StateStore: Send + Sync {
     async fn put_new_session(&self, session_id: &str) -> Result<()>;

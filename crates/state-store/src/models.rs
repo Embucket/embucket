@@ -21,29 +21,20 @@ impl Display for Entities {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum QueryStatus {
-    Created,
-    Queued,
-    Running,
-    LimitExceeded,
-    Successful,
-    Failed,
-    Cancelled,
-    TimedOut,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ExecutionStatus {
+    #[default]
+    Success,
+    Fail,
+    Incident,
 }
 
-impl Display for QueryStatus {
+impl Display for ExecutionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = match self {
-            Self::Created => "created",
-            Self::Queued => "queued",
-            Self::Running => "running",
-            Self::LimitExceeded => "limit_exceeded",
-            Self::Successful => "successful",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-            Self::TimedOut => "timed_out",
+            Self::Success => "success",
+            Self::Fail => "fail",
+            Self::Incident => "incident",
         };
         write!(f, "{value}")
     }
@@ -120,11 +111,10 @@ pub struct Variable {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<u64>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Query {
     pub query_id: String,
     pub request_id: Option<String>,
-    pub query_status: QueryStatus,
     pub query_text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database_id: Option<String>,
@@ -155,7 +145,7 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_tag: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution_status: Option<String>,
+    pub execution_status: Option<ExecutionStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -293,5 +283,24 @@ impl Query {
     #[must_use]
     pub fn entity(&self) -> String {
         Entities::Query.to_string()
+    }
+
+    #[must_use]
+    pub fn new(query_text: String) -> Self {
+        Self {
+            query_id: uuid::Uuid::now_v7().to_string(),
+            query_text,
+            ..Default::default()
+        }
+    }
+
+    // Why? warning: this could be a `const fn`
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn set_execution_status(&mut self, status: ExecutionStatus) {
+        self.execution_status = Some(status);
+    }
+
+    pub fn set_error_code(&mut self, error_code: String) {
+        self.error_code = Some(error_code);
     }
 }
