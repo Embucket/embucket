@@ -30,11 +30,11 @@ pub trait StateStore: Send + Sync {
     async fn get_session(&self, session_id: &str) -> Result<SessionRecord>;
     async fn delete_session(&self, session_id: &str) -> Result<()>;
     async fn update_session(&self, session: SessionRecord) -> Result<()>;
-    async fn put_query(&self, query: Query) -> Result<()>;
+    async fn put_query(&self, query: &Query) -> Result<()>;
     async fn get_query(&self, query_id: &str) -> Result<Query>;
     async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query>;
     async fn delete_query(&self, query_id: &str) -> Result<()>;
-    async fn update_query(&self, query: Query) -> Result<()>;
+    async fn update_query(&self, query: &Query) -> Result<()>;
 }
 
 /// `DynamoDB` single-table client.
@@ -200,7 +200,7 @@ impl StateStore for DynamoDbStateStore {
         self.put_session(session).await
     }
 
-    async fn put_query(&self, query: Query) -> Result<()> {
+    async fn put_query(&self, query: &Query) -> Result<()> {
         let mut item = HashMap::new();
         let parsed_start_time = Self::parse_start_time(&query.start_time)?;
         let pk = Self::query_pk(&parsed_start_time);
@@ -263,7 +263,7 @@ impl StateStore for DynamoDbStateStore {
         Ok(())
     }
 
-    async fn update_query(&self, query: Query) -> Result<()> {
+    async fn update_query(&self, query: &Query) -> Result<()> {
         self.put_query(query).await
     }
 }
