@@ -120,6 +120,14 @@ pub struct CliOpts {
 
     #[arg(
         long,
+        env = "OTEL_EXPORTER_OTLP_PROTOCOL",
+        default_value = "grpc",
+        help = "OpenTelemetry Exporter Protocol"
+    )]
+    pub otel_exporter_otlp_protocol: String,
+
+    #[arg(
+        long,
         value_enum,
         env = "TRACING_LEVEL",
         default_value = "info",

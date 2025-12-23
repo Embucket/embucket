@@ -25,6 +25,8 @@ pub struct EnvConfig {
     pub iceberg_catalog_timeout_secs: u64,
     pub object_store_timeout_secs: u64,
     pub object_store_connect_timeout_secs: u64,
+    pub otel_exporter_otlp_protocol: String,
+    pub tracing_level: String,
 }
 
 impl EnvConfig {
@@ -58,6 +60,9 @@ impl EnvConfig {
             object_store_timeout_secs: parse_env("OBJECT_STORE_TIMEOUT_SECS").unwrap_or(30),
             object_store_connect_timeout_secs: parse_env("OBJECT_STORE_CONNECT_TIMEOUT_SECS")
                 .unwrap_or(3),
+            otel_exporter_otlp_protocol: parse_env("OTEL_EXPORTER_OTLP_PROTOCOL")
+                .unwrap_or("grpc".to_string()),
+            tracing_level: env_or_default("TRACING_LEVEL", "INFO"),
         }
     }
 
