@@ -230,16 +230,16 @@ impl StateStore for DynamoDbStateStore {
         );
         item.insert(
             QUERY_ID.to_string(),
-            AttributeValue::S(query.query_id.clone()),
+            AttributeValue::S(query.query_id.to_string()),
         );
         item.insert(
             SESSION_ID.to_string(),
-            AttributeValue::S(query.session_id.clone()),
+            AttributeValue::S(query.session_id.to_string()),
         );
         if let Some(request_id) = &query.request_id {
             item.insert(
                 REQUEST_ID.to_string(),
-                AttributeValue::S(request_id.clone()),
+                AttributeValue::S(request_id.to_string()),
             );
         }
 

@@ -125,8 +125,8 @@ pub struct Variable {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Query {
-    pub query_id: String,
-    pub request_id: Option<String>,
+    pub query_id: Uuid,
+    pub request_id: Option<Uuid>,
     pub query_status: QueryStatus,
     pub query_text: String,
     pub session_id: String,
@@ -302,10 +302,10 @@ impl Query {
         request_id: Option<Uuid>,
     ) -> Self {
         Self {
-            query_id: query_id.to_string(),
+            query_id,
             query_text: query_str.to_string(),
             session_id: session_id.to_string(),
-            request_id: request_id.map(|v| v.to_string()),
+            request_id,
             start_time: Utc::now(),
             ..Self::default()
         }
