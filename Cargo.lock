@@ -7254,6 +7254,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "uuid",
 ]
 
 [[package]]
