@@ -21,6 +21,7 @@ const REQUEST_ID: &str = "request_id";
 const SESSION_ID: &str = "session_id";
 const QUERY_ID_INDEX: &str = "GSI_QUERY_ID_INDEX";
 const REQUEST_ID_INDEX: &str = "GSI_REQUEST_ID_INDEX";
+const SESSION_ID_INDEX: &str = "GSI_SESSION_ID_INDEX";
 
 #[async_trait::async_trait]
 pub trait StateStore: Send + Sync {
@@ -32,6 +33,7 @@ pub trait StateStore: Send + Sync {
     async fn put_query(&self, query: Query) -> Result<()>;
     async fn get_query(&self, query_id: &str) -> Result<Query>;
     async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query>;
+    async fn get_queries_by_session_id(&self, session_id: &str) -> Result<Vec<Query>>;
     async fn delete_query(&self, query_id: &str) -> Result<()>;
     async fn update_query(&self, query: Query) -> Result<()>;
 }
@@ -121,6 +123,27 @@ impl DynamoDbStateStore {
             .unwrap_or_default();
 
         items.into_iter().next().ok_or(Error::NotFound)
+    }
+
+    async fn query_items_by_session_id(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<HashMap<String, AttributeValue>>> {
+        let items = self
+            .client
+            .query()
+            .table_name(&self.table_name)
+            .index_name(SESSION_ID_INDEX)
+            .key_condition_expression("#session_id = :session_id")
+            .expression_attribute_names("#session_id", SESSION_ID)
+            .expression_attribute_values(":session_id", AttributeValue::S(session_id.to_string()))
+            .send()
+            .await
+            .context(DynamoDbQueryOutputSnafu)?
+            .items
+            .unwrap_or_default();
+
+        Ok(items)
     }
 }
 
@@ -241,6 +264,11 @@ impl StateStore for DynamoDbStateStore {
         deserialize_data(item)
     }
 
+    async fn get_queries_by_session_id(&self, session_id: &str) -> Result<Vec<Query>> {
+        let items = self.query_items_by_session_id(session_id).await?;
+        deserialize_items(items)
+    }
+
     async fn delete_query(&self, query_id: &str) -> Result<()> {
         let item = self.query_item_by_query_id(query_id).await?;
         let pk = required_string_attr(&item, PK)?;
@@ -268,6 +296,15 @@ fn deserialize_data<T: DeserializeOwned>(mut item: HashMap<String, AttributeValu
         .ok_or(Error::MissingData)?;
 
     serde_json::from_str(&data).context(FailedToParseJsonSnafu)
+}
+
+fn deserialize_items<T: DeserializeOwned>(
+    items: Vec<HashMap<String, AttributeValue>>,
+) -> Result<Vec<T>> {
+    items
+        .into_iter()
+        .map(deserialize_data)
+        .collect::<Result<Vec<_>>>()
 }
 
 fn required_string_attr(item: &HashMap<String, AttributeValue>, key: &str) -> Result<String> {

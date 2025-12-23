@@ -502,6 +502,11 @@ impl ExecutionService for CoreExecutionService {
                 .put_query(query_record)
                 .await
                 .context(ex_error::StateStoreSnafu)?;
+            let _ = self
+                .state_store
+                .get_query(&query_context.query_id.to_string())
+                .await
+                .context(ex_error::StateStoreSnafu)?;
         }
 
         if self.queries.count() >= self.config.max_concurrency_level {
