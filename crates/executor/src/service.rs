@@ -34,7 +34,7 @@ use crate::utils::{Config, MemPoolType};
 use catalog::catalog_list::EmbucketCatalogList;
 use catalog_metastore::{InMemoryMetastore, Metastore, TableIdent as MetastoreTableIdent};
 #[cfg(feature = "state-store")]
-use state_store::{DynamoDbStateStore, StateStore};
+use state_store::{DynamoDbStateStore, StateStore, models::Query};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::Instrument;
@@ -489,6 +489,20 @@ impl ExecutionService for CoreExecutionService {
         query_context: QueryContext,
     ) -> Result<QueryId> {
         let user_session = self.get_session(session_id).await?;
+
+        #[cfg(feature = "state-store")]
+        {
+            let query_record = Query::new(
+                query,
+                query_context.query_id,
+                session_id,
+                query_context.request_id,
+            );
+            self.state_store
+                .put_query(query_record)
+                .await
+                .context(ex_error::StateStoreSnafu)?;
+        }
 
         if self.queries.count() >= self.config.max_concurrency_level {
             return ex_error::ConcurrencyLimitSnafu.fail();

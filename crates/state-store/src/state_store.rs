@@ -8,7 +8,7 @@ use crate::error::{
 };
 use crate::models::{Query, SessionRecord};
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
 use snafu::ResultExt;
 
@@ -73,19 +73,14 @@ impl DynamoDbStateStore {
         format!("SESSION#{key}")
     }
 
-    fn query_pk(start_time: &DateTime<FixedOffset>) -> String {
+    fn query_pk(start_time: &DateTime<Utc>) -> String {
         format!("QUERY#{}", start_time.format("%Y-%m-%d"))
     }
 
-    fn query_sk(start_time: &DateTime<FixedOffset>) -> String {
+    fn query_sk(start_time: &DateTime<Utc>) -> String {
         start_time.timestamp_millis().to_string()
     }
 
-    fn parse_start_time(start_time: &str) -> Result<DateTime<FixedOffset>> {
-        DateTime::parse_from_rfc3339(start_time).map_err(|_| Error::InvalidTime {
-            value: start_time.to_string(),
-        })
-    }
     async fn query_item_by_query_id(
         &self,
         query_id: &str,
@@ -201,9 +196,8 @@ impl StateStore for DynamoDbStateStore {
 
     async fn put_query(&self, query: Query) -> Result<()> {
         let mut item = HashMap::new();
-        let parsed_start_time = Self::parse_start_time(&query.start_time)?;
-        let pk = Self::query_pk(&parsed_start_time);
-        let sk = Self::query_sk(&parsed_start_time);
+        let pk = Self::query_pk(&query.start_time);
+        let sk = Self::query_sk(&query.start_time);
         item.insert(PK.to_string(), AttributeValue::S(pk));
         item.insert(SK.to_string(), AttributeValue::S(sk));
         item.insert(ENTITY.to_string(), AttributeValue::S(query.entity()));
