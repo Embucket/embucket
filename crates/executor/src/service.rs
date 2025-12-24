@@ -571,8 +571,7 @@ impl ExecutionService for CoreExecutionService {
             let query_token = query_token.clone();
             async move {
                 let sub_task_span = tracing::info_span!("spawn_query_sub_task");
-                let mut query_obj =
-                    user_session.query(query_text, query_context.with_query_id(query_id));
+                let mut query_obj = user_session.query(query_text, query_context);
 
                 // Create nested task so in case of abort/timeout it can be aborted
                 // and result is handled properly (status / query result saved)
@@ -617,6 +616,7 @@ impl ExecutionService for CoreExecutionService {
 
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "state-store-query")] {
+                        execution_result.assign_query_attributes(&mut query);
                         // just log error and do not raise it from task
                         if let Err(err) = state_store.update_query(&query).await {
                             tracing::error!("Failed to update query {query_id}: {err:?}");
