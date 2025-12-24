@@ -564,6 +564,7 @@ impl ExecutionService for CoreExecutionService {
             session_id = %session_id
         );
         let handle = tokio::spawn({
+            #[cfg(feature = "state-store-query")]
             let state_store = self.state_store.clone();
             let query_text = query_text.to_string();
             let query_timeout = Duration::from_secs(self.config.query_timeout_secs);
