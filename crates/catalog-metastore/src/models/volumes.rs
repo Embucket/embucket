@@ -53,6 +53,7 @@ pub struct AwsAccessKeyCredentials {
     pub aws_access_key_id: String,
     #[validate(regex(path = aws_secret_access_key_regex_func(), message = "AWS Secret access key is expected to be 40 chars Base64-like string with uppercase, lowercase, digits, and +/= .\n"))]
     pub aws_secret_access_key: String,
+    pub aws_session_token: Option<String>,
 }
 
 impl std::fmt::Display for AwsAccessKeyCredentials {
@@ -70,6 +71,7 @@ impl std::fmt::Debug for AwsAccessKeyCredentials {
         f.debug_struct("AwsAccessKeyCredentials")
             .field("aws_access_key_id", &self.aws_access_key_id)
             .field("aws_secret_access_key", &"**********")
+            .field("aws_session_token", &"**********")
             .finish()
     }
 }

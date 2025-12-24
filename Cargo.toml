@@ -34,7 +34,8 @@ queries = { path = "crates/queries" }
 async-trait = { version = "0.1.84" }
 aws-config = { version = "1.5.17" }
 aws-sdk-dynamodb = { version = "1.100.0" }
-aws-credential-types = { version = "1.2.1",  features = ["hardcoded-credentials"]}
+aws-sdk-s3tables = { version = "1.47.0" }
+aws-credential-types = { version = "1.2.11",  features = ["hardcoded-credentials"]}
 axum = { version = "0.8.1", features = ["multipart", "macros"] }
 axum-macros = "0.5"
 bytes = { version = "1.8.0" }

@@ -1500,6 +1500,7 @@ impl UserQuery {
                             credentials: AwsCredentials::AccessKey(AwsAccessKeyCredentials {
                                 aws_access_key_id: key_id,
                                 aws_secret_access_key: secret_key,
+                                aws_session_token: None,
                             }),
                             arn: params.aws_access_point_arn.unwrap_or_default(),
                             client_options: None,
@@ -1517,6 +1518,7 @@ impl UserQuery {
                 let aws_credentials = AwsCredentials::AccessKey(AwsAccessKeyCredentials {
                     aws_access_key_id: key_id,
                     aws_secret_access_key: secret_key,
+                    aws_session_token: None,
                 });
 
                 Volume::new(
@@ -2844,6 +2846,7 @@ impl UserQuery {
                         Some(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
                             aws_access_key_id: access_key.to_string(),
                             aws_secret_access_key: secret_key.to_string(),
+                            aws_session_token: None,
                         }))
                     };
 
