@@ -56,7 +56,7 @@ mod stress {
         // Returned results match any of these patterns
         let expected_patterns = vec![
             "successfully executed",
-            "Too many open files", // OS related error
+            "Too many open files", // OS  related error
             "SQL compilation error: Schema 's3_table_db.schema1' does not exist or not authorized 002003",
             "Generic S3 error: Error performing GET",
             "Iceberg Object store: The operation lacked the necessary privileges to complete for path metadata",
