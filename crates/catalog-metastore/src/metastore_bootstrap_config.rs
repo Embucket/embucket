@@ -540,6 +540,8 @@ async fn validate_s3tables_credentials(
         }
     };
 
+    println!("CREDS CHECK access_key {access_key}, secret_key {secret_key}, token {:?}", token);
+
     let region = arn
         .split(':')
         .nth(3)
