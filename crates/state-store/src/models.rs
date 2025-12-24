@@ -1,8 +1,10 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Entities {
@@ -21,9 +23,8 @@ impl Display for Entities {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecutionStatus {
-    #[default]
     Success,
     Fail,
     Incident,
@@ -113,9 +114,10 @@ pub struct Variable {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Query {
-    pub query_id: String,
-    pub request_id: Option<String>,
+    pub query_id: Uuid,
+    pub request_id: Option<Uuid>,
     pub query_text: String,
+    pub session_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -126,10 +128,10 @@ pub struct Query {
     pub schema_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_type: Option<String>,
-    pub session_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authn_event_id: Option<String>,
-    pub user_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -150,9 +152,9 @@ pub struct Query {
     pub error_code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
-    pub start_time: String,
+    pub start_time: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub end_time: Option<String>,
+    pub end_time: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_elapsed_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -281,17 +283,25 @@ pub struct Query {
 
 impl Query {
     #[must_use]
-    pub fn entity(&self) -> String {
-        Entities::Query.to_string()
+    pub fn new(
+        query_str: &str,
+        query_id: Uuid,
+        session_id: &str,
+        request_id: Option<Uuid>,
+    ) -> Self {
+        Self {
+            query_id,
+            query_text: query_str.to_string(),
+            session_id: session_id.to_string(),
+            request_id,
+            start_time: Utc::now(),
+            ..Self::default()
+        }
     }
 
     #[must_use]
-    pub fn new(query_text: String) -> Self {
-        Self {
-            query_id: uuid::Uuid::now_v7().to_string(),
-            query_text,
-            ..Default::default()
-        }
+    pub fn entity(&self) -> String {
+        Entities::Query.to_string()
     }
 
     // Why? warning: this could be a `const fn`

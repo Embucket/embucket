@@ -29,7 +29,7 @@ impl QueryContext {
             database,
             schema,
             worksheet_id,
-            query_id: QueryId::default(),
+            query_id: Uuid::now_v7(),
             request_id: None,
             ip_address: None,
         }

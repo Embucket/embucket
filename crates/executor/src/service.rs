@@ -35,7 +35,7 @@ use crate::utils::{Config, MemPoolType};
 use catalog::catalog_list::EmbucketCatalogList;
 use catalog_metastore::{InMemoryMetastore, Metastore, TableIdent as MetastoreTableIdent};
 #[cfg(feature = "state-store")]
-use state_store::{DynamoDbStateStore, StateStore};
+use state_store::{DynamoDbStateStore, StateStore, models::Query};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
 use tracing::Instrument;
@@ -514,10 +514,15 @@ impl ExecutionService for CoreExecutionService {
 
         cfg_if::cfg_if! {
             if #[cfg(feature = "state-store-query")] {
-                let mut query = state_store::Query::new(query_text.to_string());
-                let query_id = query.query_id.parse::<Uuid>().expect("Got bad query_id from state-store");
+                let mut query = Query::new(
+                    query_text,
+                    query_context.query_id,
+                    session_id,
+                    query_context.request_id,
+                );
+                let query_id = query_context.query_id;
             } else {
-                let query_id = Uuid::new_v4();
+                let query_id = Uuid::now_v7();
             }
         }
 

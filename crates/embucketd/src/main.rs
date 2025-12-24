@@ -207,11 +207,23 @@ async fn async_main(
 
 #[allow(clippy::expect_used, clippy::redundant_closure_for_method_calls)]
 fn setup_tracing(opts: &cli::CliOpts) -> SdkTracerProvider {
-    // Initialize OTLP exporter using gRPC (Tonic)
-    let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_tonic()
-        .build()
-        .expect("Failed to create OTLP exporter");
+    let exporter = match opts.otel_exporter_otlp_protocol.to_lowercase().as_str() {
+        "grpc" => {
+            // Initialize OTLP exporter using gRPC (Tonic)
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .build()
+                .expect("Failed to create OTLP gRPC exporter")
+        }
+        "http/json" => {
+            // Initialize OTLP exporter using HTTP
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .build()
+                .expect("Failed to create OTLP HTTP exporter")
+        }
+        protocol => panic!("Unsupported OTLP protocol: {}", protocol),
+    };
 
     let resource = Resource::builder().with_service_name("Em").build();
 

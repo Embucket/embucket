@@ -77,6 +77,66 @@ cargo lambda deploy --binary-name bootstrap
   ```
 - It will deploy envs from `.env` if `ENV_FILE` not specified
 
+### Observability
+
+#### AWS traces
+We send events, spans to stdout log in json format, and in case if AWS X-Ray is enabled it enhances traces.
+- `RUST_LOG` - Controls verbosity log level. Default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
+
+#### OpenTelemetry configuration
+
+To work with Opentelemtry, you need an Opentelemetry Collector running in your environment with open telemetry config. 
+The easiest way is to add two layers to your lambda deployment. One of which would be your config file with the remote exporter.
+
+1. Create a folder called collector-config and add a file called `config.yml` with the OpenTelemetry Collector [**configuration**](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/).
+2. After which zip the folder with this ocmmand: `zip -r <filename>.zip collector-config`
+3. Then publish it to AWS (change the file name and layer name if you want): `aws lambda publish-layer-version 
+  --layer-name <layername> 
+  --zip-file fileb://<filename>.zip 
+  --compatible-runtimes provided.al2 provided.al2023 
+  --compatible-architectures arm64`
+4. After which provide this as an external env variable (the first layer is the collector itself): `OTEL_COLLECTOR_LAYERS ?= \
+	--layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1\
+	--layer-arn arn:aws:lambda:<region>:<account_id>:layer:<layername>:<version>`
+5. Now you can deploy the function with the new layer. 
+
+If you later update the configratuin and publish the layer again remember to change the layer `<version>` number, after the first publish it is `1`.
+
+#### Exporting telemetry spans to [**honeycomb.io**](https://docs.honeycomb.io/send-data/opentelemetry/collector/)
+
+OpenTelemrty Collector config example for Honeycomb:
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: localhost:4317
+      http:
+        endpoint: localhost:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp:
+    # You can name these envs anything you want as long as they are the same as in .env file
+    endpoint: "${env:HONEYCOMB_ENDPOINT_URL}"
+    headers:
+      x-honeycomb-team: "${env:HONEYCOMB_API_KEY}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+```
+
+- Environment variables configuration:
+  * `HONEYCOMB_API_KEY` - this is the full ingestion key (not the key id or management key)
+  * `HONEYCOMB_ENDPOINT_URL` - check the region it can start be `api.honeycomb.io` or `api.eu1.honeycomb.io`
+  * `OTEL_SERVICE_NAME` - is the x-honeycomb-dataset name
+
 ### Test locally
 
 ```bash
