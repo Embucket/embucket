@@ -23,6 +23,7 @@ const QUERY_ID_INDEX: &str = "GSI_QUERY_ID_INDEX";
 const REQUEST_ID_INDEX: &str = "GSI_REQUEST_ID_INDEX";
 const SESSION_ID_INDEX: &str = "GSI_SESSION_ID_INDEX";
 
+#[mockall::automock]
 #[async_trait::async_trait]
 pub trait StateStore: Send + Sync {
     async fn put_new_session(&self, session_id: &str) -> Result<()>;
@@ -30,12 +31,12 @@ pub trait StateStore: Send + Sync {
     async fn get_session(&self, session_id: &str) -> Result<SessionRecord>;
     async fn delete_session(&self, session_id: &str) -> Result<()>;
     async fn update_session(&self, session: SessionRecord) -> Result<()>;
-    async fn put_query(&self, query: Query) -> Result<()>;
+    async fn put_query(&self, query: &Query) -> Result<()>;
     async fn get_query(&self, query_id: &str) -> Result<Query>;
     async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query>;
     async fn get_queries_by_session_id(&self, session_id: &str) -> Result<Vec<Query>>;
     async fn delete_query(&self, query_id: &str) -> Result<()>;
-    async fn update_query(&self, query: Query) -> Result<()>;
+    async fn update_query(&self, query: &Query) -> Result<()>;
 }
 
 /// `DynamoDB` single-table client.
@@ -217,7 +218,7 @@ impl StateStore for DynamoDbStateStore {
         self.put_session(session).await
     }
 
-    async fn put_query(&self, query: Query) -> Result<()> {
+    async fn put_query(&self, query: &Query) -> Result<()> {
         let mut item = HashMap::new();
         let pk = Self::query_pk(&query.start_time);
         let sk = Self::query_sk(&query.start_time);
@@ -284,7 +285,7 @@ impl StateStore for DynamoDbStateStore {
         Ok(())
     }
 
-    async fn update_query(&self, query: Query) -> Result<()> {
+    async fn update_query(&self, query: &Query) -> Result<()> {
         self.put_query(query).await
     }
 }

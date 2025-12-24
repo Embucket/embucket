@@ -7,6 +7,7 @@ license-file.workspace = true
 [features]
 default = []
 retry-disable = []
+traces-test-log = []
 
 [dependencies]
 api-snowflake-rest-sessions = { path = "../api-snowflake-rest-sessions" }

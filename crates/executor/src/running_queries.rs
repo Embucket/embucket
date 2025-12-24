@@ -1,6 +1,6 @@
 use super::error::{self as ex_error, Result};
 use super::models::QueryResult;
-use crate::query_types::{QueryId, QueryStatus};
+use crate::query_types::{ExecutionStatus, QueryId};
 use dashmap::DashMap;
 use snafu::{OptionExt, ResultExt};
 use std::sync::Arc;
@@ -20,8 +20,8 @@ pub struct RunningQuery {
     pub result_handle: Option<JoinHandle<Result<QueryResult>>>,
     pub cancellation_token: CancellationToken,
     // user can be notified when query is finished
-    tx: watch::Sender<QueryStatus>,
-    rx: watch::Receiver<QueryStatus>,
+    tx: watch::Sender<Option<ExecutionStatus>>,
+    rx: watch::Receiver<Option<ExecutionStatus>>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub enum RunningQueryId {
 impl RunningQuery {
     #[must_use]
     pub fn new(query_id: QueryId) -> Self {
-        let (tx, rx) = watch::channel(QueryStatus::Running);
+        let (tx, rx) = watch::channel(None);
         Self {
             query_id,
             request_id: None,
@@ -76,9 +76,9 @@ impl RunningQuery {
     )]
     pub fn notify_query_finished(
         &self,
-        status: QueryStatus,
-    ) -> std::result::Result<(), watch::error::SendError<QueryStatus>> {
-        self.tx.send(status)
+        status: ExecutionStatus,
+    ) -> std::result::Result<(), watch::error::SendError<Option<ExecutionStatus>>> {
+        self.tx.send(Some(status))
     }
 
     #[tracing::instrument(
@@ -89,14 +89,14 @@ impl RunningQuery {
     )]
     pub async fn wait_query_finished(
         &self,
-    ) -> std::result::Result<QueryStatus, watch::error::RecvError> {
+    ) -> std::result::Result<ExecutionStatus, watch::error::RecvError> {
         // use loop here to bypass default query status we posted at init
         // it should not go to the actual loop and should resolve as soon as results are ready
         let mut rx = self.rx.clone();
         loop {
             rx.changed().await?;
             let status = *rx.borrow();
-            if status != QueryStatus::Running {
+            if let Some(status) = status {
                 break Ok(status);
             }
         }
@@ -131,7 +131,7 @@ impl RunningQueriesRegistry {
         skip(self),
         err
     )]
-    pub async fn wait_query_finished(&self, query_id: QueryId) -> Result<QueryStatus> {
+    pub async fn wait_query_finished(&self, query_id: QueryId) -> Result<ExecutionStatus> {
         let running_query = self
             .queries
             .get(&query_id)
@@ -139,7 +139,7 @@ impl RunningQueriesRegistry {
         running_query
             .wait_query_finished()
             .await
-            .context(ex_error::QueryStatusRecvSnafu { query_id })
+            .context(ex_error::ExecutionStatusRecvSnafu { query_id })
     }
 }
 
@@ -149,7 +149,7 @@ pub trait RunningQueries: Send + Sync {
     fn add(&self, running_query: RunningQuery);
     fn remove(&self, query_id: QueryId) -> Result<RunningQuery>;
     fn abort(&self, query_id: QueryId) -> Result<()>;
-    fn notify_query_finished(&self, query_id: QueryId, status: QueryStatus) -> Result<()>;
+    fn notify_query_finished(&self, query_id: QueryId, status: ExecutionStatus) -> Result<()>;
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId>;
     fn count(&self) -> usize;
 }
@@ -197,7 +197,7 @@ impl RunningQueries for RunningQueriesRegistry {
         skip(self),
         err
     )]
-    fn notify_query_finished(&self, query_id: QueryId, status: QueryStatus) -> Result<()> {
+    fn notify_query_finished(&self, query_id: QueryId, status: ExecutionStatus) -> Result<()> {
         let running_query = self
             .queries
             .get(&query_id)

@@ -12,7 +12,8 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Builder;
-use tracing_subscriber::fmt::format::FmtSpan;
+#[cfg(feature = "traces-test-log")]
+use tracing_subscriber::{fmt, fmt::format::FmtSpan};
 
 static INIT: std::sync::Once = std::sync::Once::new();
 
@@ -140,10 +141,13 @@ fn setup_tracing() {
                             .with_targets(targets_with_level(&DISABLED_TARGETS, LevelFilter::OFF))
                             .with_default(LevelFilter::TRACE),
                     ),
-            )
+            );
+
+        #[cfg(feature = "traces-test-log")]
+        let registry = registry
             // Logs filtering
             .with(
-                tracing_subscriber::fmt::layer()
+                fmt::layer()
                     .with_writer(
                         std::fs::OpenOptions::new()
                             .create(true)

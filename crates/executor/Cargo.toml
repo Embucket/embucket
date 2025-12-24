@@ -5,9 +5,11 @@ edition = "2024"
 license-file.workspace = true
 
 [features]
+default = []
 rest-catalog = ["catalog/rest-catalog"]
 dedicated-executor = []
 state-store = []
+state-store-query = ["state-store"]
 
 [dependencies]
 catalog-metastore = { path = "../catalog-metastore" }

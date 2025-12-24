@@ -6,8 +6,10 @@ use std::fmt::Display;
 // For reference: https://github.com/snowflakedb/snowflake-cli/blob/main/src/snowflake/cli/api/errno.py
 // Some of our error codes may be mapped to Snowflake error codes
 
+// Do not set values for error codes, they are assigned in Display trait
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum ErrorCode {
+    None,
     Db,
     Metastore,
     #[cfg(feature = "state-store")]
@@ -35,6 +37,10 @@ pub enum ErrorCode {
     EntityNotFound(Entity, OperationOn),
     Other,
     UnsupportedFeature,
+    Timeout,
+    Cancelled,
+    LimitExceeded,
+    QueryTask,
 }
 
 impl Display for ErrorCode {
@@ -42,6 +48,8 @@ impl Display for ErrorCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = match self {
             Self::UnsupportedFeature => 2,
+            Self::Timeout => 630,
+            Self::Cancelled => 684,
             Self::HistoricalQueryError => 1001,
             Self::DataFusionSqlParse => 1003,
             Self::DataFusionSql => 2003,

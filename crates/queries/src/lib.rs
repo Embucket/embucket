@@ -2,7 +2,7 @@ pub mod error;
 pub mod models;
 pub mod operations;
 
-#[cfg(test)]
+#[cfg(all(feature = "tests", test))]
 pub mod tests;
 
 pub use models::QuerySource;

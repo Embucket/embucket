@@ -45,10 +45,11 @@ fn main() {
     println!("cargo:rustc-env=BUILD_TIMESTAMP={build_timestamp}");
 
     // Rerun build script if git HEAD changes
-    println!("cargo:rerun-if-changed=.git/HEAD");
+    // Should point to the root of the repository
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
     // Also rerun if the current branch ref changes
     if let Some(branch_ref) = run_git_command(&["symbolic-ref", "HEAD"]) {
-        let ref_path = format!(".git/{branch_ref}");
+        let ref_path = format!("../../.git/{branch_ref}");
         println!("cargo:rerun-if-changed={ref_path}");
     }
 }

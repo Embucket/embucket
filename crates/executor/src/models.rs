@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct QueryContext {
     pub database: Option<String>,
     pub schema: Option<String>,
@@ -16,6 +16,21 @@ pub struct QueryContext {
     pub query_id: QueryId,
     pub request_id: Option<Uuid>,
     pub ip_address: Option<String>,
+}
+
+// Add own Default implementation to avoid getting default (zeroed) Uuid.
+// This compromise is against rules, since this default is not deterministic.
+impl Default for QueryContext {
+    fn default() -> Self {
+        Self {
+            database: None,
+            schema: None,
+            worksheet_id: None,
+            query_id: Uuid::now_v7(),
+            request_id: None,
+            ip_address: None,
+        }
+    }
 }
 
 impl QueryContext {
@@ -29,9 +44,7 @@ impl QueryContext {
             database,
             schema,
             worksheet_id,
-            query_id: QueryId::default(),
-            request_id: None,
-            ip_address: None,
+            ..Default::default()
         }
     }
 

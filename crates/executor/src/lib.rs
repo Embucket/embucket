@@ -6,6 +6,7 @@ pub mod error;
 pub mod error_code;
 pub mod models;
 pub mod query;
+pub mod query_task_result;
 pub mod query_types;
 pub mod running_queries;
 pub mod service;
@@ -18,7 +19,7 @@ pub mod utils;
 pub mod tests;
 
 pub use error::{Error, Result};
-pub use query_types::{QueryId, QueryStatus};
+pub use query_types::{ExecutionStatus, QueryId};
 pub use running_queries::RunningQueryId;
 pub use snowflake_error::SnowflakeError;
 
