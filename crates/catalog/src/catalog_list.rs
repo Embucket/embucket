@@ -251,7 +251,7 @@ impl EmbucketCatalogList {
             AwsCredentials::AccessKey(ref creds) => (
                 Some(creds.aws_access_key_id.clone()),
                 Some(creds.aws_secret_access_key.clone()),
-                None,
+                creds.aws_session_token.clone(),
             ),
             AwsCredentials::Token(ref t) => (None, None, Some(t.clone())),
         };
