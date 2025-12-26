@@ -63,7 +63,7 @@ cargo lambda deploy --binary-name bootstrap
 3. Environment variable: `export CARGO_LAMBDA_FUNCTION_NAME=my-function` (if supported by your cargo-lambda version)
 
 **IAM Role**: Only needed when creating a NEW function. For existing functions, the role is preserved.
-- To specify: `export AWS_LAMBDA_ROLE_ARN=arn:aws:iam::account:role/YourRole`
+- To specify: `export IAM_ROLE=--iam-role arn:aws:iam::account:role/YourRole`
 
 **Other Settings** (in `Cargo.toml`):
 - Memory: `memory = 3008`

@@ -17,7 +17,7 @@ deploy: build deploy-only public-url
 
 # Quick deploy without rebuild
 deploy-only:
-	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYERS) --iam-role $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
+	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYERS) $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
 	aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)" >/dev/null 2>&1 || true
 
 public-url:
