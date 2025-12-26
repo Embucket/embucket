@@ -3,8 +3,8 @@
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
 FUNCTION_NAME ?= embucket-lambda
 ENV_FILE ?= config/.env
-AWS_LAMBDA_ROLE_ARN := $(if $(AWS_LAMBDA_ROLE_ARN),--iam-role $(AWS_LAMBDA_ROLE_ARN))
-OTEL_COLLECTOR_LAYERS := $(if $(OTEL_COLLECTOR_LAYERS),--layer-arn $(OTEL_COLLECTOR_LAYERS))
+AWS_LAMBDA_ROLE_ARN_PARAM := $(if $(AWS_LAMBDA_ROLE_ARN),--iam-role $(AWS_LAMBDA_ROLE_ARN))
+OTEL_COLLECTOR_LAYERS_PARAM := $(if $(OTEL_COLLECTOR_LAYERS),--layer-arn $(OTEL_COLLECTOR_LAYERS))
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
@@ -17,7 +17,7 @@ deploy: build deploy-only public-url
 
 # Quick deploy without rebuild
 deploy-only:
-	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYERS) $(IAM_ROLE) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
+	cd ../.. && cargo lambda deploy $(OTEL_COLLECTOR_LAYERS_PARAM) $(AWS_LAMBDA_ROLE_ARN_PARAM) --env-file $(ENV_FILE) --binary-name bootstrap $(FUNCTION_NAME)
 	aws logs create-log-group --log-group-name "/aws/lambda/$(FUNCTION_NAME)" >/dev/null 2>&1 || true
 
 public-url:
