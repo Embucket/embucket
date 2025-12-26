@@ -51,10 +51,12 @@ state-store-query = ["executor/state-store-query"]
 # Default binary to deploy
 default-binary = "bootstrap"
 
+[package.metadata.lambda.deploy]
+# Function name: Can be set via CARGO_LAMBDA_FUNCTION_NAME env var
+# If not set, falls back to binary name or pass as CLI argument
+memory = 3008
+timeout = 30
+tracing = "Active"
 # Note: include path is relative to workspace root
 # Must run deploy from workspace root: cargo lambda deploy --binary-name bootstrap
 include = ["config"]
-
-[package.metadata.lambda.deploy.env]
-LOG_FORMAT = "json"
-METASTORE_CONFIG = "config/metastore.yaml"
