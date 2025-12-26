@@ -3,7 +3,7 @@
 # Function name (override with: make deploy FUNCTION_NAME=your-function)
 FUNCTION_NAME ?= embucket-lambda
 ENV_FILE ?= config/.env
-IAM_ROLE ?=
+AWS_LAMBDA_ROLE_ARN := $(if $(AWS_LAMBDA_ROLE_ARN),--features $(AWS_LAMBDA_ROLE_ARN))
 OTEL_COLLECTOR_LAYERS ?=
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
