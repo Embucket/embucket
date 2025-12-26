@@ -95,9 +95,7 @@ The easiest way is to add two layers to your lambda deployment. One of which wou
   --zip-file fileb://<filename>.zip 
   --compatible-runtimes provided.al2 provided.al2023 
   --compatible-architectures arm64`
-4. After which provide this as an external env variable (the first layer is the collector itself): `OTEL_COLLECTOR_LAYERS ?= \
-	--layer-arn arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1\
-	--layer-arn arn:aws:lambda:<region>:<account_id>:layer:<layername>:<version>`
+4. After which provide this as an external env variable (the first layer is the collector itself): `OTEL_COLLECTOR_LAYERS=arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:<region>:<account_id>:layer:<layername>:<version>`
 5. Now you can deploy the function with the new layer. 
 
 If you later update the configratuin and publish the layer again remember to change the layer `<version>` number, after the first publish it is `1`.
