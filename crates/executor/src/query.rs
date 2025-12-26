@@ -12,7 +12,8 @@ use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
 use crate::datafusion::logical_plan::merge::MergeIntoCOWSink;
 use crate::datafusion::physical_optimizer::runtime_physical_optimizer_rules;
 use crate::datafusion::physical_plan::merge::{
-    DATA_FILE_PATH_COLUMN, MANIFEST_FILE_PATH_COLUMN, SOURCE_EXISTS_COLUMN, TARGET_EXISTS_COLUMN,
+    DATA_FILE_PATH_COLUMN, MANIFEST_FILE_PATH_COLUMN, SOURCE_EXISTS_COLUMN, MERGE_INSERTED_COLUMN,
+    MERGE_UPDATED_COLUMN, TARGET_EXISTS_COLUMN,
 };
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
@@ -63,7 +64,7 @@ use datafusion_expr::planner::ContextProvider;
 use datafusion_expr::{
     BinaryExpr, CreateMemoryTable, DdlStatement, Expr as DFExpr, ExprSchemable, Extension,
     JoinType, LogicalPlanBuilder, Operator, Projection, SubqueryAlias, TryCast, and,
-    build_join_schema, is_null, lit, when,
+    build_join_schema, is_null, lit, or, when,
 };
 use datafusion_iceberg::DataFusionTable;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
@@ -1380,6 +1381,12 @@ impl UserQuery {
             .sql_to_expr((*on).clone(), &schema, &mut planner_context)
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
+        let has_insert = clauses.iter().any(|c| matches!(c.action, MergeAction::Insert(_)));
+        let has_update = clauses
+            .iter()
+            .any(|c| matches!(c.action, MergeAction::Update { .. }));
+        let has_delete = clauses.iter().any(|c| matches!(c.action, MergeAction::Delete));
+
         let merge_clause_projection = merge_clause_projection(
             &sql_planner,
             &schema,
@@ -1396,7 +1403,8 @@ impl UserQuery {
             .build()
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
-        let merge_into_plan = MergeIntoCOWSink::new(Arc::new(join_plan), target_table)
+        let merge_into_plan =
+            MergeIntoCOWSink::new(Arc::new(join_plan), target_table, has_insert, has_update, has_delete)
             .context(ex_error::DataFusionSnafu)?;
 
         self.execute_logical_plan(LogicalPlan::Extension(Extension {
@@ -2952,6 +2960,8 @@ pub fn merge_clause_projection<S: ContextProvider>(
         HashMap::new();
     let mut inserts: HashMap<String, Vec<(logical_expr::Expr, logical_expr::Expr)>> =
         HashMap::new();
+    let mut updated_ops: Vec<logical_expr::Expr> = Vec::new();
+    let mut inserted_ops: Vec<logical_expr::Expr> = Vec::new();
 
     let mut planner_context = datafusion::sql::planner::PlannerContext::new();
 
@@ -2967,6 +2977,7 @@ pub fn merge_clause_projection<S: ContextProvider>(
         };
         match merge_clause.action {
             MergeAction::Update { assignments } => {
+                updated_ops.push(op.clone());
                 for assignment in assignments {
                     match assignment.target {
                         AssignmentTarget::ColumnName(mut column) => {
@@ -2993,6 +3004,7 @@ pub fn merge_clause_projection<S: ContextProvider>(
                 }
             }
             MergeAction::Insert(insert) => {
+                inserted_ops.push(op.clone());
                 let MergeInsertKind::Values(values) = insert.kind else {
                     return Err(ex_error::OnlyMergeStatementsSnafu.build());
                 };
@@ -3027,6 +3039,19 @@ pub fn merge_clause_projection<S: ContextProvider>(
         }
     }
     let exprs = collect_merge_clause_expressions(target_schema, updates, inserts)?;
+    let mut exprs = exprs;
+
+    let merge_updated_expr = updated_ops
+        .into_iter()
+        .fold(lit(false), |acc, op| or(acc, op))
+        .alias(MERGE_UPDATED_COLUMN);
+    exprs.push(merge_updated_expr);
+
+    let merge_inserted_expr = inserted_ops
+        .into_iter()
+        .fold(lit(false), |acc, op| or(acc, op))
+        .alias(MERGE_INSERTED_COLUMN);
+    exprs.push(merge_inserted_expr);
     Ok(exprs)
 }
 
