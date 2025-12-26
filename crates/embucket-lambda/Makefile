@@ -4,7 +4,7 @@
 FUNCTION_NAME ?= embucket-lambda
 ENV_FILE ?= config/.env
 AWS_LAMBDA_ROLE_ARN := $(if $(AWS_LAMBDA_ROLE_ARN),--iam-role $(AWS_LAMBDA_ROLE_ARN))
-OTEL_COLLECTOR_LAYERS ?= $(if $(OTEL_COLLECTOR_LAYERS),--layer-arn $(OTEL_COLLECTOR_LAYERS))
+OTEL_COLLECTOR_LAYERS := $(if $(OTEL_COLLECTOR_LAYERS),--layer-arn $(OTEL_COLLECTOR_LAYERS))
 # supported features: "streaming"
 FEATURES_PARAM := $(if $(FEATURES),--features $(FEATURES))
 
