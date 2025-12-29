@@ -50,6 +50,13 @@ pub enum Error {
         #[snafu(implicit)]
         location: Location,
     },
+    #[snafu(display("Dynamodb query error: {error}"))]
+    DynamoDbCredentialsError {
+        #[snafu(source(from(aws_credential_types::provider::error::CredentialsError, Box::new)))]
+        error: Box<aws_credential_types::provider::error::CredentialsError>,
+        #[snafu(implicit)]
+        location: Location,
+    },
     #[snafu(display("item not found"))]
     NotFound,
     #[snafu(display("data attribute missing from DynamoDB item"))]

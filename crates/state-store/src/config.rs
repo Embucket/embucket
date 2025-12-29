@@ -1,13 +1,14 @@
+use crate::error::{DynamoDbCredentialsSnafu, Error, Result};
 use aws_config::Region;
+use aws_config::meta::credentials::CredentialsProviderChain;
 use aws_config::{BehaviorVersion, defaults};
 use aws_credential_types::Credentials;
-use aws_credential_types::provider::SharedCredentialsProvider;
+use aws_credential_types::provider::{ProvideCredentials, SharedCredentialsProvider};
 use aws_sdk_dynamodb::Client;
 use aws_sdk_dynamodb::config::Builder as DynamoConfigBuilder;
 use aws_sdk_dynamodb::config::retry::RetryConfig;
+use snafu::ResultExt;
 use std::env;
-
-use crate::error::{Error, Result};
 
 #[derive(Debug, Clone)]
 pub struct DynamoDbConfig {
@@ -40,11 +41,28 @@ impl DynamoDbConfig {
             loader = loader.endpoint_url(endpoint);
         }
 
-        let access_key = required_env("AWS_ACCESS_KEY_ID")?;
-        let secret_key = required_env("AWS_SECRET_ACCESS_KEY")?;
-        let creds = Credentials::from_keys(access_key, secret_key, None);
-        loader = loader.credentials_provider(SharedCredentialsProvider::new(creds));
+        let creds = if let (Ok(access_key), Ok(secret_key)) = (
+            env::var("AWS_DDB_ACCESS_KEY_ID"),
+            env::var("AWS_DDB_SECRET_ACCESS_KEY"),
+        ) {
+            let token = env::var("AWS_DDB_SESSION_TOKEN").ok();
+            Credentials::from_keys(access_key, secret_key, token)
+        } else {
+            // Default AWS Credential Provider Chain
+            // Resolution order:
+            // 1. Environment variables
+            // 2. Shared config (`~/.aws/config`, `~/.aws/credentials`)
+            // 3. Web Identity Tokens
+            // 4. ECS (IAM Roles for Tasks) & General HTTP credentials
+            // 5. EC2 IMDSv2
+            let provider = CredentialsProviderChain::default_provider().await;
+            provider
+                .provide_credentials()
+                .await
+                .context(DynamoDbCredentialsSnafu)?
+        };
 
+        loader = loader.credentials_provider(SharedCredentialsProvider::new(creds));
         let config = loader.load().await;
         let retry_config = RetryConfig::adaptive();
         let config_builder = DynamoConfigBuilder::from(&config).retry_config(retry_config);

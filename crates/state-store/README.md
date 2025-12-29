@@ -67,4 +67,8 @@ AWS_REGION=us-east-2 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local dynamod
 ```bash
 STATESTORE_TABLE_NAME=embucket-statestore
 STATESTORE_DYNAMODB_ENDPOINT=http://localhost:8000
+AWS_DDB_ACCESS_KEY_ID=key
+AWS_DDB_SECRET_ACCESS_KEY=secret
+# For temporary credentials
+AWS_DDB_SESSION_TOKEN=token
 ```
