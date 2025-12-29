@@ -166,6 +166,7 @@ impl MetastoreBootstrapConfig {
     pub async fn load_from_env() -> Result<Self, ConfigError> {
         let mut config = Self::default();
         if let Some(volume) = load_volume_from_env().await? {
+            tracing::info!("Loading volume from environment");
             config.volumes.push(volume);
         }
         Ok(config)
@@ -437,6 +438,7 @@ async fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
             .await?;
 
             validate_s3tables_credentials(&arn, &credentials).await?;
+            tracing::info!("Loaded volume has been validated");
 
             VolumeType::S3Tables(S3TablesVolume {
                 endpoint: None,
