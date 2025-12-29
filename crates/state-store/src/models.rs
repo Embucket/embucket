@@ -156,7 +156,7 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_time: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub total_elapsed_time: Option<u64>,
+    pub total_elapsed_time: Option<u64>, // in ms
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes_scanned: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -312,5 +312,16 @@ impl Query {
 
     pub fn set_error_code(&mut self, error_code: String) {
         self.error_code = Some(error_code);
+    }
+
+    pub fn set_error_message(&mut self, error_message: String) {
+        self.error_message = Some(error_message);
+    }
+
+    #[allow(clippy::as_conversions)]
+    pub fn set_end_time(&mut self) {
+        let end_time = Utc::now();
+        self.end_time = Some(end_time);
+        self.total_elapsed_time = Some((end_time - self.start_time).num_milliseconds() as u64);
     }
 }

@@ -94,7 +94,7 @@ utoipa-axum = { version = "0.2.0" }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 uuid = { version = "1.10.0", features = ["v4", "v7", "serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
-mockall = "0.13.1"
+mockall = "0.14.0"
 insta = { version = "1.44.1", features = ["json", "filters", "redactions"] }
 cfg-if = { version = "1.0.3" }
 

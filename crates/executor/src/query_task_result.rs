@@ -83,5 +83,9 @@ impl ExecutionTaskResult {
         if let Some(error_code) = self.error_code {
             query.set_error_code(error_code.to_string());
         }
+        if let Err(err) = &self.result {
+            query.set_error_message(err.to_string());
+        }
+        query.set_end_time();
     }
 }

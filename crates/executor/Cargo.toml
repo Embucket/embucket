@@ -72,6 +72,7 @@ bytes = { workspace = true }
 insta = { version = "1.42.0", features = ["yaml", "filters"] }
 paste = "1"
 dotenv = "0.15.0"
+mockall = { workspace= true }
 
 [lints]
 workspace = true

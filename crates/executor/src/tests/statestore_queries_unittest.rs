@@ -2,24 +2,37 @@ use crate::models::QueryContext;
 use crate::service::{CoreExecutionService, ExecutionService};
 use crate::utils::Config;
 use catalog_metastore::InMemoryMetastore;
-use state_store::{MockStateStore, SessionRecord, StateStore};
+use state_store::{SessionRecord, StateStore, MockStateStore, Query, Result};
 use std::sync::Arc;
+use tokio::time::{timeout, Duration};
 
 const TEST_SESSION_ID: &str = "test_session_id";
 
-// it stucks without multithread
+// Note: Run mocked async function with timeout as in case 
+// if mocked_function.withf() not returning true then entire async function stuck
+
+pub struct TestStateStore;
+
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle() {
     let mut state_store_mock = MockStateStore::new();
     state_store_mock
         .expect_put_new_session()
-        .returning(|_| Ok(()));
+        .returning(|_| Ok(()) );
     state_store_mock
         .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
-    state_store_mock.expect_put_query().returning(|_| Ok(()));
-    state_store_mock.expect_update_query().returning(|_| Ok(()));
+        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)) );
+    state_store_mock.expect_put_query().returning(|_| Ok(()) );
+    state_store_mock.expect_update_query()
+        .times(1)
+        .returning(|_| Ok(()) )
+        .withf(|query: &Query| {
+            query.end_time.is_some() &&
+            query.execution_time.is_some() &&
+            query.error_code.is_some() &&
+            query.error_message.is_some()
+        });        
 
     let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
 
@@ -37,12 +50,14 @@ async fn test_query_lifecycle() {
         .await
         .expect("Failed to create session");
 
-    let _ = execution_svc
+    // See note about timeout above
+    let _ = timeout(Duration::from_millis(500), execution_svc
         .query(
             TEST_SESSION_ID,
             "SELECT 1 AS a, 2.0 AS b, '3' AS c WHERE False",
             QueryContext::default(),
         )
-        .await
-        .expect("Failed to execute query");
+    ).await
+    .expect("Query timed out")
+    .expect("Query execution stopped by timeout");
 }
