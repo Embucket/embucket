@@ -12,8 +12,8 @@ use super::utils::{NormalizedIdent, is_logical_plan_effectively_empty};
 use crate::datafusion::logical_plan::merge::MergeIntoCOWSink;
 use crate::datafusion::physical_optimizer::runtime_physical_optimizer_rules;
 use crate::datafusion::physical_plan::merge::{
-    DATA_FILE_PATH_COLUMN, MANIFEST_FILE_PATH_COLUMN, SOURCE_EXISTS_COLUMN, MERGE_INSERTED_COLUMN,
-    MERGE_UPDATED_COLUMN, TARGET_EXISTS_COLUMN,
+    DATA_FILE_PATH_COLUMN, MANIFEST_FILE_PATH_COLUMN, MERGE_INSERTED_COLUMN, MERGE_UPDATED_COLUMN,
+    SOURCE_EXISTS_COLUMN, TARGET_EXISTS_COLUMN,
 };
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
@@ -1381,11 +1381,15 @@ impl UserQuery {
             .sql_to_expr((*on).clone(), &schema, &mut planner_context)
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
-        let has_insert = clauses.iter().any(|c| matches!(c.action, MergeAction::Insert(_)));
+        let has_insert = clauses
+            .iter()
+            .any(|c| matches!(c.action, MergeAction::Insert(_)));
         let has_update = clauses
             .iter()
             .any(|c| matches!(c.action, MergeAction::Update { .. }));
-        let has_delete = clauses.iter().any(|c| matches!(c.action, MergeAction::Delete));
+        let has_delete = clauses
+            .iter()
+            .any(|c| matches!(c.action, MergeAction::Delete));
 
         let merge_clause_projection = merge_clause_projection(
             &sql_planner,
@@ -1403,9 +1407,14 @@ impl UserQuery {
             .build()
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
-        let merge_into_plan =
-            MergeIntoCOWSink::new(Arc::new(join_plan), target_table, has_insert, has_update, has_delete)
-            .context(ex_error::DataFusionSnafu)?;
+        let merge_into_plan = MergeIntoCOWSink::new(
+            Arc::new(join_plan),
+            target_table,
+            has_insert,
+            has_update,
+            has_delete,
+        )
+        .context(ex_error::DataFusionSnafu)?;
 
         self.execute_logical_plan(LogicalPlan::Extension(Extension {
             node: Arc::new(merge_into_plan),

@@ -29,7 +29,11 @@ impl MergeIntoCOWSink {
         has_update: bool,
         has_delete: bool,
     ) -> datafusion_common::Result<Self> {
-        let inserted = Arc::new(Field::new("number of rows inserted", DataType::Int64, false));
+        let inserted = Arc::new(Field::new(
+            "number of rows inserted",
+            DataType::Int64,
+            false,
+        ));
         let updated = Arc::new(Field::new("number of rows updated", DataType::Int64, false));
         let deleted = Arc::new(Field::new("number of rows deleted", DataType::Int64, false));
         let mut fields: Vec<(Option<datafusion_common::TableReference>, Arc<Field>)> = Vec::new();
@@ -42,14 +46,10 @@ impl MergeIntoCOWSink {
         if has_delete {
             fields.push((None, deleted.clone()));
         }
-        // Defensive fallback (should never happen for a valid MERGE)
         if fields.is_empty() {
             fields.push((None, updated));
         }
-        let schema = DFSchema::new_with_metadata(
-            fields,
-            std::collections::HashMap::new(),
-        )?;
+        let schema = DFSchema::new_with_metadata(fields, std::collections::HashMap::new())?;
 
         Ok(Self {
             input,

@@ -15,8 +15,8 @@ use datafusion_iceberg::{
     DataFusionTable, error::Error as DataFusionIcebergError, table::write_parquet_data_files,
 };
 use datafusion_physical_plan::{
-    DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, PlanProperties,
-    RecordBatchStream, SendableRecordBatchStream,
+    DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, PlanProperties, RecordBatchStream,
+    SendableRecordBatchStream,
     coalesce_partitions::CoalescePartitionsExec,
     execution_plan::{Boundedness, EmissionType},
     stream::RecordBatchStreamAdapter,
@@ -216,11 +216,10 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                 #[allow(clippy::unwrap_used)]
                 let mut lock = tabular.write().unwrap();
                 *lock = Tabular::Table(table);
-                // Return a Snowflake-style one-row result for DML, so clients like SnowSQL
-                // don't render "No data result" on success.
+                // Return a one-row result for DML, so clients don't render "No data result" on success.
                 let updated = updated_rows.load(Ordering::Relaxed);
                 let inserted = inserted_rows.load(Ordering::Relaxed);
-                // MERGE DELETE is not supported today
+                // MERGE DELETE is not supported yet
                 let deleted = 0i64;
 
                 let arrays = schema
@@ -237,8 +236,10 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                                 )));
                             }
                         };
-                        Ok(Arc::new(datafusion::arrow::array::Int64Array::from(vec![v]))
-                            as Arc<dyn Array>)
+                        Ok(
+                            Arc::new(datafusion::arrow::array::Int64Array::from(vec![v]))
+                                as Arc<dyn Array>,
+                        )
                     })
                     .collect::<Result<Vec<_>, DataFusionError>>()?;
 
@@ -374,18 +375,15 @@ impl Stream for MergeCOWCountAndProjectStream {
 /// Fast count of `true` values, treating NULL as false, using Arrow bitmaps.
 #[inline]
 fn count_true_and_valid(arr: &BooleanArray) -> usize {
-    // Fast path: no nulls -> popcount of values bitmap
     if arr.null_count() == 0 {
         return arr.values().count_set_bits();
     }
 
-    // If there are nulls, count values that are both true and valid
     if let Some(nulls) = arr.logical_nulls() {
         let valid = nulls.inner();
         return arr.values().bitand(valid).count_set_bits();
     }
 
-    // Fallback (should be unreachable if null_count > 0, but be defensive)
     arr.values().count_set_bits()
 }
 
