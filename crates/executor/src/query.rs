@@ -3052,13 +3052,13 @@ pub fn merge_clause_projection<S: ContextProvider>(
 
     let merge_updated_expr = updated_ops
         .into_iter()
-        .fold(lit(false), |acc, op| or(acc, op))
+        .fold(lit(false), or)
         .alias(MERGE_UPDATED_COLUMN);
     exprs.push(merge_updated_expr);
 
     let merge_inserted_expr = inserted_ops
         .into_iter()
-        .fold(lit(false), |acc, op| or(acc, op))
+        .fold(lit(false), or)
         .alias(MERGE_INSERTED_COLUMN);
     exprs.push(merge_inserted_expr);
     Ok(exprs)

@@ -38,13 +38,13 @@ impl MergeIntoCOWSink {
         let deleted = Arc::new(Field::new("number of rows deleted", DataType::Int64, false));
         let mut fields: Vec<(Option<datafusion_common::TableReference>, Arc<Field>)> = Vec::new();
         if has_insert {
-            fields.push((None, inserted.clone()));
+            fields.push((None, inserted));
         }
         if has_update {
             fields.push((None, updated.clone()));
         }
         if has_delete {
-            fields.push((None, deleted.clone()));
+            fields.push((None, deleted));
         }
         if fields.is_empty() {
             fields.push((None, updated));

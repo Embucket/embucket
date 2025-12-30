@@ -1,6 +1,6 @@
 use datafusion::{
     arrow::{
-        array::{Array, BooleanArray, RecordBatch, StringArray, downcast_array},
+        array::{Array, ArrayRef, BooleanArray, RecordBatch, StringArray, downcast_array},
         compute::{
             filter, filter_record_batch,
             kernels::cmp::{distinct, eq},
@@ -155,14 +155,14 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
             input_batches,
             updated_rows.clone(),
             inserted_rows.clone(),
-        )?;
+        );
 
         let stream = futures::stream::once({
             let tabular = self.target.tabular.clone();
             let branch = self.target.branch.clone();
             let schema = schema.clone();
-            let updated_rows = updated_rows.clone();
-            let inserted_rows = inserted_rows.clone();
+            let updated_rows = Arc::clone(&updated_rows);
+            let inserted_rows = Arc::clone(&inserted_rows);
             let projected_schema = count_and_project_stream.projected_schema();
             let batches: SendableRecordBatchStream = Box::pin(RecordBatchStreamAdapter::new(
                 projected_schema,
@@ -236,18 +236,17 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                                 )));
                             }
                         };
-                        Ok(
-                            Arc::new(datafusion::arrow::array::Int64Array::from(vec![v]))
-                                as Arc<dyn Array>,
-                        )
+                        let a: ArrayRef =
+                            Arc::new(datafusion::arrow::array::Int64Array::from(vec![v]));
+                        Ok(a)
                     })
                     .collect::<Result<Vec<_>, DataFusionError>>()?;
 
-                Ok(RecordBatch::try_new(schema.clone(), arrays).map_err(|e| {
+                RecordBatch::try_new(schema.clone(), arrays).map_err(|e| {
                     DataFusionError::Internal(format!(
                         "Failed to build MERGE result record batch: {e}"
                     ))
-                })?)
+                })
             }
         })
         .boxed();
@@ -277,7 +276,7 @@ impl MergeCOWCountAndProjectStream {
         input: SendableRecordBatchStream,
         updated_rows: Arc<AtomicI64>,
         inserted_rows: Arc<AtomicI64>,
-    ) -> datafusion_common::Result<Self> {
+    ) -> Self {
         let input_schema = input.schema();
 
         let updated_idx = input_schema.index_of(MERGE_UPDATED_COLUMN).ok();
@@ -310,7 +309,7 @@ impl MergeCOWCountAndProjectStream {
 
         let projected_schema = Arc::new(Schema::new(projected_fields));
 
-        Ok(Self {
+        Self {
             projection_indices,
             projected_schema,
             updated_idx,
@@ -318,7 +317,7 @@ impl MergeCOWCountAndProjectStream {
             updated_rows,
             inserted_rows,
             input,
-        })
+        }
     }
 
     fn projected_schema(&self) -> Arc<Schema> {
@@ -340,14 +339,14 @@ impl Stream for MergeCOWCountAndProjectStream {
                     && let Some(col) = batch.columns().get(updated_idx)
                 {
                     let updated = downcast_array::<BooleanArray>(col.as_ref());
-                    let n = count_true_and_valid(&updated) as i64;
+                    let n = usize_to_i64_saturating(count_true_and_valid(&updated));
                     project.updated_rows.fetch_add(n, Ordering::Relaxed);
                 }
                 if let Some(inserted_idx) = *project.inserted_idx
                     && let Some(col) = batch.columns().get(inserted_idx)
                 {
                     let inserted = downcast_array::<BooleanArray>(col.as_ref());
-                    let n = count_true_and_valid(&inserted) as i64;
+                    let n = usize_to_i64_saturating(count_true_and_valid(&inserted));
                     project.inserted_rows.fetch_add(n, Ordering::Relaxed);
                 }
 
@@ -385,6 +384,11 @@ fn count_true_and_valid(arr: &BooleanArray) -> usize {
     }
 
     arr.values().count_set_bits()
+}
+
+#[inline]
+fn usize_to_i64_saturating(v: usize) -> i64 {
+    i64::try_from(v).unwrap_or(i64::MAX)
 }
 
 #[derive(Debug)]
