@@ -14,6 +14,19 @@ test_query!(
 );
 
 test_query!(
+    merge_into_only_update_rowcount,
+    "MERGE INTO merge_target USING merge_source ON merge_target.id = merge_source.id
+     WHEN MATCHED THEN UPDATE SET merge_target.description = merge_source.description",
+    setup_queries = [
+        "CREATE TABLE embucket.public.merge_target (ID INTEGER, description VARCHAR)",
+        "CREATE TABLE embucket.public.merge_source (ID INTEGER, description VARCHAR)",
+        "INSERT INTO embucket.public.merge_target VALUES (1, 'existing row')",
+        "INSERT INTO embucket.public.merge_source VALUES (1, 'updated row')",
+    ],
+    snapshot_path = "merge_into"
+);
+
+test_query!(
     merge_into_insert_and_update,
     "SELECT count(CASE WHEN description = 'updated row' THEN 1 ELSE NULL END) updated, count(CASE WHEN description = 'existing row' THEN 1 ELSE NULL END) existing FROM embucket.public.merge_target",
     setup_queries = [
@@ -22,6 +35,18 @@ test_query!(
         "INSERT INTO embucket.public.merge_target VALUES (1, 'existing row'), (2, 'existing row')",
         "INSERT INTO embucket.public.merge_source VALUES (2, 'updated row'), (3, 'new row')",
         "MERGE INTO merge_target USING merge_source ON merge_target.id = merge_source.id WHEN MATCHED THEN UPDATE SET description = merge_source.description WHEN NOT MATCHED THEN INSERT (id, description) VALUES (merge_source.id, merge_source.description)",
+    ],
+    snapshot_path = "merge_into"
+);
+
+test_query!(
+    merge_into_only_insert_rowcount,
+    "MERGE INTO merge_target USING merge_source ON merge_target.id = merge_source.id
+     WHEN NOT MATCHED THEN INSERT (id, description) VALUES (merge_source.id, merge_source.description)",
+    setup_queries = [
+        "CREATE TABLE embucket.public.merge_target (ID INTEGER, description VARCHAR)",
+        "CREATE TABLE embucket.public.merge_source (ID INTEGER, description VARCHAR)",
+        "INSERT INTO embucket.public.merge_source VALUES (1, 'new row'), (2, 'new row')",
     ],
     snapshot_path = "merge_into"
 );

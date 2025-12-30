@@ -1,0 +1,16 @@
+---
+source: crates/executor/src/tests/sql/ddl/merge_into.rs
+description: "\"MERGE INTO merge_target USING merge_source ON merge_target.id = merge_source.id\\n     WHEN NOT MATCHED THEN INSERT (id, description) VALUES (merge_source.id, merge_source.description)\""
+info: "Setup queries: CREATE TABLE embucket.public.merge_target (ID INTEGER, description VARCHAR); CREATE TABLE embucket.public.merge_source (ID INTEGER, description VARCHAR); INSERT INTO embucket.public.merge_source VALUES (1, 'new row'), (2, 'new row')"
+---
+Ok(
+    [
+        "+-------------------------+",
+        "| number of rows inserted |",
+        "+-------------------------+",
+        "| 2                       |",
+        "+-------------------------+",
+    ],
+)
+
+
