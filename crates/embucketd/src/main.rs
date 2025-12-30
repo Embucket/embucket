@@ -222,7 +222,7 @@ fn setup_tracing(opts: &cli::CliOpts) -> SdkTracerProvider {
                 .build()
                 .expect("Failed to create OTLP HTTP exporter")
         }
-        protocol => panic!("Unsupported OTLP protocol: {}", protocol),
+        protocol => panic!("Unsupported OTLP protocol: {protocol}"),
     };
 
     let resource = Resource::builder().with_service_name("Em").build();

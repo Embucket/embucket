@@ -1,0 +1,25 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: localhost:4317
+      http:
+        endpoint: localhost:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp:
+    endpoint: "${env:OTEL_EXPORTER_ENDPOINT}"
+    headers:
+      # explicit header example, feel free to set own set of headers in the same way
+      # everything can be hardcoded as well, without parametrization via env vars
+      x-honeycomb-team: "${env:OTEL_EXPORTER_API_KEY}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]

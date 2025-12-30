@@ -70,12 +70,13 @@ cargo lambda deploy --binary-name bootstrap
 - Timeout: `timeout = 30`
 - Included files: `include = ["config"]`
 
-**Environment Variables**
-- Set envs using `ENV_FILE=.env` environment variable: 
-  ``` sh
-  ENV_FILE=".env.dev" make deploy
-  ```
-- It will deploy envs from `.env` if `ENV_FILE` not specified
+**Environment Variables** (in `Cargo.toml`, `.env` envs will be combined)
+- Set envs in `Cargo.toml`
+- Provide envs at deploy: `ENV_FILE=config/.env.lambda make deploy`
+
+**Invoke mode** (Max response size up to 6 MB / 200 MB)
+- `RESPONSE_STREAM` - Ensure you build with streaming feature `FEATURES=streaming make build deploy streaming`, otherwise it will not work
+- `BUFFERED` - Basic response is 6MB, ensure lambda built without streaming feature
 
 ### Observability
 
@@ -83,26 +84,28 @@ cargo lambda deploy --binary-name bootstrap
 We send events, spans to stdout log in json format, and in case if AWS X-Ray is enabled it enhances traces.
 - `RUST_LOG` - Controls verbosity log level. Default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
 
-#### OpenTelemetry configuration
+#### OpenTelemetry traces
+Send spans to external opentelemetry collector.
+- `TRACING_LEVEL` - Controls verbosity level. Default to "INFO", possible values: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE".
+
+#### OpenTelemetry configuration via OTLP/gRPC
 
 To work with Opentelemtry, you need an Opentelemetry Collector running in your environment with open telemetry config. 
 The easiest way is to add two layers to your lambda deployment. One of which would be your config file with the remote exporter.
 
-1. Create a folder called collector-config and add a file called `config.yml` with the OpenTelemetry Collector [**configuration**](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/).
-2. After which zip the folder with this ocmmand: `zip -r <filename>.zip collector-config`
-3. Then publish it to AWS (change the file name and layer name if you want): `aws lambda publish-layer-version 
-  --layer-name <layername> 
-  --zip-file fileb://<filename>.zip 
-  --compatible-runtimes provided.al2 provided.al2023 
-  --compatible-architectures arm64`
-4. After which provide this as an external env variable (the first layer is the collector itself): `OTEL_COLLECTOR_LAYERS=arn:aws:lambda:us-east-2:184161586896:layer:opentelemetry-collector-arm64-0_19_0:1,arn:aws:lambda:<region>:<account_id>:layer:<layername>:<version>`
-5. Now you can deploy the function with the new layer. 
+* Configure `OTEL_EXPORTER_ENDPOINT`, `OTEL_EXPORTER_API_KEY` env vars and add them to your `.env.lambda` file.
+* Deploy with enabled telemetry using `make build deploy WITH_OTEL_CONFIG=config/otel-example.yaml`.
+  - Specify opentelemetry config using `WITH_OTEL_CONFIG` makefile variable, for example use `config/otel-example.yaml` as is (works with honeycomb.io), or adapt to your needs.
+  - `WITH_OTEL_CONFIG` - specify path to a mentioned config, file should be in `config` folder
+  - [opentelemetry-lambda](https://github.com/open-telemetry/opentelemetry-lambda) collector extension layer will be deployed
+  - Config file also will be deployed as part of lambda deployment; Makefile will set env var `OPENTELEMETRY_COLLECTOR_CONFIG_URI` automatically.
 
-If you later update the configratuin and publish the layer again remember to change the layer `<version>` number, after the first publish it is `1`.
+##### Setting these environment variables most likely will break telemetry setup:
+* OTEL_EXPORTER_OTLP_ENDPOINT
 
-#### Exporting telemetry spans to [**honeycomb.io**](https://docs.honeycomb.io/send-data/opentelemetry/collector/)
+#### Example config for `opentelemetry-lambda` collector exporting spans to [**honeycomb.io**](https://docs.honeycomb.io/send-data/opentelemetry/collector/)
 
-OpenTelemrty Collector config example for Honeycomb:
+config/otel-example.yaml:
 ```yaml
 receivers:
   otlp:
@@ -117,10 +120,11 @@ processors:
 
 exporters:
   otlp:
-    # You can name these envs anything you want as long as they are the same as in .env file
-    endpoint: "${env:HONEYCOMB_ENDPOINT_URL}"
+    endpoint: "${env:OTEL_EXPORTER_ENDPOINT}"
     headers:
-      x-honeycomb-team: "${env:HONEYCOMB_API_KEY}"
+      # explicit header example, feel free to set own set of headers in the same way
+      # everything can be hardcoded as well, without parametrization via env vars
+      x-honeycomb-team: "${env:OTEL_EXPORTER_API_KEY}"
 
 service:
   pipelines:
@@ -131,8 +135,8 @@ service:
 ```
 
 - Environment variables configuration:
-  * `HONEYCOMB_API_KEY` - this is the full ingestion key (not the key id or management key)
-  * `HONEYCOMB_ENDPOINT_URL` - check the region it can start be `api.honeycomb.io` or `api.eu1.honeycomb.io`
+  * `OTEL_EXPORTER_API_KEY` - this is the full ingestion key (not the key id or management key)
+  * `OTEL_EXPORTER_ENDPOINT` - check the region it can start be `api.honeycomb.io` or `api.eu1.honeycomb.io`, choose **gRPC**
   * `OTEL_SERVICE_NAME` - is the x-honeycomb-dataset name
 
 ### Test locally

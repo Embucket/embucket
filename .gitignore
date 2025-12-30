@@ -3,6 +3,7 @@ debug/
 target/
 data/
 
+.env.lambda
 .env
 metastore.yaml
 
