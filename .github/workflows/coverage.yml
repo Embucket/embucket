@@ -1,0 +1,44 @@
+name: Coverage Badge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - crates/**
+      - Cargo.toml
+      - Cargo.lock
+      - Dockerfile
+  pull_request:
+    paths:
+      - crates/**
+      - Cargo.toml
+      - Cargo.lock
+      - Dockerfile
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  code-coverage-publish-coveralls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: |
+          # Install lcov if not already installed
+          sudo apt-get install -y lcov
+          cargo install cargo-llvm-cov
+          rustup update
+          rustup component add llvm-tools-preview
+
+      - name: Create coverage info
+        run: |
+          # Run coverage test
+          cargo cov
+
+      - name: Upload to coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          path-to-lcov: lcov.info
