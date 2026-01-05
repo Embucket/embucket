@@ -186,6 +186,10 @@ impl S3Volume {
                     s3_builder = s3_builder.with_access_key_id(creds.aws_access_key_id.clone());
                     s3_builder =
                         s3_builder.with_secret_access_key(creds.aws_secret_access_key.clone());
+
+                    if let Some(token) = &creds.aws_session_token {
+                        s3_builder = s3_builder.with_token(token.clone());
+                    }
                 }
                 AwsCredentials::Token(token) => {
                     s3_builder = s3_builder.with_token(token.clone());
