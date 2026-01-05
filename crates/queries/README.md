@@ -40,7 +40,15 @@ apt install -y libpq-dev
 Refer here how to install diesel cli:
 https://diesel.rs/guides/getting-started#installing-diesel-cli
 
-Diesel config is in repo root in `config/diesel.toml` file. 
+Put diesel config to the repo root into `config/diesel.toml`:
+```
+[migrations_directory]
+dir = "../crates/queries/migrations" 
+
+[print_schema]
+file = "../crates/queries/src/models/diesel_schema.rs"
+```
+
 
 Before running diesel cli set DATABASE_URL env var or create .env file:
 ```bash
