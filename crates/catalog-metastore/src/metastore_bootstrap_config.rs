@@ -3,7 +3,10 @@ use crate::{
     SchemaIdent, TableFormat, TableIdent, Volume, VolumeIdent, VolumeType,
 };
 use aws_config::meta::credentials::CredentialsProviderChain;
-use aws_credential_types::provider::ProvideCredentials;
+use aws_config::{BehaviorVersion, Region};
+use aws_credential_types::Credentials;
+use aws_credential_types::provider::{ProvideCredentials, SharedCredentialsProvider};
+use aws_sdk_s3tables::Client as S3TablesClient;
 use iceberg_rust::spec::table_metadata::TableMetadata;
 use iceberg_rust::spec::util::strip_prefix;
 use serde::Deserialize;
@@ -163,6 +166,7 @@ impl MetastoreBootstrapConfig {
     pub async fn load_from_env() -> Result<Self, ConfigError> {
         let mut config = Self::default();
         if let Some(volume) = load_volume_from_env().await? {
+            tracing::info!("Loading volume from environment");
             config.volumes.push(volume);
         }
         Ok(config)
@@ -426,8 +430,15 @@ async fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
         "s3tables" | "s3_tables" | "s3-tables" => {
             let arn = env::var("VOLUME_ARN").map_err(|_| missing_var_error("VOLUME_ARN"))?;
 
-            let credentials =
-                credentials_from_env_or_provider("VOLUME_ACCESS_KEY", "VOLUME_SECRET_KEY").await?;
+            let credentials = credentials_from_env_or_provider(
+                "VOLUME_ACCESS_KEY",
+                "VOLUME_SECRET_KEY",
+                "VOLUME_AWS_SESSION_TOKEN",
+            )
+            .await?;
+
+            validate_s3tables_credentials(&arn, &credentials).await?;
+            tracing::info!("Loaded volume has been validated");
 
             VolumeType::S3Tables(S3TablesVolume {
                 endpoint: None,
@@ -445,6 +456,7 @@ async fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
             let credentials = AwsCredentials::AccessKey(AwsAccessKeyCredentials {
                 aws_access_key_id: access_key,
                 aws_secret_access_key: secret_key,
+                aws_session_token: None,
             });
 
             VolumeType::S3(
@@ -479,11 +491,14 @@ async fn load_volume_from_env() -> Result<Option<VolumeEntry>, ConfigError> {
 async fn credentials_from_env_or_provider(
     access_key_env: &str,
     secret_key_env: &str,
+    session_token_env: &str,
 ) -> Result<AwsCredentials, ConfigError> {
     if let (Ok(access_key), Ok(secret_key)) = (env::var(access_key_env), env::var(secret_key_env)) {
+        let session_token = env::var(session_token_env).ok();
         return Ok(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
             aws_access_key_id: access_key,
             aws_secret_access_key: secret_key,
+            aws_session_token: session_token,
         }));
     }
 
@@ -506,5 +521,54 @@ async fn credentials_from_env_or_provider(
     Ok(AwsCredentials::AccessKey(AwsAccessKeyCredentials {
         aws_access_key_id: creds.access_key_id().to_string(),
         aws_secret_access_key: creds.secret_access_key().to_string(),
+        aws_session_token: creds.session_token().map(std::string::ToString::to_string),
     }))
+}
+
+async fn validate_s3tables_credentials(
+    arn: &str,
+    credentials: &AwsCredentials,
+) -> Result<(), ConfigError> {
+    let (access_key, secret_key, token) = match credentials {
+        AwsCredentials::AccessKey(creds) => (
+            creds.aws_access_key_id.clone(),
+            creds.aws_secret_access_key.clone(),
+            creds.aws_session_token.clone(),
+        ),
+        AwsCredentials::Token(_) => {
+            return Err(ConfigError::EnvConfig {
+                reason: "S3 Tables validation requires access key credentials".to_string(),
+            });
+        }
+    };
+
+    let region = arn
+        .split(':')
+        .nth(3)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("us-east-1")
+        .to_string();
+
+    let config = aws_config::defaults(BehaviorVersion::latest())
+        .credentials_provider(SharedCredentialsProvider::new(Credentials::from_keys(
+            access_key, secret_key, token,
+        )))
+        .region(Region::new(region))
+        .load()
+        .await;
+    let client = S3TablesClient::new(&config);
+
+    client
+        .get_table_bucket()
+        .table_bucket_arn(arn)
+        .send()
+        .await
+        .map_err(|error| ConfigError::EnvConfig {
+            reason: format!(
+                "Failed to validate S3 Tables credentials for {arn}: {:?}",
+                error.as_service_error()
+            ),
+        })?;
+
+    Ok(())
 }
