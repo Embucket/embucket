@@ -104,6 +104,9 @@ pub async fn handle_query_request(
         async_exec,
     } = query_body;
     let async_exec = async_exec.unwrap_or(false);
+    if async_exec {
+        return api_snowflake_rest_error::NotImplementedSnafu.fail();
+    }
 
     let serialization_format = state.config.dbt_serialization_format;
     let mut query_context = QueryContext::default().with_request_id(query.request_id);
@@ -112,14 +115,8 @@ pub async fn handle_query_request(
         query_context = query_context.with_ip_address(ip);
     }
 
-    if async_exec {
-        return api_snowflake_rest_error::NotImplementedSnafu.fail();
-    }
-
     // find running query by request_id
-    let session = state.execution_svc.get_session(session_id).await?;
-    let query_id_res = session
-        .running_queries
+    let query_id_res = state.execution_svc
         .locate_query_id(RunningQueryId::ByRequestId(
             query.request_id,
             sql_text.clone(),
