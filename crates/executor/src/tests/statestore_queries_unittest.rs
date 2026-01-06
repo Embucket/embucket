@@ -2,11 +2,11 @@ use crate::models::QueryContext;
 use crate::service::{CoreExecutionService, ExecutionService};
 use crate::utils::Config;
 use catalog_metastore::InMemoryMetastore;
-use state_store::{SessionRecord, StateStore, MockStateStore, Query};
-use std::sync::Arc;
-use tokio::time::{timeout, Duration};
-use uuid::Uuid;
 use insta::assert_json_snapshot;
+use state_store::{MockStateStore, Query, SessionRecord, StateStore};
+use std::sync::Arc;
+use tokio::time::{Duration, timeout};
+use uuid::Uuid;
 
 // Run unittests:
 // cargo test --workspace --lib --features=state-store-query-test tests::statestore_queries_unittest
@@ -32,7 +32,8 @@ fn insta_settings(name: &str) -> insta::Settings {
     settings.add_redaction(".execution_time", "1");
     settings.add_filter(
         r"[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}",
-        "00000000-0000-0000-0000-000000000000");
+        "00000000-0000-0000-0000-000000000000",
+    );
     settings.add_filter(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z",
         "2026-01-01T01:01:01.000000001Z",
@@ -40,23 +41,25 @@ fn insta_settings(name: &str) -> insta::Settings {
     settings.add_filter(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z",
         "2026-01-01T01:01:01.000001Z",
-    );    
+    );
     settings
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_query() {
-    let query_context = QueryContext::default()
-        .with_request_id(Uuid::default());
+    let query_context = QueryContext::default().with_request_id(Uuid::default());
 
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock.expect_put_new_session()
-        .returning(|_| Ok(()) );
-    state_store_mock.expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)) );
-    state_store_mock.expect_put_query()
-        .returning(|_| Ok(()) )
+    state_store_mock
+        .expect_put_new_session()
+        .returning(|_| Ok(()));
+    state_store_mock
+        .expect_get_session()
+        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    state_store_mock
+        .expect_put_query()
+        .returning(|_| Ok(()))
         // check created query attributes only here (it is expected to be the same for any invocation)
         .withf(move |query: &Query| {
             insta_settings("ok_query_put").bind(|| {
@@ -76,9 +79,10 @@ async fn test_query_lifecycle_ok_query() {
             });
             true
         });
-    state_store_mock.expect_update_query()
+    state_store_mock
+        .expect_update_query()
         .times(1)
-        .returning(|_| Ok(()) )
+        .returning(|_| Ok(()))
         .withf(move |query: &Query| {
             insta_settings("ok_query_update").bind(|| {
                 assert_json_snapshot!(query, @r#"
@@ -119,17 +123,14 @@ async fn test_query_lifecycle_ok_query() {
         .expect("Failed to create session");
 
     // See note about timeout above
-    let _ = timeout(MOCK_RELATED_TIMEOUT_DURATION, execution_svc
-        .query(
-            TEST_SESSION_ID,
-            OK_QUERY_TEXT,
-            query_context,
-        )
-    ).await
+    let _ = timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.query(TEST_SESSION_ID, OK_QUERY_TEXT, query_context),
+    )
+    .await
     .expect("Query timed out")
     .expect("Query execution stopped by timeout");
 }
-
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
@@ -138,13 +139,16 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
         Some(TEST_DATABASE.to_string()),
         Some(TEST_SCHEMA.to_string()),
         None,
-    ).with_request_id(Uuid::default());
+    )
+    .with_request_id(Uuid::default());
 
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock.expect_put_new_session()
-        .returning(|_| Ok(()) );
-    state_store_mock.expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)) );
+    state_store_mock
+        .expect_put_new_session()
+        .returning(|_| Ok(()));
+    state_store_mock
+        .expect_get_session()
+        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
     state_store_mock.expect_put_query()
         .returning(|_| Ok(()) )
         // check created query attributes only here (it is expected to be the same for any invocation)
@@ -167,7 +171,7 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
                   "query_hash_version": 1
                 }
                 "#);
-            });           
+            });
             true
         });
 
@@ -188,13 +192,11 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
         .expect("Failed to create session");
 
     // See note about timeout above
-    let _ = timeout(MOCK_RELATED_TIMEOUT_DURATION, execution_svc
-        .query(
-            TEST_SESSION_ID,
-            "SELECT 1",
-            query_context,
-        )
-    ).await
+    let _ = timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.query(TEST_SESSION_ID, "SELECT 1", query_context),
+    )
+    .await
     .expect("Query timed out")
     .expect_err("Query execution should fail");
 }
@@ -205,12 +207,13 @@ async fn test_query_lifecycle_query_status_fail() {
     let mut state_store_mock = MockStateStore::new();
     state_store_mock
         .expect_put_new_session()
-        .returning(|_| Ok(()) );
+        .returning(|_| Ok(()));
     state_store_mock
         .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)) );
-    state_store_mock.expect_put_query()
-        .returning(|_| Ok(()) )
+        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    state_store_mock
+        .expect_put_query()
+        .returning(|_| Ok(()))
         .withf(|query: &Query| {
             insta_settings("fail_query_put").bind(|| {
                 assert_json_snapshot!(query, @r#"
@@ -274,17 +277,18 @@ async fn test_query_lifecycle_query_status_fail() {
         .expect("Failed to create session");
 
     // See note about timeout above
-    let _ = timeout(MOCK_RELATED_TIMEOUT_DURATION, execution_svc
-        .query(
+    let _ = timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.query(
             TEST_SESSION_ID,
             "SELECT should fail",
             QueryContext::default().with_request_id(Uuid::new_v4()),
-        )
-    ).await
+        ),
+    )
+    .await
     .expect("Query timed out")
     .expect_err("Query execution should fail");
 }
-
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
@@ -292,12 +296,13 @@ async fn test_query_lifecycle_query_status_cancelled() {
     let mut state_store_mock = MockStateStore::new();
     state_store_mock
         .expect_put_new_session()
-        .returning(|_| Ok(()) );
+        .returning(|_| Ok(()));
     state_store_mock
         .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)) );
-    state_store_mock.expect_put_query()
-        .returning(|_| Ok(()) )
+        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    state_store_mock
+        .expect_put_query()
+        .returning(|_| Ok(()))
         .withf(|query: &Query| {
             insta_settings("cancelled_query_put").bind(|| {
                 assert_json_snapshot!(query, @r#"
@@ -361,19 +366,23 @@ async fn test_query_lifecycle_query_status_cancelled() {
         .expect("Failed to create session");
 
     // See note about timeout above
-    let query_handle = timeout(MOCK_RELATED_TIMEOUT_DURATION, execution_svc
-        .submit(
+    let query_handle = timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.submit(
             TEST_SESSION_ID,
             "SELECT 1",
             QueryContext::default().with_request_id(Uuid::new_v4()),
-        )
-    ).await
+        ),
+    )
+    .await
     .expect("Query timed out")
     .expect("Query submit error");
 
-    let _ = timeout(MOCK_RELATED_TIMEOUT_DURATION, execution_svc
-        .abort(query_handle)
-    ).await
+    let _ = timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.abort(query_handle),
+    )
+    .await
     .expect("Query timed out")
     .expect("Failed to cancel query");
 }

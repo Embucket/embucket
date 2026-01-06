@@ -335,7 +335,7 @@ impl Query {
         self.warehouse_type = Some(warehouse_type);
     }
 
-    #[allow(clippy::as_conversions)]
+    #[allow(clippy::as_conversions, clippy::cast_sign_loss)]
     pub fn set_end_time(&mut self) {
         let end_time = Utc::now();
         self.end_time = Some(end_time);

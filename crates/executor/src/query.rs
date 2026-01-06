@@ -151,6 +151,7 @@ impl UserQuery {
         self.session.ctx.state().statement_to_plan(statement).await
     }
 
+    #[must_use]
     pub fn current_database(&self) -> String {
         self.query_context
             .database
@@ -159,6 +160,7 @@ impl UserQuery {
             .unwrap_or_else(|| "embucket".to_string())
     }
 
+    #[must_use]
     pub fn current_schema(&self) -> String {
         self.query_context
             .schema

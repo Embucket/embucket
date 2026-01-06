@@ -116,7 +116,8 @@ pub async fn handle_query_request(
     }
 
     // find running query by request_id
-    let query_id_res = state.execution_svc
+    let query_id_res = state
+        .execution_svc
         .locate_query_id(RunningQueryId::ByRequestId(
             query.request_id,
             sql_text.clone(),

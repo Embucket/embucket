@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::StateStore;
 use crate::config::DynamoDbConfig;
 use crate::error::Result;
@@ -11,6 +10,7 @@ use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
 use snafu::ResultExt;
+use std::collections::HashMap;
 
 const PK: &str = "PK";
 const SK: &str = "SK";
@@ -219,7 +219,7 @@ impl StateStore for DynamoDbStateStore {
         );
         item.insert(
             SESSION_ID.to_string(),
-            AttributeValue::S(query.session_id.to_string()),
+            AttributeValue::S(query.session_id.clone()),
         );
         if let Some(request_id) = &query.request_id {
             item.insert(

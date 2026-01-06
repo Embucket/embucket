@@ -496,7 +496,7 @@ impl ExecutionService for CoreExecutionService {
         err
     )]
     async fn abort(&self, query_id: QueryId) -> Result<()> {
-        self.queries.abort(query_id.clone())?;
+        self.queries.abort(query_id)?;
         self.queries.wait_query_finished(query_id).await?;
         Ok(())
     }
