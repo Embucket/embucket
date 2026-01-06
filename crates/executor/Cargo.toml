@@ -8,7 +8,15 @@ license-file.workspace = true
 default = []
 rest-catalog = ["catalog/rest-catalog"]
 dedicated-executor = []
+
+# "state-store" feature enables DynamoDB based state-store implementation.
 state-store = []
+
+state-store-query-test = ["state-store-query"]
+
+# "state-store-query" feature depends on state-store feature.
+# When enabled - query status will be persisted using "state-store" implementation.
+# When not enabled - state-store will not be used by queries and query state will not be persisted.
 state-store-query = ["state-store"]
 
 [dependencies]
