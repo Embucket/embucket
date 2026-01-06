@@ -151,7 +151,7 @@ impl UserQuery {
         self.session.ctx.state().statement_to_plan(statement).await
     }
 
-    fn current_database(&self) -> String {
+    pub fn current_database(&self) -> String {
         self.query_context
             .database
             .clone()
@@ -159,7 +159,7 @@ impl UserQuery {
             .unwrap_or_else(|| "embucket".to_string())
     }
 
-    fn current_schema(&self) -> String {
+    pub fn current_schema(&self) -> String {
         self.query_context
             .schema
             .clone()

@@ -70,6 +70,7 @@ impl EnvConfig {
     pub fn execution_config(&self) -> ExecutionConfig {
         ExecutionConfig {
             embucket_version: self.embucket_version.clone(),
+            warehouse_type: "LAMBDA_SERVERLESS".to_string(),
             sql_parser_dialect: self.sql_parser_dialect.clone(),
             query_timeout_secs: self.query_timeout_secs,
             max_concurrency_level: self.max_concurrency_level,

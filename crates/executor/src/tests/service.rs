@@ -263,7 +263,7 @@ async fn test_service_create_table_file_volume() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::expect_used)]
 async fn test_max_concurrency_level() {
     use tokio::sync::Barrier;
@@ -319,7 +319,7 @@ async fn test_max_concurrency_level() {
     barrier.wait().await;
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::expect_used)]
 async fn test_max_concurrency_level2() {
     let metastore = Arc::new(InMemoryMetastore::new());

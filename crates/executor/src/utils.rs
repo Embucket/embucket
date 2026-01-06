@@ -34,6 +34,7 @@ use strum::{Display, EnumString};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub embucket_version: String,
+    pub warehouse_type: String,
     pub sql_parser_dialect: Option<String>,
     pub query_timeout_secs: u64,
     pub max_concurrency_level: usize,
@@ -77,6 +78,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             embucket_version: "0.1.0".to_string(),
+            warehouse_type: "DEFAULT".to_string(),
             sql_parser_dialect: None,
             query_timeout_secs: 1200, // 20 minutes
             max_concurrency_level: 100,
