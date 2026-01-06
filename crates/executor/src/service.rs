@@ -77,7 +77,7 @@ pub trait ExecutionService: Send + Sync {
     ///
     /// A `Result` of type `()`. The `Ok` variant contains an empty tuple,
     /// and the `Err` variant contains an `Error`.
-    fn abort(&self, query_id: QueryId) -> Result<()>;
+    async fn abort(&self, query_id: QueryId) -> Result<()>;
 
     /// Submits a query to be executed asynchronously. Query result can be consumed with
     /// `wait`.
@@ -493,8 +493,10 @@ impl ExecutionService for CoreExecutionService {
         fields(old_queries_count = self.queries.count()),
         err
     )]
-    fn abort(&self, query_id: QueryId) -> Result<()> {
-        self.queries.abort(query_id)
+    async fn abort(&self, query_id: QueryId) -> Result<()> {
+        self.queries.abort(query_id.clone())?;
+        self.queries.wait_query_finished(query_id).await?;
+        Ok(())
     }
 
     #[tracing::instrument(
