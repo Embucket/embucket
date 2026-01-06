@@ -57,4 +57,4 @@ jobs:
         run: |
           export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld"
           cargo test --profile=ci --workspace --all-targets
-          cargo test --workspace --lib --features=state-store-query-test tests::statestore_queries_unittest
+          cargo test --profile=ci --workspace --lib --features=state-store-query-test tests::statestore_queries_unittest
