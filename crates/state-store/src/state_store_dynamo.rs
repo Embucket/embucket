@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use crate::StateStore;
 use crate::config::DynamoDbConfig;
 use crate::error::Result;
 use crate::error::{
@@ -22,22 +22,6 @@ const SESSION_ID: &str = "session_id";
 const QUERY_ID_INDEX: &str = "GSI_QUERY_ID_INDEX";
 const REQUEST_ID_INDEX: &str = "GSI_REQUEST_ID_INDEX";
 const SESSION_ID_INDEX: &str = "GSI_SESSION_ID_INDEX";
-
-#[mockall::automock]
-#[async_trait::async_trait]
-pub trait StateStore: Send + Sync {
-    async fn put_new_session(&self, session_id: &str) -> Result<()>;
-    async fn put_session(&self, session: SessionRecord) -> Result<()>;
-    async fn get_session(&self, session_id: &str) -> Result<SessionRecord>;
-    async fn delete_session(&self, session_id: &str) -> Result<()>;
-    async fn update_session(&self, session: SessionRecord) -> Result<()>;
-    async fn put_query(&self, query: &Query) -> Result<()>;
-    async fn get_query(&self, query_id: &str) -> Result<Query>;
-    async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query>;
-    async fn get_queries_by_session_id(&self, session_id: &str) -> Result<Vec<Query>>;
-    async fn delete_query(&self, query_id: &str) -> Result<()>;
-    async fn update_query(&self, query: &Query) -> Result<()>;
-}
 
 /// `DynamoDB` single-table client.
 #[derive(Clone, Debug)]
