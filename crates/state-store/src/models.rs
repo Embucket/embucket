@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+use xxhash_rust::xxh3::xxh3_64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Entities {
@@ -25,6 +26,7 @@ impl Display for Entities {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecutionStatus {
+    Running,
     Success,
     Fail,
     Incident,
@@ -33,6 +35,7 @@ pub enum ExecutionStatus {
 impl Display for ExecutionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = match self {
+            Self::Running => "running",
             Self::Success => "success",
             Self::Fail => "fail",
             Self::Incident => "incident",
@@ -156,7 +159,7 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_time: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub total_elapsed_time: Option<u64>,
+    pub total_elapsed_time: Option<u64>, // in ms
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes_scanned: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -192,7 +195,7 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compilation_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution_time: Option<u64>,
+    pub execution_time: Option<u64>, // in ms
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queued_provisioning_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -295,6 +298,8 @@ impl Query {
             session_id: session_id.to_string(),
             request_id,
             start_time: Utc::now(),
+            query_hash: Some(xxh3_64(query_str.as_bytes()).to_string()),
+            query_hash_version: Some(1),
             ..Self::default()
         }
     }
@@ -302,6 +307,14 @@ impl Query {
     #[must_use]
     pub fn entity(&self) -> String {
         Entities::Query.to_string()
+    }
+
+    pub fn set_database_name(&mut self, database: String) {
+        self.database_name = Some(database);
+    }
+
+    pub fn set_schema_name(&mut self, schema: String) {
+        self.schema_name = Some(schema);
     }
 
     // Why? warning: this could be a `const fn`
@@ -312,5 +325,20 @@ impl Query {
 
     pub fn set_error_code(&mut self, error_code: String) {
         self.error_code = Some(error_code);
+    }
+
+    pub fn set_error_message(&mut self, error_message: String) {
+        self.error_message = Some(error_message);
+    }
+
+    pub fn set_warehouse_type(&mut self, warehouse_type: String) {
+        self.warehouse_type = Some(warehouse_type);
+    }
+
+    #[allow(clippy::as_conversions, clippy::cast_sign_loss)]
+    pub fn set_end_time(&mut self) {
+        let end_time = Utc::now();
+        self.end_time = Some(end_time);
+        self.execution_time = Some((end_time - self.start_time).num_milliseconds() as u64);
     }
 }

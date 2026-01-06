@@ -25,7 +25,7 @@ debug = true
 codegen-units = 16
 
 [profile.ci]
-inherits = "dev"
+inherits = "test"
 lto = "off"
 debug = false
 
@@ -95,7 +95,7 @@ utoipa-axum = { version = "0.2.0" }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 uuid = { version = "1.10.0", features = ["v4", "v7", "serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
-mockall = "0.13.1"
+mockall = "0.14.0"
 insta = { version = "1.44.1", features = ["json", "filters", "redactions"] }
 cfg-if = { version = "1.0.3" }
 
@@ -124,3 +124,6 @@ significant_drop_tightening = { level = "allow", priority = 2 }
 module_name_repetitions = { level = "allow", priority = 2 }
 option_if_let_else = { level = "allow", priority = 2 }
 needless_for_each = { level = "allow", priority = 2 } #  #[derive(OpenApi)]
+
+[workspace.features]
+state-store-query-test = ["executor/state-store-query-test"]

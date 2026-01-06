@@ -14,6 +14,8 @@ use datafusion::execution::memory_pool::{
 use datafusion::execution::runtime_env::{RuntimeEnv, RuntimeEnvBuilder};
 use datafusion_common::TableReference;
 use snafu::ResultExt;
+#[cfg(feature = "state-store-query")]
+use state_store::ExecutionStatus;
 use std::num::NonZeroUsize;
 use std::sync::atomic::Ordering;
 use std::vec;
@@ -77,7 +79,7 @@ pub trait ExecutionService: Send + Sync {
     ///
     /// A `Result` of type `()`. The `Ok` variant contains an empty tuple,
     /// and the `Err` variant contains an `Error`.
-    fn abort(&self, query_id: QueryId) -> Result<()>;
+    async fn abort(&self, query_id: QueryId) -> Result<()>;
 
     /// Submits a query to be executed asynchronously. Query result can be consumed with
     /// `wait`.
@@ -493,8 +495,10 @@ impl ExecutionService for CoreExecutionService {
         fields(old_queries_count = self.queries.count()),
         err
     )]
-    fn abort(&self, query_id: QueryId) -> Result<()> {
-        self.queries.abort(query_id)
+    async fn abort(&self, query_id: QueryId) -> Result<()> {
+        self.queries.abort(query_id)?;
+        self.queries.wait_query_finished(query_id).await?;
+        Ok(())
     }
 
     #[tracing::instrument(
@@ -512,17 +516,18 @@ impl ExecutionService for CoreExecutionService {
     ) -> Result<QueryId> {
         let user_session = self.get_session(session_id).await?;
 
+        let query_id = query_context.query_id;
+
         cfg_if::cfg_if! {
             if #[cfg(feature = "state-store-query")] {
                 let mut query = Query::new(
                     query_text,
-                    query_context.query_id,
+                    query_id,
                     session_id,
                     query_context.request_id,
                 );
-                let query_id = query_context.query_id;
-            } else {
-                let query_id = Uuid::now_v7();
+                query.set_execution_status(ExecutionStatus::Running);
+                query.set_warehouse_type(self.config.warehouse_type.clone());
             }
         }
 
@@ -573,6 +578,12 @@ impl ExecutionService for CoreExecutionService {
             async move {
                 let sub_task_span = tracing::info_span!("spawn_query_sub_task");
                 let mut query_obj = user_session.query(query_text, query_context);
+                #[cfg(feature = "state-store-query")]
+                {
+                    // current database/schema at planning/execution time
+                    query.set_database_name(query_obj.current_database());
+                    query.set_schema_name(query_obj.current_schema());
+                }
 
                 // Create nested task so in case of abort/timeout it can be aborted
                 // and result is handled properly (status / query result saved)

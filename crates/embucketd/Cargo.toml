@@ -53,3 +53,5 @@ rest-catalog = ["executor/rest-catalog"]
 dedicated-executor = ["executor/dedicated-executor"]
 state-store = ["executor/state-store"]
 state-store-query = ["executor/state-store-query"]
+state-store-query-test = ["executor/state-store-query-test"]
+
