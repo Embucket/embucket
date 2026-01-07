@@ -343,6 +343,18 @@ impl Query {
         self.rows_produced = Some(rows_count);
     }
 
+    pub fn set_rows_inserted(&mut self, rows_count: u64) {
+        self.rows_inserted = Some(rows_count);
+    }
+
+    pub fn set_rows_deleted(&mut self, rows_count: u64) {
+        self.rows_deleted = Some(rows_count);
+    }
+
+    pub fn set_rows_updated(&mut self, rows_count: u64) {
+        self.rows_updated = Some(rows_count);
+    }
+
     pub fn set_query_type(&mut self, query_type: String) {
         self.query_type = Some(query_type);
     }

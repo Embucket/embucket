@@ -40,6 +40,11 @@ pub enum DdlStType {
     CreateStage,
     CopyIntoSnowflake,
     DropTable,
+    DropView,
+    DropMaterializedView,
+    DropSchema,
+    DropDatabase,
+    DropStage,
     AlterTable,
     AlterSession,
     Drop,
@@ -85,20 +90,12 @@ impl Display for QueryType {
 #[derive(Debug, Clone, Default)]
 pub struct QueryStats {
     pub query_type: Option<QueryType>,
-    pub rows_count: Option<u64>,
 }
 
 impl QueryStats {
     pub fn with_query_type(self, query_type: QueryType) -> Self {
         Self {
             query_type: Some(query_type),
-            ..self
-        }
-    }
-
-    pub fn with_rows_count(self, rows_count: u64) -> Self {
-        Self {
-            rows_count: Some(rows_count),
             ..self
         }
     }

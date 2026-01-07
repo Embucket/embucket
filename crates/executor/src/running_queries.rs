@@ -83,11 +83,7 @@ impl RunningQuery {
         self.tx.send(Some(status))
     }
 
-    #[tracing::instrument(
-        name = "RunningQuery::wait_query_finished",
-        level = "trace",
-        err
-    )]
+    #[tracing::instrument(name = "RunningQuery::wait_query_finished", level = "trace", err)]
     pub async fn wait_query_finished(
         mut rx: watch::Receiver<Option<ExecutionStatus>>,
     ) -> std::result::Result<ExecutionStatus, watch::error::RecvError> {
@@ -102,17 +98,10 @@ impl RunningQuery {
         }
     }
 
-    #[tracing::instrument(
-        name = "RunningQuery::update_query_stats",
-        level = "trace",
-        skip(self),
-    )]
+    #[tracing::instrument(name = "RunningQuery::update_query_stats", level = "trace", skip(self))]
     pub fn update_query_stats(&mut self, stats: &QueryStats) {
         if self.query_stats.query_type.is_none() {
             self.query_stats.query_type = stats.query_type.clone();
-        }
-        if self.query_stats.rows_count.is_none() {
-            self.query_stats.rows_count = stats.rows_count;
         }
     }
 }
@@ -151,9 +140,9 @@ impl RunningQueriesRegistry {
         // outside of this call.
         let rx = {
             let running_query = self
-            .queries
-            .get(&query_id)
-            .context(ex_error::QueryIsntRunningSnafu { query_id })?;
+                .queries
+                .get(&query_id)
+                .context(ex_error::QueryIsntRunningSnafu { query_id })?;
             running_query.rx.clone()
         };
         RunningQuery::wait_query_finished(rx)
@@ -246,7 +235,6 @@ impl RunningQueries for RunningQueriesRegistry {
     fn count(&self) -> usize {
         self.queries.len()
     }
-
 
     fn cloned_stats(&self, query_id: QueryId) -> Option<QueryStats> {
         if let Some(running_query) = self.queries.get(&query_id) {

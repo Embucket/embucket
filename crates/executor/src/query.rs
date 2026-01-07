@@ -18,7 +18,7 @@ use crate::datafusion::physical_plan::merge::{
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
 use crate::models::{QueryContext, QueryResult};
-use crate::query_types::{QueryStats, QueryType, DmlStType, DdlStType, MiscStType};
+use crate::query_types::{DdlStType, DmlStType, MiscStType, QueryStats, QueryType};
 use catalog::table::{CachingTable, IcebergTableBuilder};
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
@@ -265,22 +265,41 @@ impl UserQuery {
 
         if let DFStatement::Statement(s) = statement {
             match **s {
+                // match DML statements:
+                Statement::Delete { .. } => save(QueryType::Dml(DmlStType::Delete)),
                 Statement::Update { .. } => save(QueryType::Dml(DmlStType::Update)),
                 Statement::Insert { .. } => save(QueryType::Dml(DmlStType::Insert)),
                 Statement::Truncate { .. } => save(QueryType::Dml(DmlStType::Truncate)),
-                Statement::Query( .. ) => save(QueryType::Dml(DmlStType::Select)),
+                Statement::Query(..) => save(QueryType::Dml(DmlStType::Select)),
                 Statement::Merge { .. } => save(QueryType::Dml(DmlStType::Merge)),
+                // match DDL statements:
                 Statement::AlterSession { .. } => save(QueryType::Ddl(DdlStType::AlterSession)),
                 Statement::AlterTable { .. } => save(QueryType::Ddl(DdlStType::AlterTable)),
-                Statement::Use ( .. ) => save(QueryType::Misc(MiscStType::Use)),
-                Statement::Set ( .. ) => save(QueryType::Misc(MiscStType::Set)),
                 Statement::CreateTable { .. } => save(QueryType::Ddl(DdlStType::CreateTable)),
                 Statement::CreateView { .. } => save(QueryType::Ddl(DdlStType::CreateView)),
                 Statement::CreateDatabase { .. } => save(QueryType::Ddl(DdlStType::CreateDatabase)),
-                Statement::CreateExternalVolume { .. } => save(QueryType::Ddl(DdlStType::CreateVolume)),
+                Statement::CreateExternalVolume { .. } => {
+                    save(QueryType::Ddl(DdlStType::CreateVolume))
+                }
                 Statement::CreateSchema { .. } => save(QueryType::Ddl(DdlStType::CreateSchema)),
                 Statement::CreateStage { .. } => save(QueryType::Ddl(DdlStType::CreateStage)),
-                Statement::CopyIntoSnowflake { .. } => save(QueryType::Ddl(DdlStType::CopyIntoSnowflake)),
+                Statement::CopyIntoSnowflake { .. } => {
+                    save(QueryType::Ddl(DdlStType::CopyIntoSnowflake))
+                }
+                Statement::Drop { object_type, .. } => match object_type {
+                    ObjectType::Table => save(QueryType::Ddl(DdlStType::DropTable)),
+                    ObjectType::View => save(QueryType::Ddl(DdlStType::DropView)),
+                    ObjectType::MaterializedView => {
+                        save(QueryType::Ddl(DdlStType::DropMaterializedView))
+                    }
+                    ObjectType::Schema => save(QueryType::Ddl(DdlStType::DropSchema)),
+                    ObjectType::Database => save(QueryType::Ddl(DdlStType::DropDatabase)),
+                    ObjectType::Stage => save(QueryType::Ddl(DdlStType::DropStage)),
+                    _ => {}
+                },
+                // match other statements:
+                Statement::Use(..) => save(QueryType::Misc(MiscStType::Use)),
+                Statement::Set(..) => save(QueryType::Misc(MiscStType::Set)),
                 Statement::StartTransaction { .. } => save(QueryType::Misc(MiscStType::Begin)),
                 Statement::Commit { .. } => save(QueryType::Misc(MiscStType::Commit)),
                 Statement::Rollback { .. } => save(QueryType::Misc(MiscStType::Rollback)),
@@ -293,11 +312,11 @@ impl UserQuery {
                 Statement::ShowSchemas { .. } => save(QueryType::Misc(MiscStType::ShowSchemas)),
                 Statement::ShowTables { .. } => save(QueryType::Misc(MiscStType::ShowTables)),
                 Statement::ShowViews { .. } => save(QueryType::Misc(MiscStType::ShowViews)),
-                Statement::Drop { .. } => save(QueryType::Ddl(DdlStType::Drop)),                
+
                 Statement::ExplainTable { .. } => save(QueryType::Misc(MiscStType::ExplainTable)),
                 _ => {}
             }
-        } else if let DFStatement::CreateExternalTable( .. ) = statement {
+        } else if let DFStatement::CreateExternalTable(..) = statement {
             save(QueryType::Ddl(DdlStType::CreateExternalTable));
         }
     }

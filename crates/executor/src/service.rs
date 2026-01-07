@@ -633,9 +633,7 @@ impl ExecutionService for CoreExecutionService {
                         if let Some(stats) = queries_registry.cloned_stats(query_id) {
                             if let Some(query_type) = stats.query_type {
                                 query.set_query_type(query_type.to_string());
-                            }
-                            if let Some(rows_count) = stats.rows_count {
-                                query.set_rows_produced(rows_count);
+                                execution_result.assign_rows_counts_attributes(&mut query, query_type);
                             }
                         }
                         // just log error and do not raise it from task
