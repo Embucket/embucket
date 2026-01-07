@@ -84,15 +84,13 @@ impl RunningQuery {
     #[tracing::instrument(
         name = "RunningQuery::wait_query_finished",
         level = "trace",
-        skip(self),
         err
     )]
     pub async fn wait_query_finished(
-        &self,
+        mut rx: watch::Receiver<Option<ExecutionStatus>>,
     ) -> std::result::Result<ExecutionStatus, watch::error::RecvError> {
         // use loop here to bypass default query status we posted at init
         // it should not go to the actual loop and should resolve as soon as results are ready
-        let mut rx = self.rx.clone();
         loop {
             rx.changed().await?;
             let status = *rx.borrow();
@@ -132,12 +130,17 @@ impl RunningQueriesRegistry {
         err
     )]
     pub async fn wait_query_finished(&self, query_id: QueryId) -> Result<ExecutionStatus> {
-        let running_query = self
+        // Should not keep reference to RunningQuery during `wait_query_finished`
+        // as it causes locking issues when accessing `queries` map during the run
+        // outside of this call.
+        let rx = {
+            let running_query = self
             .queries
             .get(&query_id)
             .context(ex_error::QueryIsntRunningSnafu { query_id })?;
-        running_query
-            .wait_query_finished()
+            running_query.rx.clone()
+        };
+        RunningQuery::wait_query_finished(rx)
             .await
             .context(ex_error::ExecutionStatusRecvSnafu { query_id })
     }
