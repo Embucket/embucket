@@ -5,7 +5,7 @@ pub mod state_store_dynamo;
 
 pub use config::DynamoDbConfig;
 pub use error::{Error, Result};
-pub use models::{ExecutionStatus, Query, SessionRecord, Variable, ViewRecord};
+pub use models::{ExecutionStatus, Query, QueryMetric, SessionRecord, Variable, ViewRecord};
 pub use state_store_dynamo::DynamoDbStateStore;
 
 #[mockall::automock]

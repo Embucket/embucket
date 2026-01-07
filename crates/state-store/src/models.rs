@@ -279,7 +279,7 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind_values: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query_metrics: Option<String>,
+    pub query_metrics: Option<Vec<QueryMetric>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_history_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -333,10 +333,8 @@ impl Query {
         self.error_message = Some(error_message);
     }
 
-    pub fn set_query_metrics<T: Serialize>(&mut self, metrics: T) {
-        if let Ok(metrics_json) = serde_json::to_string(&metrics) {
-            self.query_metrics = Some(metrics_json);
-        }
+    pub fn set_query_metrics(&mut self, metrics: Vec<QueryMetric>) {
+        self.query_metrics = Some(metrics);
     }
 
     pub fn set_warehouse_type(&mut self, warehouse_type: String) {
@@ -349,4 +347,12 @@ impl Query {
         self.end_time = Some(end_time);
         self.execution_time = Some((end_time - self.start_time).num_milliseconds() as u64);
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QueryMetric {
+    pub node_id: usize,
+    pub parent_node_id: Option<usize>,
+    pub operator: String,
+    pub metrics: Value, // serialized metrics as JSON object
 }
