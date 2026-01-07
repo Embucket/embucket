@@ -284,8 +284,6 @@ pub struct Query {
     pub query_history_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_result_time: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query_profile: Option<String>,
 }
 
 impl Query {
