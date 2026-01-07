@@ -29,6 +29,7 @@ fn insta_settings(name: &str) -> insta::Settings {
     settings.set_sort_maps(true);
     settings.set_description(name);
     settings.add_redaction(".execution_time", "1");
+    settings.add_redaction(".query_metrics", "[query_metrics]");
     settings.add_filter(
         r"[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}",
         "00000000-0000-0000-0000-000000000000",
@@ -103,7 +104,8 @@ async fn test_query_lifecycle_ok_query() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "1717924485430328356",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "query_metrics": "[query_metrics]"
                 }
                 "#);
             });
@@ -189,7 +191,8 @@ async fn test_query_lifecycle_ok_insert() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "17856184221539895914",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "query_metrics": "[query_metrics]"
                 }
                 "#);
             });
@@ -292,7 +295,8 @@ async fn test_query_lifecycle_ok_update() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "16763742305627145642",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "query_metrics": "[query_metrics]"
                 }
                 "#);
             });
@@ -523,7 +527,8 @@ async fn test_query_lifecycle_ok_truncate() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "16187825059241168947",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "query_metrics": "[query_metrics]"
                 }
                 "#);
             });
@@ -639,7 +644,8 @@ async fn test_query_lifecycle_ok_merge() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "16532873076018472935",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "query_metrics": "[query_metrics]"
                 }
                 "#);
             });
