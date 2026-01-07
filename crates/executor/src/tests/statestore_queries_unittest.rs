@@ -100,7 +100,14 @@ async fn test_query_lifecycle_ok_query() {
                   "execution_time": "1",
                   "query_hash": "12320374230549905548",
                   "query_hash_version": 1,
-                  "query_metrics": "[{\"node_id\":0,\"parent_node_id\":null,\"operator\":\"EmptyExec\",\"metrics\":[]}]"
+                  "query_metrics": [
+                    {
+                      "node_id": 0,
+                      "parent_node_id": null,
+                      "operator": "EmptyExec",
+                      "metrics": []
+                    }
+                  ]
                 }
                 "#);
             });
