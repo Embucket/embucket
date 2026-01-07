@@ -101,7 +101,7 @@ impl RunningQuery {
     #[tracing::instrument(name = "RunningQuery::update_query_stats", level = "trace", skip(self))]
     pub fn update_query_stats(&mut self, stats: &QueryStats) {
         if self.query_stats.query_type.is_none() {
-            self.query_stats.query_type = stats.query_type.clone();
+            self.query_stats.query_type.clone_from(&stats.query_type);
         }
     }
 }

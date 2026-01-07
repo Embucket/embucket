@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use aws_sdk_dynamodb::config::http::HttpResponse;
 use aws_sdk_dynamodb::error::SdkError;
 use aws_sdk_dynamodb::operation::delete_item::DeleteItemError;

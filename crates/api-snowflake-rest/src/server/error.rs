@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use crate::SqlState;
 use crate::models::JsonResponse;
 use crate::models::ResponseData;
@@ -16,7 +17,6 @@ use snafu::prelude::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-// TBD: Why context at error/source mostly not used in error?
 #[derive(Snafu)]
 #[snafu(visibility(pub(crate)))]
 #[error_stack_trace::debug]

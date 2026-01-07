@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use snafu::location;
 use snafu::{Location, Snafu};
 

@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use error_stack_trace;
 use snafu::Location;
 use snafu::prelude::*;

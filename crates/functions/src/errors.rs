@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use snafu::{Location, Snafu};
 
 // In this file we create 2 types of errors: DataFusionInternalError and DataFusionExecutionError

@@ -7,11 +7,11 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "state-store-query")] {
         use super::query_types::{DmlStType, QueryType};
         use datafusion::arrow::array::{Int64Array, UInt64Array};
+        use state_store::QueryMetric;
     }
 }
 use super::snowflake_error::SnowflakeError;
 use snafu::ResultExt;
-use state_store::QueryMetric;
 use tokio::task::JoinError;
 use uuid::Uuid;
 

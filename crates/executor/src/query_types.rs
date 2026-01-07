@@ -93,10 +93,10 @@ pub struct QueryStats {
 }
 
 impl QueryStats {
-    pub fn with_query_type(self, query_type: QueryType) -> Self {
+    #[must_use]
+    pub const fn with_query_type(self, query_type: QueryType) -> Self {
         Self {
             query_type: Some(query_type),
-            ..self
         }
     }
 }

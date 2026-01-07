@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use super::snowflake_error::SnowflakeError;
 use crate::query_types::{ExecutionStatus, QueryId};
 use catalog::error::Error as CatalogError;

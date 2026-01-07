@@ -280,18 +280,18 @@ impl UserQuery {
                 Statement::CreateView { .. } => save(QueryType::Ddl(DdlStType::CreateView)),
                 Statement::CreateDatabase { .. } => save(QueryType::Ddl(DdlStType::CreateDatabase)),
                 Statement::CreateExternalVolume { .. } => {
-                    save(QueryType::Ddl(DdlStType::CreateVolume))
+                    save(QueryType::Ddl(DdlStType::CreateVolume));
                 }
                 Statement::CreateSchema { .. } => save(QueryType::Ddl(DdlStType::CreateSchema)),
                 Statement::CreateStage { .. } => save(QueryType::Ddl(DdlStType::CreateStage)),
                 Statement::CopyIntoSnowflake { .. } => {
-                    save(QueryType::Ddl(DdlStType::CopyIntoSnowflake))
+                    save(QueryType::Ddl(DdlStType::CopyIntoSnowflake));
                 }
                 Statement::Drop { object_type, .. } => match object_type {
                     ObjectType::Table => save(QueryType::Ddl(DdlStType::DropTable)),
                     ObjectType::View => save(QueryType::Ddl(DdlStType::DropView)),
                     ObjectType::MaterializedView => {
-                        save(QueryType::Ddl(DdlStType::DropMaterializedView))
+                        save(QueryType::Ddl(DdlStType::DropMaterializedView));
                     }
                     ObjectType::Schema => save(QueryType::Ddl(DdlStType::DropSchema)),
                     ObjectType::Database => save(QueryType::Ddl(DdlStType::DropDatabase)),
@@ -313,7 +313,6 @@ impl UserQuery {
                 Statement::ShowSchemas { .. } => save(QueryType::Misc(MiscStType::ShowSchemas)),
                 Statement::ShowTables { .. } => save(QueryType::Misc(MiscStType::ShowTables)),
                 Statement::ShowViews { .. } => save(QueryType::Misc(MiscStType::ShowViews)),
-
                 Statement::ExplainTable { .. } => save(QueryType::Misc(MiscStType::ExplainTable)),
                 _ => {}
             }

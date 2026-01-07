@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use crate::error::Error;
 use error_stack_trace;
 use iceberg_rust::error::Error as IcebergError;
