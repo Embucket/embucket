@@ -59,6 +59,7 @@ async fn test_query_lifecycle_ok_query() {
         .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
     state_store_mock
         .expect_put_query()
+        .times(1)
         .returning(|_| Ok(()))
         // check created query attributes only here (it is expected to be the same for any invocation)
         .withf(move |query: &Query| {
@@ -72,6 +73,7 @@ async fn test_query_lifecycle_ok_query() {
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Running",
                   "start_time": "2026-01-01T01:01:01.000000001Z",
+                  "release_version": "test-version",
                   "query_hash": "12320374230549905548",
                   "query_hash_version": 1
                 }
@@ -93,11 +95,13 @@ async fn test_query_lifecycle_ok_query() {
                   "session_id": "test_session_id",
                   "database_name": "embucket",
                   "schema_name": "public",
+                  "query_type": "SELECT",
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Success",
                   "start_time": "2026-01-01T01:01:01.000000001Z",
                   "end_time": "2026-01-01T01:01:01.000000001Z",
                   "execution_time": "1",
+                  "release_version": "test-version",
                   "query_hash": "12320374230549905548",
                   "query_hash_version": 1
                 }
@@ -117,10 +121,13 @@ async fn test_query_lifecycle_ok_query() {
     .await
     .expect("Failed to create execution service");
 
-    execution_svc
-        .create_session(TEST_SESSION_ID)
-        .await
-        .expect("Failed to create session");
+    timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.create_session(TEST_SESSION_ID)
+    )
+    .await
+    .expect("Create session timed out")
+    .expect("Failed to create session");
 
     // See note about timeout above
     let _ = timeout(
@@ -151,6 +158,7 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
         .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
     state_store_mock.expect_put_query()
         .returning(|_| Ok(()) )
+        .times(1)
         // check created query attributes only here (it is expected to be the same for any invocation)
         .withf(move |query: &Query| {
             insta_settings("incident_query_put").bind(|| {
@@ -167,6 +175,7 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
                   "start_time": "2026-01-01T01:01:01.000000001Z",
                   "end_time": "2026-01-01T01:01:01.000000001Z",
                   "execution_time": "1",
+                  "release_version": "test-version",
                   "query_hash": "8436521302113462945",
                   "query_hash_version": 1
                 }
@@ -213,6 +222,7 @@ async fn test_query_lifecycle_query_status_fail() {
         .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
     state_store_mock
         .expect_put_query()
+        .times(1)
         .returning(|_| Ok(()))
         .withf(|query: &Query| {
             insta_settings("fail_query_put").bind(|| {
@@ -225,6 +235,7 @@ async fn test_query_lifecycle_query_status_fail() {
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Running",
                   "start_time": "2026-01-01T01:01:01.000000001Z",
+                  "release_version": "test-version",
                   "query_hash": "17999132521915915058",
                   "query_hash_version": 1
                 }
@@ -245,6 +256,7 @@ async fn test_query_lifecycle_query_status_fail() {
                   "session_id": "test_session_id",
                   "database_name": "embucket",
                   "schema_name": "public",
+                  "query_type": "SELECT",
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Fail",
                   "error_code": "002003",
@@ -252,6 +264,7 @@ async fn test_query_lifecycle_query_status_fail() {
                   "start_time": "2026-01-01T01:01:01.000000001Z",
                   "end_time": "2026-01-01T01:01:01.000000001Z",
                   "execution_time": "1",
+                  "release_version": "test-version",
                   "query_hash": "17999132521915915058",
                   "query_hash_version": 1
                 }
@@ -271,10 +284,13 @@ async fn test_query_lifecycle_query_status_fail() {
     .await
     .expect("Failed to create execution service");
 
-    execution_svc
-        .create_session(TEST_SESSION_ID)
-        .await
-        .expect("Failed to create session");
+    timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.create_session(TEST_SESSION_ID)
+    )
+    .await
+    .expect("Create session timed out")
+    .expect("Failed to create session");
 
     // See note about timeout above
     let _ = timeout(
@@ -302,6 +318,7 @@ async fn test_query_lifecycle_query_status_cancelled() {
         .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
     state_store_mock
         .expect_put_query()
+        .times(1)
         .returning(|_| Ok(()))
         .withf(|query: &Query| {
             insta_settings("cancelled_query_put").bind(|| {
@@ -314,6 +331,7 @@ async fn test_query_lifecycle_query_status_cancelled() {
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Running",
                   "start_time": "2026-01-01T01:01:01.000000001Z",
+                  "release_version": "test-version",
                   "query_hash": "8436521302113462945",
                   "query_hash_version": 1
                 }
@@ -341,6 +359,7 @@ async fn test_query_lifecycle_query_status_cancelled() {
                   "start_time": "2026-01-01T01:01:01.000000001Z",
                   "end_time": "2026-01-01T01:01:01.000000001Z",
                   "execution_time": "1",
+                  "release_version": "test-version",
                   "query_hash": "8436521302113462945",
                   "query_hash_version": 1
                 }
@@ -360,10 +379,13 @@ async fn test_query_lifecycle_query_status_cancelled() {
     .await
     .expect("Failed to create execution service");
 
-    execution_svc
-        .create_session(TEST_SESSION_ID)
-        .await
-        .expect("Failed to create session");
+    timeout(
+        MOCK_RELATED_TIMEOUT_DURATION,
+        execution_svc.create_session(TEST_SESSION_ID)
+    )
+    .await
+    .expect("Create session timed out")
+    .expect("Failed to create session");
 
     // See note about timeout above
     let query_handle = timeout(

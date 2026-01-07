@@ -18,6 +18,7 @@ use crate::datafusion::physical_plan::merge::{
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
 use crate::models::{QueryContext, QueryResult};
+use crate::query_types::{QueryStats, QueryType, DmlStType, DdlStType, MiscStType};
 use catalog::table::{CachingTable, IcebergTableBuilder};
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
@@ -246,6 +247,63 @@ impl UserQuery {
 
     #[allow(clippy::too_many_lines)]
     #[instrument(
+        name = "UserQuery::update_query_type",
+        level = "debug",
+        skip(self),
+        fields(
+            query_type,
+            query_id = self.query_context.query_id.to_string(),
+        ),
+    )]
+    fn update_stats_query_type(&self, statement: &DFStatement) {
+        let save = |query_type: QueryType| {
+            self.running_queries.update_stats(
+                self.query_context.query_id,
+                &QueryStats::default().with_query_type(query_type),
+            );
+        };
+
+        if let DFStatement::Statement(s) = statement {
+            match **s {
+                Statement::Update { .. } => save(QueryType::Dml(DmlStType::Update)),
+                Statement::Insert { .. } => save(QueryType::Dml(DmlStType::Insert)),
+                Statement::Truncate { .. } => save(QueryType::Dml(DmlStType::Truncate)),
+                Statement::Query( .. ) => save(QueryType::Dml(DmlStType::Select)),
+                Statement::Merge { .. } => save(QueryType::Dml(DmlStType::Merge)),
+                Statement::AlterSession { .. } => save(QueryType::Ddl(DdlStType::AlterSession)),
+                Statement::AlterTable { .. } => save(QueryType::Ddl(DdlStType::AlterTable)),
+                Statement::Use ( .. ) => save(QueryType::Misc(MiscStType::Use)),
+                Statement::Set ( .. ) => save(QueryType::Misc(MiscStType::Set)),
+                Statement::CreateTable { .. } => save(QueryType::Ddl(DdlStType::CreateTable)),
+                Statement::CreateView { .. } => save(QueryType::Ddl(DdlStType::CreateView)),
+                Statement::CreateDatabase { .. } => save(QueryType::Ddl(DdlStType::CreateDatabase)),
+                Statement::CreateExternalVolume { .. } => save(QueryType::Ddl(DdlStType::CreateVolume)),
+                Statement::CreateSchema { .. } => save(QueryType::Ddl(DdlStType::CreateSchema)),
+                Statement::CreateStage { .. } => save(QueryType::Ddl(DdlStType::CreateStage)),
+                Statement::CopyIntoSnowflake { .. } => save(QueryType::Ddl(DdlStType::CopyIntoSnowflake)),
+                Statement::StartTransaction { .. } => save(QueryType::Misc(MiscStType::Begin)),
+                Statement::Commit { .. } => save(QueryType::Misc(MiscStType::Commit)),
+                Statement::Rollback { .. } => save(QueryType::Misc(MiscStType::Rollback)),
+                Statement::ShowColumns { .. } => save(QueryType::Misc(MiscStType::ShowColumns)),
+                Statement::ShowFunctions { .. } => save(QueryType::Misc(MiscStType::ShowFunctions)),
+                Statement::ShowObjects { .. } => save(QueryType::Misc(MiscStType::ShowObjects)),
+                Statement::ShowVariables { .. } => save(QueryType::Misc(MiscStType::ShowVariables)),
+                Statement::ShowVariable { .. } => save(QueryType::Misc(MiscStType::ShowVariable)),
+                Statement::ShowDatabases { .. } => save(QueryType::Misc(MiscStType::ShowDatabases)),
+                Statement::ShowSchemas { .. } => save(QueryType::Misc(MiscStType::ShowSchemas)),
+                Statement::ShowTables { .. } => save(QueryType::Misc(MiscStType::ShowTables)),
+                Statement::ShowViews { .. } => save(QueryType::Misc(MiscStType::ShowViews)),
+                Statement::Drop { .. } => save(QueryType::Ddl(DdlStType::Drop)),                
+                Statement::ExplainTable { .. } => save(QueryType::Misc(MiscStType::ExplainTable)),
+                _ => {}
+            }
+        } else if let DFStatement::CreateExternalTable( .. ) = statement {
+            save(QueryType::Ddl(DdlStType::CreateExternalTable));
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    #[instrument(
         name = "UserQuery::execute",
         level = "debug",
         skip(self),
@@ -262,6 +320,8 @@ impl UserQuery {
 
         // Record the result as part of the current span.
         tracing::Span::current().record("statement", format!("{statement:#?}"));
+
+        self.update_stats_query_type(&statement);
 
         // TODO: Code should be organized in a better way
         // 1. Single place to parse SQL strings into AST

@@ -528,6 +528,7 @@ impl ExecutionService for CoreExecutionService {
                 );
                 query.set_execution_status(ExecutionStatus::Running);
                 query.set_warehouse_type(self.config.warehouse_type.clone());
+                query.set_release_version(self.config.build_version.clone());
             }
         }
 
@@ -629,6 +630,14 @@ impl ExecutionService for CoreExecutionService {
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "state-store-query")] {
                         execution_result.assign_query_attributes(&mut query);
+                        if let Some(stats) = queries_registry.cloned_stats(query_id) {
+                            if let Some(query_type) = stats.query_type {
+                                query.set_query_type(query_type.to_string());
+                            }
+                            if let Some(rows_count) = stats.rows_count {
+                                query.set_rows_produced(rows_count);
+                            }
+                        }
                         // just log error and do not raise it from task
                         if let Err(err) = state_store.update_query(&query).await {
                             tracing::error!("Failed to update query {query_id}: {err:?}");

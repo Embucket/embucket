@@ -1,6 +1,6 @@
 use super::error::{self as ex_error, Result};
 use super::models::QueryResult;
-use crate::query_types::{ExecutionStatus, QueryId};
+use crate::query_types::{ExecutionStatus, QueryId, QueryStats};
 use dashmap::DashMap;
 use snafu::{OptionExt, ResultExt};
 use std::sync::Arc;
@@ -22,6 +22,7 @@ pub struct RunningQuery {
     // user can be notified when query is finished
     tx: watch::Sender<Option<ExecutionStatus>>,
     rx: watch::Receiver<Option<ExecutionStatus>>,
+    pub query_stats: QueryStats,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,7 @@ impl RunningQuery {
             result_handle: None,
             tx,
             rx,
+            query_stats: QueryStats::default(),
         }
     }
     #[must_use]
@@ -99,6 +101,20 @@ impl RunningQuery {
             }
         }
     }
+
+    #[tracing::instrument(
+        name = "RunningQuery::update_query_stats",
+        level = "trace",
+        skip(self),
+    )]
+    pub fn update_query_stats(&mut self, stats: &QueryStats) {
+        if self.query_stats.query_type.is_none() {
+            self.query_stats.query_type = stats.query_type.clone();
+        }
+        if self.query_stats.rows_count.is_none() {
+            self.query_stats.rows_count = stats.rows_count;
+        }
+    }
 }
 
 pub struct RunningQueriesRegistry {
@@ -155,6 +171,8 @@ pub trait RunningQueries: Send + Sync {
     fn notify_query_finished(&self, query_id: QueryId, status: ExecutionStatus) -> Result<()>;
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId>;
     fn count(&self) -> usize;
+    fn cloned_stats(&self, query_id: QueryId) -> Option<QueryStats>;
+    fn update_stats(&self, query_id: QueryId, stats: &QueryStats);
 }
 
 impl RunningQueries for RunningQueriesRegistry {
@@ -227,5 +245,27 @@ impl RunningQueries for RunningQueriesRegistry {
 
     fn count(&self) -> usize {
         self.queries.len()
+    }
+
+
+    fn cloned_stats(&self, query_id: QueryId) -> Option<QueryStats> {
+        if let Some(running_query) = self.queries.get(&query_id) {
+            Some(running_query.query_stats.clone())
+        } else {
+            None
+        }
+    }
+
+    #[tracing::instrument(
+        name = "RunningQueriesRegistry::update_stats",
+        level = "trace",
+        skip(self),
+        fields(query_id),
+        ret
+    )]
+    fn update_stats(&self, query_id: QueryId, stats: &QueryStats) {
+        if let Some(mut running_query) = self.queries.get_mut(&query_id) {
+            running_query.update_query_stats(stats);
+        }
     }
 }
