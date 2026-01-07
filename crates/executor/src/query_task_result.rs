@@ -5,6 +5,7 @@ use super::models::QueryResult;
 use super::query_types::ExecutionStatus;
 use super::snowflake_error::SnowflakeError;
 use snafu::ResultExt;
+use state_store::QueryMetric;
 use tokio::task::JoinError;
 use uuid::Uuid;
 
@@ -17,6 +18,7 @@ pub struct ExecutionTaskResult {
 }
 
 impl ExecutionTaskResult {
+    #[must_use]
     pub fn from_query_result(query_id: Uuid, result: Result<QueryResult>) -> Self {
         let execution_status = result
             .as_ref()
@@ -85,6 +87,21 @@ impl ExecutionTaskResult {
         }
         if let Err(err) = &self.result {
             query.set_error_message(err.to_string());
+        }
+
+        // Collect result metrics
+        if let Ok(res) = &self.result {
+            query.set_query_metrics(
+                res.metrics
+                    .iter()
+                    .map(|metric| QueryMetric {
+                        node_id: metric.node_id,
+                        parent_node_id: metric.parent_node_id,
+                        operator: metric.operator.clone(),
+                        metrics: metric.metrics.clone(),
+                    })
+                    .collect(),
+            );
         }
         query.set_end_time();
     }

@@ -99,7 +99,15 @@ async fn test_query_lifecycle_ok_query() {
                   "end_time": "2026-01-01T01:01:01.000000001Z",
                   "execution_time": "1",
                   "query_hash": "12320374230549905548",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "query_metrics": [
+                    {
+                      "node_id": 0,
+                      "parent_node_id": null,
+                      "operator": "EmptyExec",
+                      "metrics": []
+                    }
+                  ]
                 }
                 "#);
             });

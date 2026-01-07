@@ -17,7 +17,7 @@ use crate::datafusion::physical_plan::merge::{
 };
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
-use crate::models::{QueryContext, QueryResult};
+use crate::models::{QueryContext, QueryMetric, QueryResult, metrics_set_to_json};
 use catalog::table::{CachingTable, IcebergTableBuilder};
 use catalog_metastore::{
     AwsAccessKeyCredentials, AwsCredentials, FileVolume, Metastore, S3TablesVolume, S3Volume,
@@ -68,7 +68,7 @@ use datafusion_expr::{
 };
 use datafusion_iceberg::DataFusionTable;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
-use datafusion_physical_plan::collect;
+use datafusion_physical_plan::{ExecutionPlan, collect};
 use functions::semi_structured::variant::visitors::visit_all;
 use functions::session_params::SessionProperty;
 use functions::visitors::{
@@ -105,6 +105,7 @@ use std::ops::ControlFlow;
 use std::result::Result as StdResult;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::Instrument;
 use tracing_attributes::instrument;
 use url::Url;
@@ -2130,11 +2131,24 @@ impl UserQuery {
             .await
             .context(ex_error::DataFusionSnafu)?;
         let mut schema = df.schema().as_arrow().clone();
-        let records = df.collect().await.context(ex_error::DataFusionSnafu)?;
+        let physical_plan = df
+            .create_physical_plan()
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        let task_ctx = session.ctx.task_ctx();
+        let metrics_plan = Arc::clone(&physical_plan);
+        let records = collect(physical_plan, task_ctx)
+            .await
+            .context(ex_error::DataFusionSnafu)?;
         if !records.is_empty() {
             schema = records[0].schema().as_ref().clone();
         }
-        Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
+        let metrics = build_plan_metrics(&metrics_plan);
+        Ok::<QueryResult, Error>(QueryResult::new_with_metrics(
+            records,
+            Arc::new(schema),
+            metrics,
+        ))
     }
 
     #[instrument(name = "UserQuery::execute_sql", level = "debug", skip(self), err, ret)]
@@ -2164,19 +2178,30 @@ impl UserQuery {
         span: tracing::Span,
     ) -> Result<QueryResult> {
         let mut schema = plan.schema().as_arrow().clone();
-        let records = session
+        let df = session
             .ctx
             .execute_logical_plan(plan)
             .await
-            .context(ex_error::DataFusionSnafu)?
-            .collect()
+            .context(ex_error::DataFusionSnafu)?;
+        let physical_plan = df
+            .create_physical_plan()
+            .await
+            .context(ex_error::DataFusionSnafu)?;
+        let task_ctx = session.ctx.task_ctx();
+        let metrics_plan = Arc::clone(&physical_plan);
+        let records = collect(physical_plan, task_ctx)
             .instrument(span)
             .await
             .context(ex_error::DataFusionSnafu)?;
         if !records.is_empty() {
             schema = records[0].schema().as_ref().clone();
         }
-        Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
+        let metrics = build_plan_metrics(&metrics_plan);
+        Ok::<QueryResult, Error>(QueryResult::new_with_metrics(
+            records,
+            Arc::new(schema),
+            metrics,
+        ))
     }
 
     async fn execute_logical_plan(&self, plan: LogicalPlan) -> Result<QueryResult> {
@@ -2221,13 +2246,19 @@ impl UserQuery {
                 .optimize(physical_plan, &ConfigOptions::new())
                 .context(ex_error::DataFusionSnafu)?;
         }
+        let metrics_plan = Arc::clone(&physical_plan);
         let records = collect(physical_plan, Arc::new(task_ctx))
             .await
             .context(ex_error::DataFusionSnafu)?;
         if !records.is_empty() {
             schema = records[0].schema().as_ref().clone();
         }
-        Ok::<QueryResult, Error>(QueryResult::new(records, Arc::new(schema)))
+        let metrics = build_plan_metrics(&metrics_plan);
+        Ok::<QueryResult, Error>(QueryResult::new_with_metrics(
+            records,
+            Arc::new(schema),
+            metrics,
+        ))
     }
 
     #[instrument(
@@ -3547,5 +3578,28 @@ fn normalize_resolved_ref(table_ref: &ResolvedTableReference) -> ResolvedTableRe
         catalog: Arc::from(table_ref.catalog.to_ascii_lowercase()),
         schema: Arc::from(table_ref.schema.to_ascii_lowercase()),
         table: Arc::from(table_ref.table.to_ascii_lowercase()),
+    }
+}
+
+fn build_plan_metrics(plan: &Arc<dyn ExecutionPlan>) -> Vec<QueryMetric> {
+    let counter = AtomicUsize::new(0);
+    let mut metrics = Vec::new();
+    collect_plan_metrics(plan, None, &counter, &mut metrics);
+    metrics
+}
+
+fn collect_plan_metrics(
+    plan: &Arc<dyn ExecutionPlan>,
+    parent: Option<usize>,
+    counter: &AtomicUsize,
+    out: &mut Vec<QueryMetric>,
+) {
+    let node_id = counter.fetch_add(1, Ordering::SeqCst);
+    let metrics_json = metrics_set_to_json(plan.metrics());
+
+    out.push(QueryMetric::new(node_id, parent, plan.name(), metrics_json));
+
+    for child in plan.children() {
+        collect_plan_metrics(child, Some(node_id), counter, out);
     }
 }
