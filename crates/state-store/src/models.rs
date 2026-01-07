@@ -279,9 +279,13 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind_values: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_metrics: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_history_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_result_time: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_profile: Option<String>,
 }
 
 impl Query {
@@ -329,6 +333,12 @@ impl Query {
 
     pub fn set_error_message(&mut self, error_message: String) {
         self.error_message = Some(error_message);
+    }
+
+    pub fn set_query_metrics<T: Serialize>(&mut self, metrics: T) {
+        if let Ok(metrics_json) = serde_json::to_string(&metrics) {
+            self.query_metrics = Some(metrics_json);
+        }
     }
 
     pub fn set_warehouse_type(&mut self, warehouse_type: String) {

@@ -2,8 +2,10 @@ use crate::query_types::QueryId;
 use datafusion::arrow::array::RecordBatch;
 use datafusion::arrow::datatypes::{DataType, Field, Schema as ArrowSchema, TimeUnit};
 use datafusion_common::arrow::datatypes::Schema;
+use datafusion_physical_plan::metrics::{Metric, MetricsSet};
 use functions::to_snowflake_datatype;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -73,17 +75,60 @@ pub struct QueryResult {
     /// The schema associated with the result.
     /// This is required to construct a valid response even when `records` are empty
     pub schema: Arc<ArrowSchema>,
+    /// Execution plan metrics collected after running the query.
+    pub metrics: Vec<QueryMetric>,
 }
 
 impl QueryResult {
     #[must_use]
     pub const fn new(records: Vec<RecordBatch>, schema: Arc<ArrowSchema>) -> Self {
-        Self { records, schema }
+        Self {
+            records,
+            schema,
+            metrics: Vec::new(),
+        }
     }
 
     #[must_use]
+    pub const fn new_with_metrics(
+        records: Vec<RecordBatch>,
+        schema: Arc<ArrowSchema>,
+        metrics: Vec<QueryMetric>,
+    ) -> Self {
+        Self {
+            records,
+            schema,
+            metrics,
+        }
+    }
+    #[must_use]
     pub fn column_info(&self) -> Vec<ColumnInfo> {
         ColumnInfo::from_schema(&self.schema)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QueryMetric {
+    pub node_id: usize,
+    pub parent_node_id: Option<usize>,
+    pub operator: String,
+    pub metrics: serde_json::Value, // serialized metrics as JSON object
+}
+
+impl QueryMetric {
+    #[must_use]
+    pub fn new(
+        node_id: usize,
+        parent_node_id: Option<usize>,
+        operator: &str,
+        metrics: serde_json::Value,
+    ) -> Self {
+        Self {
+            node_id,
+            parent_node_id,
+            operator: operator.to_string(),
+            metrics,
+        }
     }
 }
 
@@ -194,6 +239,40 @@ impl ColumnInfo {
         }
         column_info
     }
+}
+
+#[must_use]
+pub fn metrics_set_to_json(metrics: Option<MetricsSet>) -> JsonValue {
+    let metrics = metrics
+        .map(|metrics| {
+            metrics
+                .iter()
+                .map(|metric| metric_to_json(metric.as_ref()))
+                .collect()
+        })
+        .unwrap_or_default();
+    JsonValue::Array(metrics)
+}
+
+fn metric_to_json(metric: &Metric) -> JsonValue {
+    let labels = metric
+        .labels()
+        .iter()
+        .map(|label| {
+            (
+                label.name().to_string(),
+                JsonValue::String(label.value().to_string()),
+            )
+        })
+        .collect::<JsonMap<String, JsonValue>>();
+
+    json!({
+        "name": metric.value().name(),
+        "value": metric.value().as_usize(),
+        "display": metric.value().to_string(),
+        "partition": metric.partition(),
+        "labels": labels,
+    })
 }
 
 #[cfg(test)]

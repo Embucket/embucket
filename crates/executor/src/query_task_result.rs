@@ -17,6 +17,7 @@ pub struct ExecutionTaskResult {
 }
 
 impl ExecutionTaskResult {
+    #[must_use]
     pub fn from_query_result(query_id: Uuid, result: Result<QueryResult>) -> Self {
         let execution_status = result
             .as_ref()
@@ -85,6 +86,9 @@ impl ExecutionTaskResult {
         }
         if let Err(err) = &self.result {
             query.set_error_message(err.to_string());
+        }
+        if let Ok(res) = &self.result {
+            query.set_query_metrics(&res.metrics);
         }
         query.set_end_time();
     }
