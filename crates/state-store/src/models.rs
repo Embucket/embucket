@@ -317,9 +317,7 @@ impl Query {
         self.schema_name = Some(schema);
     }
 
-    // Why? warning: this could be a `const fn`
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn set_execution_status(&mut self, status: ExecutionStatus) {
+    pub const fn set_execution_status(&mut self, status: ExecutionStatus) {
         self.execution_status = Some(status);
     }
 
@@ -339,19 +337,19 @@ impl Query {
         self.release_version = Some(release_version);
     }
 
-    pub fn set_rows_produced(&mut self, rows_count: u64) {
+    pub const fn set_rows_produced(&mut self, rows_count: u64) {
         self.rows_produced = Some(rows_count);
     }
 
-    pub fn set_rows_inserted(&mut self, rows_count: u64) {
+    pub const fn set_rows_inserted(&mut self, rows_count: u64) {
         self.rows_inserted = Some(rows_count);
     }
 
-    pub fn set_rows_deleted(&mut self, rows_count: u64) {
+    pub const fn set_rows_deleted(&mut self, rows_count: u64) {
         self.rows_deleted = Some(rows_count);
     }
 
-    pub fn set_rows_updated(&mut self, rows_count: u64) {
+    pub const fn set_rows_updated(&mut self, rows_count: u64) {
         self.rows_updated = Some(rows_count);
     }
 
