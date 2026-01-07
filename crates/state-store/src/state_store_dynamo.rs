@@ -3,19 +3,20 @@ use crate::config::DynamoDbConfig;
 use crate::error::Result;
 use crate::error::{
     DynamoDbDeleteItemSnafu, DynamoDbGetItemSnafu, DynamoDbPutItemSnafu, DynamoDbQueryOutputSnafu,
-    Error, FailedToParseJsonSnafu,
+    Error, FailedToDeserializeDynamoSnafu, FailedToSerializeDynamoSnafu,
 };
 use crate::models::{Query, SessionRecord};
 use aws_sdk_dynamodb::{Client, types::AttributeValue};
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde_dynamo::{from_item, to_item};
 use snafu::ResultExt;
 use std::collections::HashMap;
 
 const PK: &str = "PK";
 const SK: &str = "SK";
 const ENTITY: &str = "Entity";
-const DATA: &str = "Data";
 const QUERY_ID: &str = "query_id";
 const REQUEST_ID: &str = "request_id";
 const SESSION_ID: &str = "session_id";
@@ -145,10 +146,7 @@ impl StateStore for DynamoDbStateStore {
         item.insert(PK.to_string(), AttributeValue::S(key.clone()));
         item.insert(SK.to_string(), AttributeValue::S(key));
         item.insert(ENTITY.to_string(), AttributeValue::S(session.entity()));
-        item.insert(
-            DATA.to_string(),
-            AttributeValue::S(serde_json::to_string(&session).context(FailedToParseJsonSnafu)?),
-        );
+        item.extend(model_attributes(&session)?);
 
         if let Some(ttl) = session.ttl_seconds {
             item.insert("ttl".to_string(), AttributeValue::N(ttl.to_string()));
@@ -180,7 +178,7 @@ impl StateStore for DynamoDbStateStore {
             .item
             .ok_or(Error::NotFound)?;
 
-        deserialize_data(item)
+        deserialize_item(item)
     }
 
     /// Delete a session by id.
@@ -209,10 +207,7 @@ impl StateStore for DynamoDbStateStore {
         item.insert(PK.to_string(), AttributeValue::S(pk));
         item.insert(SK.to_string(), AttributeValue::S(sk));
         item.insert(ENTITY.to_string(), AttributeValue::S(query.entity()));
-        item.insert(
-            DATA.to_string(),
-            AttributeValue::S(serde_json::to_string(&query).context(FailedToParseJsonSnafu)?),
-        );
+        item.extend(model_attributes(query)?);
         item.insert(
             QUERY_ID.to_string(),
             AttributeValue::S(query.query_id.to_string()),
@@ -241,12 +236,12 @@ impl StateStore for DynamoDbStateStore {
 
     async fn get_query(&self, query_id: &str) -> Result<Query> {
         let item = self.query_item_by_query_id(query_id).await?;
-        deserialize_data(item)
+        deserialize_item(item)
     }
 
     async fn get_query_by_request_id(&self, request_id: &str) -> Result<Query> {
         let item = self.query_item_by_request_id(request_id).await?;
-        deserialize_data(item)
+        deserialize_item(item)
     }
 
     async fn get_queries_by_session_id(&self, session_id: &str) -> Result<Vec<Query>> {
@@ -274,13 +269,16 @@ impl StateStore for DynamoDbStateStore {
     }
 }
 
-fn deserialize_data<T: DeserializeOwned>(mut item: HashMap<String, AttributeValue>) -> Result<T> {
-    let data = item
-        .remove(DATA)
-        .and_then(|attr| attr.as_s().ok().map(std::string::ToString::to_string))
-        .ok_or(Error::MissingData)?;
+fn model_attributes<T: Serialize>(value: &T) -> Result<HashMap<String, AttributeValue>> {
+    to_item(value).context(FailedToSerializeDynamoSnafu)
+}
 
-    serde_json::from_str(&data).context(FailedToParseJsonSnafu)
+fn deserialize_item<T: DeserializeOwned>(mut item: HashMap<String, AttributeValue>) -> Result<T> {
+    item.remove(PK);
+    item.remove(SK);
+    item.remove(ENTITY);
+    item.remove("ttl");
+    from_item(item).context(FailedToDeserializeDynamoSnafu)
 }
 
 fn deserialize_items<T: DeserializeOwned>(
@@ -288,7 +286,7 @@ fn deserialize_items<T: DeserializeOwned>(
 ) -> Result<Vec<T>> {
     items
         .into_iter()
-        .map(deserialize_data)
+        .map(deserialize_item)
         .collect::<Result<Vec<_>>>()
 }
 
