@@ -5,7 +5,7 @@ edition = "2024"
 license-file.workspace = true
 
 [features]
-default = ["state-store", "state-store-query"]
+default = []
 rest-catalog = ["catalog/rest-catalog"]
 dedicated-executor = []
 
