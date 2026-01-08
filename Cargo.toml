@@ -67,6 +67,7 @@ regex = "1.11.1"
 serde = { version = "1.0.228", features = ["derive", "alloc"] }
 serde_json = { version = "1.0.145", features = ["raw_value"]}
 serde_yaml = "0.9"
+serde_dynamo = { version = "4.3.0", features = ["aws-sdk-dynamodb+1"] }
 snafu = { version = "0.8.5", features = ["futures"] }
 tikv-jemallocator = { version = "0.6.0" }
 strum = { version = "0.27.2", features = ["derive"] }

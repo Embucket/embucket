@@ -5,6 +5,7 @@ use super::models::QueryResult;
 use super::query_types::ExecutionStatus;
 use super::snowflake_error::SnowflakeError;
 use snafu::ResultExt;
+#[cfg(feature = "state-store-query")]
 use state_store::QueryMetric;
 use tokio::task::JoinError;
 use uuid::Uuid;

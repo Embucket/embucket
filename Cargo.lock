@@ -7001,6 +7001,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_dynamo"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "873a97c3f7a67dd042bceb47d056d288424b82d4c66b0a25e1a3b34675620951"
+dependencies = [
+ "aws-sdk-dynamodb",
+ "base64 0.21.7",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.145"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7319,6 +7331,7 @@ dependencies = [
  "error-stack-trace",
  "mockall",
  "serde",
+ "serde_dynamo",
  "serde_json",
  "snafu",
  "uuid",
