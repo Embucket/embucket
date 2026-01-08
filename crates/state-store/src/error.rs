@@ -5,6 +5,7 @@ use aws_sdk_dynamodb::operation::delete_item::DeleteItemError;
 use aws_sdk_dynamodb::operation::get_item::GetItemError;
 use aws_sdk_dynamodb::operation::put_item::PutItemError;
 use aws_sdk_dynamodb::operation::query::QueryError;
+use serde_dynamo::Error as SerdeDynamoError;
 use snafu::{Location, Snafu};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -55,6 +56,20 @@ pub enum Error {
     DynamoDbCredentialsError {
         #[snafu(source(from(aws_credential_types::provider::error::CredentialsError, Box::new)))]
         error: Box<aws_credential_types::provider::error::CredentialsError>,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Failed to serialize DynamoDB item: {error}"))]
+    FailedToSerializeDynamo {
+        #[snafu(source)]
+        error: SerdeDynamoError,
+        #[snafu(implicit)]
+        location: Location,
+    },
+    #[snafu(display("Failed to deserialize DynamoDB item: {error}"))]
+    FailedToDeserializeDynamo {
+        #[snafu(source)]
+        error: SerdeDynamoError,
         #[snafu(implicit)]
         location: Location,
     },
