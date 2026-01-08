@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use datafusion::arrow::datatypes::DataType;
 use datafusion_common::ScalarValue;
 use snafu::{Location, Snafu};

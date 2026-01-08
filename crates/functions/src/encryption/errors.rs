@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use datafusion::error::DataFusionError;
 use snafu::Location;
 use snafu::Snafu;

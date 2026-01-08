@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use datafusion::arrow::datatypes::DataType;
 use snafu::{Location, Snafu};
 use std::num::TryFromIntError;

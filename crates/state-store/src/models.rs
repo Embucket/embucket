@@ -296,7 +296,7 @@ impl Query {
     ) -> Self {
         Self {
             query_id,
-            query_text: query_str.to_string(),
+            query_text: query_str.chars().take(100_000).collect(),
             session_id: session_id.to_string(),
             request_id,
             start_time: Utc::now(),
@@ -319,9 +319,7 @@ impl Query {
         self.schema_name = Some(schema);
     }
 
-    // Why? warning: this could be a `const fn`
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn set_execution_status(&mut self, status: ExecutionStatus) {
+    pub const fn set_execution_status(&mut self, status: ExecutionStatus) {
         self.execution_status = Some(status);
     }
 
@@ -339,6 +337,30 @@ impl Query {
 
     pub fn set_warehouse_type(&mut self, warehouse_type: String) {
         self.warehouse_type = Some(warehouse_type);
+    }
+
+    pub fn set_release_version(&mut self, release_version: String) {
+        self.release_version = Some(release_version);
+    }
+
+    pub const fn set_rows_produced(&mut self, rows_count: u64) {
+        self.rows_produced = Some(rows_count);
+    }
+
+    pub const fn set_rows_inserted(&mut self, rows_count: u64) {
+        self.rows_inserted = Some(rows_count);
+    }
+
+    pub const fn set_rows_deleted(&mut self, rows_count: u64) {
+        self.rows_deleted = Some(rows_count);
+    }
+
+    pub const fn set_rows_updated(&mut self, rows_count: u64) {
+        self.rows_updated = Some(rows_count);
+    }
+
+    pub fn set_query_type(&mut self, query_type: String) {
+        self.query_type = Some(query_type);
     }
 
     #[allow(clippy::as_conversions, clippy::cast_sign_loss)]

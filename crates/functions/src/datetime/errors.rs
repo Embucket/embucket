@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use chrono_tz::ParseError;
 use snafu::{Location, Snafu};
 

@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use snafu::{Location, Snafu};
 
 #[derive(Snafu)]

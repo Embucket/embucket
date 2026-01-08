@@ -3,10 +3,15 @@ use super::error::Result;
 use super::error_code::ErrorCode;
 use super::models::QueryResult;
 use super::query_types::ExecutionStatus;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "state-store-query")] {
+        use super::query_types::{DmlStType, QueryType};
+        use datafusion::arrow::array::{Int64Array, UInt64Array};
+        use state_store::QueryMetric;
+    }
+}
 use super::snowflake_error::SnowflakeError;
 use snafu::ResultExt;
-#[cfg(feature = "state-store-query")]
-use state_store::QueryMetric;
 use tokio::task::JoinError;
 use uuid::Uuid;
 
@@ -81,6 +86,37 @@ impl ExecutionTaskResult {
     }
 
     #[cfg(feature = "state-store-query")]
+    pub fn assign_rows_counts_attributes(
+        &self,
+        query: &mut state_store::Query,
+        query_type: QueryType,
+    ) {
+        if let Ok(result) = &self.result
+            && let QueryType::Dml(query_type) = query_type
+        {
+            if let DmlStType::Select = query_type {
+                let rows_count: u64 = result.records.iter().map(|r| r.num_rows() as u64).sum();
+                query.set_rows_produced(rows_count);
+            } else if let Some(rows_count) = value_by_row_column(&result, 0, 0) {
+                match query_type {
+                    DmlStType::Insert => query.set_rows_inserted(rows_count as u64),
+                    DmlStType::Update => query.set_rows_updated(rows_count as u64),
+                    DmlStType::Delete => query.set_rows_deleted(rows_count as u64),
+                    DmlStType::Truncate => query.set_rows_deleted(rows_count as u64),
+                    DmlStType::Merge => {
+                        // merge has 2 columns, currently map values to insert/select rows counts
+                        query.set_rows_inserted(rows_count as u64);
+                        if let Some(rows_count) = value_by_row_column(&result, 0, 1) {
+                            query.set_rows_produced(rows_count as u64);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "state-store-query")]
     pub fn assign_query_attributes(&self, query: &mut state_store::Query) {
         query.set_execution_status(self.execution_status);
         if let Some(error_code) = self.error_code {
@@ -106,4 +142,25 @@ impl ExecutionTaskResult {
         }
         query.set_end_time();
     }
+}
+
+#[cfg(feature = "state-store-query")]
+fn value_by_row_column(result: &QueryResult, row_idx: usize, col_idx: usize) -> Option<u64> {
+    result.records[0].columns().get(col_idx).and_then(|col| {
+        if let Some(cols) = col.as_any().downcast_ref::<Int64Array>() {
+            if row_idx < cols.len() {
+                Some(cols.value(row_idx) as u64)
+            } else {
+                None
+            }
+        } else if let Some(cols) = col.as_any().downcast_ref::<UInt64Array>() {
+            if row_idx < cols.len() {
+                Some(cols.value(row_idx))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    })
 }

@@ -1,6 +1,6 @@
 use super::error::{self as ex_error, Result};
 use super::models::QueryResult;
-use crate::query_types::{ExecutionStatus, QueryId};
+use crate::query_types::{ExecutionStatus, QueryId, QueryStats};
 use dashmap::DashMap;
 use snafu::{OptionExt, ResultExt};
 use std::sync::Arc;
@@ -22,6 +22,7 @@ pub struct RunningQuery {
     // user can be notified when query is finished
     tx: watch::Sender<Option<ExecutionStatus>>,
     rx: watch::Receiver<Option<ExecutionStatus>>,
+    pub query_stats: QueryStats,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,7 @@ impl RunningQuery {
             result_handle: None,
             tx,
             rx,
+            query_stats: QueryStats::default(),
         }
     }
     #[must_use]
@@ -81,24 +83,25 @@ impl RunningQuery {
         self.tx.send(Some(status))
     }
 
-    #[tracing::instrument(
-        name = "RunningQuery::wait_query_finished",
-        level = "trace",
-        skip(self),
-        err
-    )]
+    #[tracing::instrument(name = "RunningQuery::wait_query_finished", level = "trace", err)]
     pub async fn wait_query_finished(
-        &self,
+        mut rx: watch::Receiver<Option<ExecutionStatus>>,
     ) -> std::result::Result<ExecutionStatus, watch::error::RecvError> {
         // use loop here to bypass default query status we posted at init
         // it should not go to the actual loop and should resolve as soon as results are ready
-        let mut rx = self.rx.clone();
         loop {
             rx.changed().await?;
             let status = *rx.borrow();
             if let Some(status) = status {
                 break Ok(status);
             }
+        }
+    }
+
+    #[tracing::instrument(name = "RunningQuery::update_query_stats", level = "trace", skip(self))]
+    pub fn update_query_stats(&mut self, stats: &QueryStats) {
+        if self.query_stats.query_type.is_none() {
+            self.query_stats.query_type.clone_from(&stats.query_type);
         }
     }
 }
@@ -132,12 +135,17 @@ impl RunningQueriesRegistry {
         err
     )]
     pub async fn wait_query_finished(&self, query_id: QueryId) -> Result<ExecutionStatus> {
-        let running_query = self
-            .queries
-            .get(&query_id)
-            .context(ex_error::QueryIsntRunningSnafu { query_id })?;
-        running_query
-            .wait_query_finished()
+        // Should not keep reference to RunningQuery during `wait_query_finished`
+        // as it causes locking issues when accessing `queries` map during the run
+        // outside of this call.
+        let rx = {
+            let running_query = self
+                .queries
+                .get(&query_id)
+                .context(ex_error::QueryIsntRunningSnafu { query_id })?;
+            running_query.rx.clone()
+        };
+        RunningQuery::wait_query_finished(rx)
             .await
             .context(ex_error::ExecutionStatusRecvSnafu { query_id })
     }
@@ -152,6 +160,8 @@ pub trait RunningQueries: Send + Sync {
     fn notify_query_finished(&self, query_id: QueryId, status: ExecutionStatus) -> Result<()>;
     fn locate_query_id(&self, running_query_id: RunningQueryId) -> Result<QueryId>;
     fn count(&self) -> usize;
+    fn cloned_stats(&self, query_id: QueryId) -> Option<QueryStats>;
+    fn update_stats(&self, query_id: QueryId, stats: &QueryStats);
 }
 
 impl RunningQueries for RunningQueriesRegistry {
@@ -224,5 +234,26 @@ impl RunningQueries for RunningQueriesRegistry {
 
     fn count(&self) -> usize {
         self.queries.len()
+    }
+
+    fn cloned_stats(&self, query_id: QueryId) -> Option<QueryStats> {
+        if let Some(running_query) = self.queries.get(&query_id) {
+            Some(running_query.query_stats.clone())
+        } else {
+            None
+        }
+    }
+
+    #[tracing::instrument(
+        name = "RunningQueriesRegistry::update_stats",
+        level = "trace",
+        skip(self),
+        fields(query_id),
+        ret
+    )]
+    fn update_stats(&self, query_id: QueryId, stats: &QueryStats) {
+        if let Some(mut running_query) = self.queries.get_mut(&query_id) {
+            running_query.update_query_stats(stats);
+        }
     }
 }

@@ -123,6 +123,7 @@ async fn async_main(
 
     let execution_cfg = ExecutionConfig {
         embucket_version: BuildInfo::VERSION.to_string(),
+        build_version: BuildInfo::GIT_DESCRIBE.to_string(),
         warehouse_type: "EMBUCKET".to_string(),
         sql_parser_dialect: opts.sql_parser_dialect.clone(),
         query_timeout_secs: opts.query_timeout_secs,

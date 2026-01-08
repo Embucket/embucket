@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use axum::{Json, http, response::IntoResponse};
 use error_stack_trace;
 use http::header::InvalidHeaderValue;

@@ -125,6 +125,3 @@ significant_drop_tightening = { level = "allow", priority = 2 }
 module_name_repetitions = { level = "allow", priority = 2 }
 option_if_let_else = { level = "allow", priority = 2 }
 needless_for_each = { level = "allow", priority = 2 } #  #[derive(OpenApi)]
-
-[workspace.features]
-state-store-query-test = ["executor/state-store-query-test"]

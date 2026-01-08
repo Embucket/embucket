@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 use error_stack_trace;
 use iceberg_rust::error::Error as IcebergError;
 use iceberg_rust_spec::table_metadata::TableMetadataBuilderError;
