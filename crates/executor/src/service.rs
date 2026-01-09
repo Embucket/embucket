@@ -321,11 +321,11 @@ impl ExecutionService for CoreExecutionService {
             tracing::trace!("Acquired write lock for df_sessions");
             sessions.insert(session_id.to_string(), user_session.clone());
 
-            // #[cfg(feature = "state-store")]
-            // self.state_store
-            //     .put_new_session(session_id)
-            //     .await
-            //     .context(ex_error::StateStoreSnafu)?;
+            #[cfg(feature = "state-store-persist-session-oncreate")]
+            self.state_store
+                .put_new_session(session_id)
+                .await
+                .context(ex_error::StateStoreSnafu)?;
 
             // Record the result as part of the current span.
             tracing::Span::current().record("new_sessions_count", sessions.len());

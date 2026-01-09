@@ -45,6 +45,7 @@ retry-disable = ["api-snowflake-rest/retry-disable"]
 streaming = []
 rest-catalog = ["executor/rest-catalog"]
 dedicated-executor = ["executor/dedicated-executor"]
+state-store-persist-session-oncreate = ["executor/state-store-persist-session-oncreate"]
 state-store-query = ["executor/state-store-query"]
 
 [package.metadata.lambda]
