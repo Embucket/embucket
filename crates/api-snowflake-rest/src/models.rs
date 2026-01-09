@@ -56,6 +56,7 @@ pub struct QueryRequest {
 pub struct QueryRequestBody {
     pub sql_text: String,
     pub async_exec: Option<bool>,
+    pub query_submission_time: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

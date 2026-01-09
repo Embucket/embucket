@@ -155,19 +155,17 @@ impl UserQuery {
 
     #[must_use]
     pub fn current_database(&self) -> String {
-        self.query_context
-            .database
-            .clone()
-            .or_else(|| self.session.get_session_variable("database"))
+        self.session
+            .get_session_variable("database")
+            .or_else(|| self.query_context.database.clone())
             .unwrap_or_else(|| "embucket".to_string())
     }
 
     #[must_use]
     pub fn current_schema(&self) -> String {
-        self.query_context
-            .schema
-            .clone()
-            .or_else(|| self.session.get_session_variable("schema"))
+        self.session
+            .get_session_variable("schema")
+            .or_else(|| self.query_context.schema.clone())
             .unwrap_or_else(|| "public".to_string())
     }
 

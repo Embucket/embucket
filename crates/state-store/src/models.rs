@@ -284,6 +284,12 @@ pub struct Query {
     pub query_history_time: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query_result_time: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_app_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_app_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_submission_time: Option<u64>,
 }
 
 impl Query {
@@ -317,6 +323,18 @@ impl Query {
 
     pub fn set_schema_name(&mut self, schema: String) {
         self.schema_name = Some(schema);
+    }
+
+    pub fn set_user_name(&mut self, user: String) {
+        self.user_name = Some(user);
+    }
+
+    pub fn set_user_database(&mut self, database: String) {
+        self.user_database_name = Some(database);
+    }
+
+    pub fn set_user_schema(&mut self, schema: String) {
+        self.user_schema_name = Some(schema);
     }
 
     pub const fn set_execution_status(&mut self, status: ExecutionStatus) {
@@ -361,6 +379,18 @@ impl Query {
 
     pub fn set_query_type(&mut self, query_type: String) {
         self.query_type = Some(query_type);
+    }
+
+    pub fn set_client_app_id(&mut self, client_app_id: String) {
+        self.client_app_id = Some(client_app_id);
+    }
+
+    pub fn set_client_app_version(&mut self, client_app_version: String) {
+        self.client_app_version = Some(client_app_version);
+    }
+
+    pub const fn set_query_submission_time(&mut self, query_submission_time: u64) {
+        self.query_submission_time = Some(query_submission_time);
     }
 
     #[allow(clippy::as_conversions, clippy::cast_sign_loss)]

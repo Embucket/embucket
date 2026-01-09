@@ -1,8 +1,8 @@
+use super::TokenizedSession;
 use chrono::offset::Local;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use time::Duration;
-use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(test, derive(Debug))]
@@ -11,11 +11,16 @@ pub struct Claims {
     pub aud: String, // validate audience since as it can be deployed on multiple hosts
     pub iat: i64,    // Issued At
     pub exp: i64,    // Expiration Time
-    pub session_id: String,
+    pub session: TokenizedSession,
 }
 
 #[must_use]
-pub fn jwt_claims(username: &str, audience: &str, expiration: Duration) -> Claims {
+pub fn jwt_claims(
+    username: &str,
+    audience: &str,
+    expiration: Duration,
+    session: TokenizedSession,
+) -> Claims {
     let now = Local::now();
     let iat = now.timestamp();
     let exp = now.timestamp() + expiration.whole_seconds();
@@ -25,7 +30,7 @@ pub fn jwt_claims(username: &str, audience: &str, expiration: Duration) -> Claim
         aud: audience.to_string(),
         iat,
         exp,
-        session_id: Uuid::new_v4().to_string(),
+        session,
     }
 }
 

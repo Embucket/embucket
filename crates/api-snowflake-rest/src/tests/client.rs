@@ -204,6 +204,7 @@ where
         json!(QueryRequestBody {
             sql_text: query.to_string(),
             async_exec: Some(async_exec),
+            query_submission_time: Some(1_764_161_275_445),
         })
         .to_string(),
     )

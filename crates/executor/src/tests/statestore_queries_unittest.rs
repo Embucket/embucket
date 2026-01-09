@@ -15,6 +15,7 @@ use uuid::Uuid;
 const TEST_SESSION_ID: &str = "test_session_id";
 const TEST_DATABASE: &str = "test_database";
 const TEST_SCHEMA: &str = "test_schema";
+const TEST_TIMESTAMP: u64 = 1_764_161_275_445;
 
 const MOCK_RELATED_TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
@@ -48,15 +49,37 @@ fn insta_settings(name: &str) -> insta::Settings {
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_query() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
+    let query_context = QueryContext::new(
+        Some("test_database".to_string()),
+        Some("test_schema".to_string()),
+        None,
+    )
+    .with_request_id(Uuid::default());
 
     let mut state_store_mock = MockStateStore::new();
     state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
         .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+        .returning(|_| {
+            let mut session = SessionRecord::new(TEST_SESSION_ID);
+            session.variables.insert("database".to_string(), state_store::Variable {
+                name: "database".to_string(),
+                value: "embucket".to_string(),
+                value_type: "text".to_string(),
+                comment: None,
+                created_at: 1,
+                updated_at: None,
+            });
+            session.variables.insert("schema".to_string(), state_store::Variable {
+                name: "schema".to_string(),
+                value: "public".to_string(),
+                value_type: "text".to_string(),
+                comment: None,
+                created_at: 1,
+                updated_at: None,
+            });
+            Ok(session)
+        });
+
     state_store_mock
         .expect_put_query()
         .times(1)
@@ -75,7 +98,9 @@ async fn test_query_lifecycle_ok_query() {
                   "start_time": "2026-01-01T01:01:01.000000001Z",
                   "release_version": "test-version",
                   "query_hash": "1717924485430328356",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema"
                 }
                 "#);
             });
@@ -93,8 +118,8 @@ async fn test_query_lifecycle_ok_query() {
                   "request_id": "00000000-0000-0000-0000-000000000000",
                   "query_text": "SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
                   "session_id": "test_session_id",
-                  "database_name": "embucket",
-                  "schema_name": "public",
+                  "database_name": "test_database",
+                  "schema_name": "test_schema",
                   "query_type": "SELECT",
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Success",
@@ -105,6 +130,8 @@ async fn test_query_lifecycle_ok_query() {
                   "release_version": "test-version",
                   "query_hash": "1717924485430328356",
                   "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
                   "query_metrics": "[query_metrics]"
                 }
                 "#);
@@ -115,6 +142,10 @@ async fn test_query_lifecycle_ok_query() {
     let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
 
     let metastore = Arc::new(InMemoryMetastore::new());
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");    
     let execution_svc = CoreExecutionService::new_test_executor(
         metastore,
         state_store,
@@ -129,7 +160,7 @@ async fn test_query_lifecycle_ok_query() {
     )
     .await
     .expect("Create session timed out")
-    .expect("Failed to create session");
+    .expect("Failed to create session");  
 
     // See note about timeout above
     let _ = timeout(
@@ -148,7 +179,13 @@ async fn test_query_lifecycle_ok_query() {
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_insert() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
+    let query_context = QueryContext::new(
+        Some(TEST_DATABASE.to_string()),
+        Some(TEST_SCHEMA.to_string()),
+        None,
+    )
+    .with_query_submission_time(Some(TEST_TIMESTAMP))
+    .with_request_id(Uuid::default());
 
     let mut state_store_mock = MockStateStore::new();
     state_store_mock
@@ -180,8 +217,8 @@ async fn test_query_lifecycle_ok_insert() {
                   "request_id": "00000000-0000-0000-0000-000000000000",
                   "query_text": "INSERT INTO embucket.public.table VALUES (1)",
                   "session_id": "test_session_id",
-                  "database_name": "embucket",
-                  "schema_name": "public",
+                  "database_name": "test_database",
+                  "schema_name": "test_schema",
                   "query_type": "INSERT",
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Success",
@@ -192,7 +229,10 @@ async fn test_query_lifecycle_ok_insert() {
                   "release_version": "test-version",
                   "query_hash": "17856184221539895914",
                   "query_hash_version": 1,
-                  "query_metrics": "[query_metrics]"
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
+                  "query_metrics": "[query_metrics]",
+                  "query_submission_time": 1764161275445
                 }
                 "#);
             });
@@ -764,7 +804,9 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "8436521302113462945",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema"
                 }
                 "#);
             });
