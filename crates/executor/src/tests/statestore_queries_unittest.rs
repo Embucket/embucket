@@ -46,6 +46,10 @@ fn insta_settings(name: &str) -> insta::Settings {
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z",
         "2026-01-01T01:01:01.000001Z",
     );
+    settings.add_filter(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z",
+        "2026-01-01T01:01:01.001Z",
+    );
     settings
 }
 
@@ -373,7 +377,7 @@ async fn test_query_lifecycle_ok_insert() {
                   "user_database_name": "test_database",
                   "user_schema_name": "test_schema",
                   "query_metrics": "[query_metrics]",
-                  "query_submission_time": 1764161275445
+                  "query_submission_time": "2026-01-01T01:01:01.001Z"
                 }
                 "#);
             });

@@ -289,7 +289,7 @@ pub struct Query {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_app_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub query_submission_time: Option<u64>,
+    pub query_submission_time: Option<DateTime<Utc>>,
 }
 
 impl Query {
@@ -389,8 +389,11 @@ impl Query {
         self.client_app_version = Some(client_app_version);
     }
 
+    #[allow(clippy::cast_possible_wrap, clippy::as_conversions)]
     pub const fn set_query_submission_time(&mut self, query_submission_time: u64) {
-        self.query_submission_time = Some(query_submission_time);
+        // Convert u64 timestamp to DateTime<Utc>
+        let dt = DateTime::<Utc>::from_timestamp_millis(query_submission_time as i64);
+        self.query_submission_time = dt;
     }
 
     #[allow(clippy::as_conversions, clippy::cast_sign_loss)]
