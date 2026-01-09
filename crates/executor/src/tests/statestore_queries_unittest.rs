@@ -1,13 +1,13 @@
-use crate::QueryResult;
 use crate::error::Result;
 use crate::models::QueryContext;
 use crate::service::{CoreExecutionService, ExecutionService};
 use crate::session::UserSession;
 use crate::utils::Config;
+use crate::{QueryResult, SessionMetadata};
 use catalog_metastore::InMemoryMetastore;
 use catalog_metastore::metastore_bootstrap_config::MetastoreBootstrapConfig;
 use insta::assert_json_snapshot;
-use state_store::{MockStateStore, Query, SessionRecord, StateStore};
+use state_store::{MockStateStore, Query, SessionRecord};
 use std::sync::Arc;
 use tokio::time::{Duration, timeout};
 use uuid::Uuid;
@@ -137,7 +137,9 @@ async fn test_query_lifecycle_ok_query() {
                   "query_hash": "1717924485430328356",
                   "query_hash_version": 1,
                   "user_database_name": "test_database",
-                  "user_schema_name": "test_schema"
+                  "user_schema_name": "test_schema",
+                  "client_app_id": "client_app_id",
+                  "client_app_version": "1.0.0"
                 }
                 "#);
             });
@@ -170,19 +172,31 @@ async fn test_query_lifecycle_ok_query() {
                   "query_hash_version": 1,
                   "user_database_name": "test_database",
                   "user_schema_name": "test_schema",
-                  "query_metrics": "[query_metrics]"
+                  "query_metrics": "[query_metrics]",
+                  "client_app_id": "client_app_id",
+                  "client_app_version": "1.0.0"
                 }
                 "#);
             });
             true
         });
 
+    let mut session_metadata = SessionMetadata::default();
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppId,
+        "client_app_id".to_string(),
+    );
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppVersion,
+        "1.0.0".to_string(),
+    );
     let ctx = QueryContext::new(
         Some("test_database".to_string()),
         Some("test_schema".to_string()),
         None,
     )
-    .with_request_id(Uuid::default());
+    .with_request_id(Uuid::default())
+    .with_session_metadata(Some(session_metadata));
 
     let metastore = Arc::new(InMemoryMetastore::new());
     MetastoreBootstrapConfig::bootstrap()
@@ -227,6 +241,96 @@ async fn test_query_lifecycle_ok_query() {
         TEST_SESSION_ID,
         ctx.clone(),
         "SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
+    )
+    .await
+    .expect("Query execution failed");
+}
+
+#[allow(clippy::expect_used)]
+#[tokio::test]
+async fn test_query_lifecycle_explain_query() {
+    let mut state_store_mock = MockStateStore::new();
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
+
+    state_store_mock
+        .expect_update_query()
+        .times(1)
+        .returning(|_| Ok(()))
+        .withf(move |query: &Query| {
+            insta_settings("explain_query_update").bind(|| {
+                assert_json_snapshot!(query, @r#"
+                {
+                  "query_id": "00000000-0000-0000-0000-000000000000",
+                  "request_id": "00000000-0000-0000-0000-000000000000",
+                  "query_text": "EXPLAIN SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
+                  "session_id": "test_session_id",
+                  "database_name": "test_database",
+                  "schema_name": "test_schema",
+                  "query_type": "EXPLAIN",
+                  "warehouse_type": "DEFAULT",
+                  "execution_status": "Success",
+                  "start_time": "2026-01-01T01:01:01.000000001Z",
+                  "end_time": "2026-01-01T01:01:01.000000001Z",
+                  "execution_time": "1",
+                  "release_version": "test-version",
+                  "query_hash": "1265703338911562377",
+                  "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
+                  "query_metrics": "[query_metrics]",
+                  "client_app_id": "client_app_id",
+                  "client_app_version": "1.0.0"
+                }
+                "#);
+            });
+            true
+        });
+
+    let mut session_metadata = SessionMetadata::default();
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppId,
+        "client_app_id".to_string(),
+    );
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppVersion,
+        "1.0.0".to_string(),
+    );
+    let ctx = QueryContext::new(
+        Some("test_database".to_string()),
+        Some("test_schema".to_string()),
+        None,
+    )
+    .with_request_id(Uuid::default())
+    .with_session_metadata(Some(session_metadata));
+
+    let metastore = Arc::new(InMemoryMetastore::new());
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");
+
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
+
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "EXPLAIN SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
     )
     .await
     .expect("Query execution failed");

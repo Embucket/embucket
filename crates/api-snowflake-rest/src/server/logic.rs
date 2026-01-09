@@ -121,7 +121,8 @@ pub async fn handle_query_request(
         None,
     )
     .with_request_id(query.request_id)
-    .with_query_submission_time(query_submission_time);
+    .with_query_submission_time(query_submission_time)
+    .with_session_metadata(Some(session_metadata));
 
     if let Some(ip) = client_ip {
         query_context = query_context.with_ip_address(ip);

@@ -68,6 +68,9 @@ pub enum MiscStType {
     ShowTables,
     ShowViews,
     ExplainTable,
+    Explain,
+    Analyze,
+    CopyTo,
 }
 
 #[derive(Debug, Clone)]

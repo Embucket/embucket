@@ -312,10 +312,16 @@ impl UserQuery {
                 Statement::ShowTables { .. } => save(QueryType::Misc(MiscStType::ShowTables)),
                 Statement::ShowViews { .. } => save(QueryType::Misc(MiscStType::ShowViews)),
                 Statement::ExplainTable { .. } => save(QueryType::Misc(MiscStType::ExplainTable)),
+                Statement::Explain { .. } => save(QueryType::Misc(MiscStType::Explain)),
+                Statement::Analyze { .. } => save(QueryType::Misc(MiscStType::Analyze)),
                 _ => {}
             }
         } else if let DFStatement::CreateExternalTable(..) = statement {
             save(QueryType::Ddl(DdlStType::CreateExternalTable));
+        } else if let DFStatement::Explain(..) = statement {
+            save(QueryType::Misc(MiscStType::Explain));
+        } else if let DFStatement::CopyTo(..) = statement {
+            save(QueryType::Misc(MiscStType::CopyTo));
         }
     }
 
