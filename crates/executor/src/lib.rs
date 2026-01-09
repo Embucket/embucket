@@ -19,7 +19,7 @@ pub mod utils;
 pub mod tests;
 
 pub use error::{Error, Result};
-pub use models::{SessionMetadata, SessionMetadataAttr};
+pub use models::{QueryResult, SessionMetadata, SessionMetadataAttr};
 pub use query_types::{ExecutionStatus, QueryId};
 pub use running_queries::RunningQueryId;
 pub use snowflake_error::SnowflakeError;
