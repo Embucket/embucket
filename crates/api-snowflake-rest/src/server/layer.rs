@@ -40,7 +40,7 @@ pub async fn require_auth(
         get_claims_validate_jwt_token(&token, &host, &jwt_secret).context(BadAuthTokenSnafu)?;
 
     // Record the result as part of the current span.
-    tracing::Span::current().record("session_id", jwt_claims.session_id.as_str());
+    tracing::Span::current().record("session_id", jwt_claims.session.session_id());
 
     let response = next.run(req).await;
 

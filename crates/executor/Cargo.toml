@@ -12,6 +12,10 @@ dedicated-executor = []
 # "state-store" feature enables DynamoDB based state-store implementation.
 state-store = []
 
+# "state-store-persist-session-oncreate" feature allows to persist empty session record.
+# Otherwise it will be persisted only if session has something to persist.
+state-store-persist-session-oncreate = ["state-store"]
+
 state-store-query-test = ["state-store-query"]
 
 # "state-store-query" feature depends on state-store feature.

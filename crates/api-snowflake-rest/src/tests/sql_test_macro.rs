@@ -5,6 +5,7 @@ use crate::tests::TEST_JWT_SECRET;
 use crate::tests::snow_sql::{ACCESS_TOKEN_KEY, snow_sql};
 use crate::tests::snow_sql::{PASSWORD_KEY, REQUEST_ID_KEY, USER_KEY};
 use crate::{models::JsonResponse, server::server_models::RestApiConfig};
+use api_snowflake_rest_sessions::TokenizedSession;
 use api_snowflake_rest_sessions::helpers::{create_jwt, jwt_claims};
 use arrow::record_batch::RecordBatch;
 use catalog_metastore::metastore_settings_config::MetastoreSettingsConfig;
@@ -171,6 +172,7 @@ impl SqlTest {
             DEMO_USER,
             &host,
             time::Duration::seconds(JWT_TOKEN_EXPIRATION_SECONDS.into()),
+            TokenizedSession::default(),
         );
 
         create_jwt(&jwt_claims, jwt_secret).expect("Failed to create JWT token")

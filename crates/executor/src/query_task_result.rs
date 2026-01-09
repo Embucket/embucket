@@ -86,6 +86,7 @@ impl ExecutionTaskResult {
     }
 
     #[cfg(feature = "state-store-query")]
+    #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
     pub fn assign_rows_counts_attributes(
         &self,
         query: &mut state_store::Query,
@@ -94,23 +95,22 @@ impl ExecutionTaskResult {
         if let Ok(result) = &self.result
             && let QueryType::Dml(query_type) = query_type
         {
-            if let DmlStType::Select = query_type {
+            if matches!(query_type, DmlStType::Select) {
                 let rows_count: u64 = result.records.iter().map(|r| r.num_rows() as u64).sum();
                 query.set_rows_produced(rows_count);
-            } else if let Some(rows_count) = value_by_row_column(&result, 0, 0) {
+            } else if let Some(rows_count) = value_by_row_column(result, 0, 0) {
                 match query_type {
-                    DmlStType::Insert => query.set_rows_inserted(rows_count as u64),
-                    DmlStType::Update => query.set_rows_updated(rows_count as u64),
-                    DmlStType::Delete => query.set_rows_deleted(rows_count as u64),
-                    DmlStType::Truncate => query.set_rows_deleted(rows_count as u64),
+                    DmlStType::Insert => query.set_rows_inserted(rows_count),
+                    DmlStType::Update => query.set_rows_updated(rows_count),
+                    DmlStType::Delete | DmlStType::Truncate => query.set_rows_deleted(rows_count),
                     DmlStType::Merge => {
                         // merge has 2 columns, currently map values to insert/select rows counts
-                        query.set_rows_inserted(rows_count as u64);
-                        if let Some(rows_count) = value_by_row_column(&result, 0, 1) {
-                            query.set_rows_produced(rows_count as u64);
+                        query.set_rows_inserted(rows_count);
+                        if let Some(rows_count) = value_by_row_column(result, 0, 1) {
+                            query.set_rows_produced(rows_count);
                         }
                     }
-                    _ => {}
+                    DmlStType::Select => {}
                 }
             }
         }
@@ -145,6 +145,7 @@ impl ExecutionTaskResult {
 }
 
 #[cfg(feature = "state-store-query")]
+#[allow(clippy::cast_sign_loss, clippy::as_conversions)]
 fn value_by_row_column(result: &QueryResult, row_idx: usize, col_idx: usize) -> Option<u64> {
     result.records[0].columns().get(col_idx).and_then(|col| {
         if let Some(cols) = col.as_any().downcast_ref::<Int64Array>() {

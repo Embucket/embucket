@@ -5,7 +5,7 @@ use crate::models::{
 };
 use crate::server::error::Result;
 use crate::server::logic::{handle_login_request, handle_query_request};
-use api_snowflake_rest_sessions::DFSessionId;
+use api_snowflake_rest_sessions::TokenizedSession;
 use api_snowflake_rest_sessions::layer::Host;
 use axum::Json;
 use axum::extract::{ConnectInfo, Query, State};
@@ -52,14 +52,14 @@ pub async fn login(
 )]
 pub async fn query(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    DFSessionId(session_id): DFSessionId,
+    tokenized_session: TokenizedSession,
     State(state): State<AppState>,
     Query(query): Query<QueryRequest>,
     Json(query_body): Json<QueryRequestBody>,
 ) -> Result<Json<JsonResponse>> {
     let response = handle_query_request(
         &state,
-        &session_id,
+        tokenized_session,
         query,
         query_body,
         Option::from(addr.ip().to_string()),
@@ -93,7 +93,7 @@ pub async fn abort(
     ret(level = tracing::Level::TRACE)
 )]
 pub async fn session(
-    DFSessionId(session_id): DFSessionId,
+    TokenizedSession(session_id, ..): TokenizedSession,
     State(state): State<AppState>,
     Query(query_params): Query<SessionQueryParams>,
 ) -> Result<Json<serde_json::value::Value>> {

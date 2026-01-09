@@ -3,13 +3,16 @@ use crate::error::BadAuthTokenSnafu;
 use crate::helpers::get_claims_validate_jwt_token;
 use axum::extract::FromRequestParts;
 use executor::ExecutionAppState;
+use executor::SessionMetadata;
 use executor::service::ExecutionService;
 use http::header::COOKIE;
 use http::request::Parts;
 use http::{HeaderMap, HeaderName};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use std::{collections::HashMap, sync::Arc};
+use uuid::Uuid;
 
 pub const SESSION_ID_COOKIE_NAME: &str = "session_id";
 
@@ -38,17 +41,50 @@ pub trait JwtSecret {
     fn jwt_secret(&self) -> &str;
 }
 
-#[derive(Debug, Clone)]
-pub struct DFSessionId(pub String);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenizedSession(pub String, pub SessionMetadata);
 
-impl<S> FromRequestParts<S> for DFSessionId
+impl Default for TokenizedSession {
+    fn default() -> Self {
+        Self(Uuid::new_v4().to_string(), SessionMetadata::default())
+    }
+}
+
+impl TokenizedSession {
+    #[must_use]
+    pub fn new(session_id: String) -> Self {
+        Self(session_id, SessionMetadata::default())
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, metadata: SessionMetadata) -> Self {
+        self.1 = metadata;
+        self
+    }
+
+    #[must_use]
+    pub fn session_id(&self) -> &str {
+        &self.0
+    }
+
+    #[must_use]
+    pub const fn metadata(&self) -> &SessionMetadata {
+        &self.1
+    }
+}
+
+impl<S> FromRequestParts<S> for TokenizedSession
 where
     S: Send + Sync + ExecutionAppState + JwtSecret,
 {
     type Rejection = session_error::Error;
 
     #[allow(clippy::unwrap_used)]
-    #[tracing::instrument(level = "debug", skip(req, state), fields(session_id, located_at))]
+    #[tracing::instrument(
+        level = "debug",
+        skip(req, state),
+        fields(session_id, located_at, metadata)
+    )]
     async fn from_request_parts(req: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let execution_svc = state.get_execution_svc();
 
@@ -59,9 +95,9 @@ where
         // let Extension(Host(host)) = req.extract::<Extension<Host>>()
         //     .await
         //     .context(session_error::ExtensionRejectionSnafu)?;
-        // tracing::info!("Host '{host}' extracted from DFSessionId");
+        // tracing::info!("Host '{host}' extracted from TokenizedSession");
 
-        let (session_id, located_at) = if let Some(token) = extract_token_from_auth(&req.headers) {
+        let (session, located_at) = if let Some(token) = extract_token_from_auth(&req.headers) {
             // host is require to check token audience claim
             let host = req.headers.get("host");
             let host = host.and_then(|host| host.to_str().ok());
@@ -71,40 +107,42 @@ where
             let jwt_claims = get_claims_validate_jwt_token(&token, host, jwt_secret)
                 .context(BadAuthTokenSnafu)?;
 
-            (jwt_claims.session_id, "auth header")
+            (jwt_claims.session, "auth header")
         } else {
             //This is guaranteed by the `propagate_session_cookie`, so we can unwrap
-            let Self(token) = req.extensions.get::<Self>().unwrap();
-            (token.clone(), "extensions")
+            let session = req.extensions.get::<Self>().unwrap();
+            (session.clone(), "extensions")
         };
 
         // Record the result as part of the current span.
         tracing::Span::current()
             .record("located_at", located_at)
-            .record("session_id", session_id.clone());
+            .record("metadata", format!("{:?}", session.metadata()))
+            .record("session_id", session.session_id());
 
-        Self::get_or_create_session(execution_svc, session_id).await
+        Self::get_or_create_session(execution_svc, session).await
     }
 }
 
-impl DFSessionId {
+impl TokenizedSession {
     #[tracing::instrument(
-        name = "DFSessionId::get_or_create_session",
+        name = "TokenizedSession::get_or_create_session",
         level = "info",
         skip(execution_svc),
         fields(new_session, sessions_count)
     )]
     async fn get_or_create_session(
         execution_svc: Arc<dyn ExecutionService>,
-        session_id: String,
+        session: Self,
     ) -> Result<Self, session_error::Error> {
+        let session_id = session.session_id();
         if !execution_svc
-            .update_session_expiry(&session_id)
+            .update_session_expiry(session_id)
             .await
             .context(session_error::ExecutionSnafu)?
         {
             let _ = execution_svc
-                .create_session(&session_id)
+                .create_session(session_id)
                 .await
                 .context(session_error::ExecutionSnafu)?;
             tracing::Span::current().record("new_session", true);
@@ -114,7 +152,7 @@ impl DFSessionId {
         // Record the result as part of the current span.
         tracing::Span::current().record("sessions_count", sessions_count);
 
-        Ok(Self(session_id))
+        Ok(session)
     }
 }
 

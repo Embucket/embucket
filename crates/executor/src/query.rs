@@ -155,19 +155,17 @@ impl UserQuery {
 
     #[must_use]
     pub fn current_database(&self) -> String {
-        self.query_context
-            .database
-            .clone()
-            .or_else(|| self.session.get_session_variable("database"))
+        self.session
+            .get_session_variable("database")
+            .or_else(|| self.query_context.database.clone())
             .unwrap_or_else(|| "embucket".to_string())
     }
 
     #[must_use]
     pub fn current_schema(&self) -> String {
-        self.query_context
-            .schema
-            .clone()
-            .or_else(|| self.session.get_session_variable("schema"))
+        self.session
+            .get_session_variable("schema")
+            .or_else(|| self.query_context.schema.clone())
             .unwrap_or_else(|| "public".to_string())
     }
 
@@ -314,10 +312,16 @@ impl UserQuery {
                 Statement::ShowTables { .. } => save(QueryType::Misc(MiscStType::ShowTables)),
                 Statement::ShowViews { .. } => save(QueryType::Misc(MiscStType::ShowViews)),
                 Statement::ExplainTable { .. } => save(QueryType::Misc(MiscStType::ExplainTable)),
+                Statement::Explain { .. } => save(QueryType::Misc(MiscStType::Explain)),
+                Statement::Analyze { .. } => save(QueryType::Misc(MiscStType::Analyze)),
                 _ => {}
             }
         } else if let DFStatement::CreateExternalTable(..) = statement {
             save(QueryType::Ddl(DdlStType::CreateExternalTable));
+        } else if let DFStatement::Explain(..) = statement {
+            save(QueryType::Misc(MiscStType::Explain));
+        } else if let DFStatement::CopyTo(..) = statement {
+            save(QueryType::Misc(MiscStType::CopyTo));
         }
     }
 

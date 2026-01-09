@@ -25,6 +25,8 @@ use tokio::task;
 use tokio_util::sync::CancellationToken;
 
 use super::error::{self as ex_error, Result};
+#[cfg(feature = "state-store")]
+use super::models::SessionMetadataAttr;
 use super::models::{QueryContext, QueryResult};
 use super::running_queries::{RunningQueries, RunningQueriesRegistry, RunningQuery};
 use super::session::UserSession;
@@ -319,7 +321,7 @@ impl ExecutionService for CoreExecutionService {
             tracing::trace!("Acquired write lock for df_sessions");
             sessions.insert(session_id.to_string(), user_session.clone());
 
-            #[cfg(feature = "state-store")]
+            #[cfg(feature = "state-store-persist-session-oncreate")]
             self.state_store
                 .put_new_session(session_id)
                 .await
@@ -529,6 +531,27 @@ impl ExecutionService for CoreExecutionService {
                 query.set_execution_status(ExecutionStatus::Running);
                 query.set_warehouse_type(self.config.warehouse_type.clone());
                 query.set_release_version(self.config.build_version.clone());
+                // session context set by user during login
+                if let Some(database) = &query_context.database {
+                    query.set_user_database(database.clone());
+                }
+                if let Some(schema) = &query_context.schema {
+                    query.set_user_schema(schema.clone());
+                }
+                if let Some(query_submission_time) = &query_context.query_submission_time {
+                    query.set_query_submission_time(*query_submission_time);
+                }
+                if let Some(session_metadata) = &query_context.session_metadata {
+                    if let Some(user_name) = session_metadata.attr(SessionMetadataAttr::UserName) {
+                        query.set_user_name(user_name);
+                    }
+                    if let Some(client_app_id) = session_metadata.attr(SessionMetadataAttr::ClientAppId) {
+                        query.set_client_app_id(client_app_id);
+                    }
+                    if let Some(client_app_version) = session_metadata.attr(SessionMetadataAttr::ClientAppVersion) {
+                        query.set_client_app_version(client_app_version);
+                    }
+                }
             }
         }
 
@@ -581,7 +604,7 @@ impl ExecutionService for CoreExecutionService {
                 let mut query_obj = user_session.query(query_text, query_context);
                 #[cfg(feature = "state-store-query")]
                 {
-                    // current database/schema at planning/execution time
+                    // effective database/schema at planning/execution time
                     query.set_database_name(query_obj.current_database());
                     query.set_schema_name(query_obj.current_schema());
                 }
@@ -630,11 +653,9 @@ impl ExecutionService for CoreExecutionService {
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "state-store-query")] {
                         execution_result.assign_query_attributes(&mut query);
-                        if let Some(stats) = queries_registry.cloned_stats(query_id) {
-                            if let Some(query_type) = stats.query_type {
-                                query.set_query_type(query_type.to_string());
-                                execution_result.assign_rows_counts_attributes(&mut query, query_type);
-                            }
+                        if let Some(stats) = queries_registry.cloned_stats(query_id) && let Some(query_type) = stats.query_type {
+                            query.set_query_type(query_type.to_string());
+                            execution_result.assign_rows_counts_attributes(&mut query, query_type);
                         }
                         // just log error and do not raise it from task
                         if let Err(err) = state_store.update_query(&query).await {

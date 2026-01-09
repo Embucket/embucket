@@ -18,6 +18,8 @@ pub struct QueryContext {
     pub query_id: QueryId,
     pub request_id: Option<Uuid>,
     pub ip_address: Option<String>,
+    pub query_submission_time: Option<u64>,
+    pub session_metadata: Option<SessionMetadata>,
 }
 
 // Add own Default implementation to avoid getting default (zeroed) Uuid.
@@ -31,6 +33,8 @@ impl Default for QueryContext {
             query_id: Uuid::now_v7(),
             request_id: None,
             ip_address: None,
+            query_submission_time: None,
+            session_metadata: None,
         }
     }
 }
@@ -65,6 +69,18 @@ impl QueryContext {
     #[must_use]
     pub fn with_ip_address(mut self, ip_address: String) -> Self {
         self.ip_address = Some(ip_address);
+        self
+    }
+
+    #[must_use]
+    pub const fn with_query_submission_time(mut self, query_submission_time: Option<u64>) -> Self {
+        self.query_submission_time = query_submission_time;
+        self
+    }
+
+    #[must_use]
+    pub fn with_session_metadata(mut self, session_metadata: Option<SessionMetadata>) -> Self {
+        self.session_metadata = session_metadata;
         self
     }
 }
@@ -129,6 +145,32 @@ impl QueryMetric {
             operator: operator.to_string(),
             metrics,
         }
+    }
+}
+
+#[derive(strum::Display, Clone, Copy)]
+pub enum SessionMetadataAttr {
+    UserName,
+    Warehouse,
+    Database,
+    Schema,
+    AccountName,
+    ClientAppId,
+    ClientAppVersion,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct SessionMetadata(HashMap<String, String>);
+
+impl SessionMetadata {
+    pub fn set_attr(&mut self, attr: SessionMetadataAttr, value: String) {
+        self.0.insert(attr.to_string(), value);
+    }
+
+    #[must_use]
+    pub fn attr(&self, attr: SessionMetadataAttr) -> Option<String> {
+        self.0.get(&attr.to_string()).cloned()
     }
 }
 

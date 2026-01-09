@@ -27,6 +27,7 @@ mod tests {
         let query_request = QueryRequestBody {
             sql_text: "SELECT 1;".to_string(),
             async_exec: Some(false),
+            query_submission_time: Some(1_764_161_275_445),
         };
 
         let query_compressed_bytes = make_bytes_body(&query_request);

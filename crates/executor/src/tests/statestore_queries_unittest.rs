@@ -1,10 +1,13 @@
+use crate::error::Result;
 use crate::models::QueryContext;
 use crate::service::{CoreExecutionService, ExecutionService};
+use crate::session::UserSession;
 use crate::utils::Config;
+use crate::{QueryResult, SessionMetadata};
 use catalog_metastore::InMemoryMetastore;
 use catalog_metastore::metastore_bootstrap_config::MetastoreBootstrapConfig;
 use insta::assert_json_snapshot;
-use state_store::{MockStateStore, Query, SessionRecord, StateStore};
+use state_store::{MockStateStore, Query, SessionRecord};
 use std::sync::Arc;
 use tokio::time::{Duration, timeout};
 use uuid::Uuid;
@@ -15,6 +18,7 @@ use uuid::Uuid;
 const TEST_SESSION_ID: &str = "test_session_id";
 const TEST_DATABASE: &str = "test_database";
 const TEST_SCHEMA: &str = "test_schema";
+const TEST_TIMESTAMP: u64 = 1_764_161_275_445;
 
 const MOCK_RELATED_TIMEOUT_DURATION: Duration = Duration::from_millis(100);
 
@@ -42,21 +46,81 @@ fn insta_settings(name: &str) -> insta::Settings {
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z",
         "2026-01-01T01:01:01.000001Z",
     );
+    settings.add_filter(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z",
+        "2026-01-01T01:01:01.001Z",
+    );
     settings
+}
+
+pub struct Mocker;
+
+impl Mocker {
+    pub fn apply_bypass_queries_mock(state_store_mock: &mut MockStateStore, count: usize) {
+        state_store_mock
+            .expect_put_query()
+            .times(count)
+            .returning(|_| Ok(()));
+        state_store_mock
+            .expect_update_query()
+            .times(count)
+            .returning(|_| Ok(()));
+    }
+
+    pub fn apply_bypass_put_queries_only_mock(state_store_mock: &mut MockStateStore, count: usize) {
+        state_store_mock
+            .expect_put_query()
+            .times(count)
+            .returning(|_| Ok(()));
+    }
+
+    pub fn apply_create_session_mock(
+        state_store_mock: &mut MockStateStore,
+        f: fn(&str) -> state_store::Result<SessionRecord>,
+    ) {
+        state_store_mock
+            .expect_put_new_session()
+            .returning(|_| Ok(()));
+        state_store_mock.expect_put_session().returning(|_| Ok(()));
+        state_store_mock.expect_get_session().returning(f);
+    }
+
+    pub async fn create_session(
+        executor: Arc<dyn ExecutionService>,
+        session_id: &str,
+    ) -> Result<Arc<UserSession>> {
+        timeout(
+            MOCK_RELATED_TIMEOUT_DURATION,
+            executor.create_session(session_id),
+        )
+        .await
+        .expect("Create session timed out")
+    }
+
+    pub async fn query(
+        executor: Arc<dyn ExecutionService>,
+        session_id: &str,
+        query_context: QueryContext,
+        sql: &str,
+    ) -> Result<QueryResult> {
+        timeout(
+            MOCK_RELATED_TIMEOUT_DURATION,
+            executor.query(session_id, sql, query_context.clone()),
+        )
+        .await
+        .expect("Query timed out")
+    }
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_query() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_queries_mock(&mut state_store_mock, 2);
+
     state_store_mock
         .expect_put_query()
         .times(1)
@@ -75,12 +139,17 @@ async fn test_query_lifecycle_ok_query() {
                   "start_time": "2026-01-01T01:01:01.000000001Z",
                   "release_version": "test-version",
                   "query_hash": "1717924485430328356",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
+                  "client_app_id": "client_app_id",
+                  "client_app_version": "1.0.0"
                 }
                 "#);
             });
             true
         });
+
     state_store_mock
         .expect_update_query()
         .times(1)
@@ -105,69 +174,182 @@ async fn test_query_lifecycle_ok_query() {
                   "release_version": "test-version",
                   "query_hash": "1717924485430328356",
                   "query_hash_version": 1,
-                  "query_metrics": "[query_metrics]"
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
+                  "query_metrics": "[query_metrics]",
+                  "client_app_id": "client_app_id",
+                  "client_app_version": "1.0.0"
                 }
                 "#);
             });
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let mut session_metadata = SessionMetadata::default();
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppId,
+        "client_app_id".to_string(),
+    );
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppVersion,
+        "1.0.0".to_string(),
+    );
+    let ctx = QueryContext::new(
+        Some("test_database".to_string()),
+        Some("test_schema".to_string()),
+        None,
+    )
+    .with_request_id(Uuid::default())
+    .with_session_metadata(Some(session_metadata));
 
     let metastore = Arc::new(InMemoryMetastore::new());
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    // See note about timeout above
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
-            query_context,
-        ),
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "SET DATABASE = 'embucket'",
     )
     .await
-    .expect("Query timed out")
+    .expect("Query execution failed");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "SET SCHEMA = 'public'",
+    )
+    .await
+    .expect("Query execution failed");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
+    )
+    .await
+    .expect("Query execution failed");
+}
+
+#[allow(clippy::expect_used)]
+#[tokio::test]
+async fn test_query_lifecycle_explain_query() {
+    let mut state_store_mock = MockStateStore::new();
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
+
+    state_store_mock
+        .expect_update_query()
+        .times(1)
+        .returning(|_| Ok(()))
+        .withf(move |query: &Query| {
+            insta_settings("explain_query_update").bind(|| {
+                assert_json_snapshot!(query, @r#"
+                {
+                  "query_id": "00000000-0000-0000-0000-000000000000",
+                  "request_id": "00000000-0000-0000-0000-000000000000",
+                  "query_text": "EXPLAIN SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
+                  "session_id": "test_session_id",
+                  "database_name": "test_database",
+                  "schema_name": "test_schema",
+                  "query_type": "EXPLAIN",
+                  "warehouse_type": "DEFAULT",
+                  "execution_status": "Success",
+                  "start_time": "2026-01-01T01:01:01.000000001Z",
+                  "end_time": "2026-01-01T01:01:01.000000001Z",
+                  "execution_time": "1",
+                  "release_version": "test-version",
+                  "query_hash": "1265703338911562377",
+                  "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
+                  "query_metrics": "[query_metrics]",
+                  "client_app_id": "client_app_id",
+                  "client_app_version": "1.0.0"
+                }
+                "#);
+            });
+            true
+        });
+
+    let mut session_metadata = SessionMetadata::default();
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppId,
+        "client_app_id".to_string(),
+    );
+    session_metadata.set_attr(
+        crate::SessionMetadataAttr::ClientAppVersion,
+        "1.0.0".to_string(),
+    );
+    let ctx = QueryContext::new(
+        Some("test_database".to_string()),
+        Some("test_schema".to_string()),
+        None,
+    )
+    .with_request_id(Uuid::default())
+    .with_session_metadata(Some(session_metadata));
+
+    let metastore = Arc::new(InMemoryMetastore::new());
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");
+
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
+
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "EXPLAIN SELECT 1 AS a, 2.0 AS b, '3' AS 'c'",
+    )
+    .await
     .expect("Query execution failed");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_insert() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
-    state_store_mock
-        .expect_put_query()
-        .times(2)
-        .returning(|_| Ok(()));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_queries_mock(&mut state_store_mock, 1);
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
 
-    // bypass 1st update
-    state_store_mock
-        .expect_update_query()
-        .times(1)
-        .returning(|_| Ok(()));
-    // verify 2nd update
     state_store_mock
         .expect_update_query()
         .times(1)
@@ -180,8 +362,8 @@ async fn test_query_lifecycle_ok_insert() {
                   "request_id": "00000000-0000-0000-0000-000000000000",
                   "query_text": "INSERT INTO embucket.public.table VALUES (1)",
                   "session_id": "test_session_id",
-                  "database_name": "embucket",
-                  "schema_name": "public",
+                  "database_name": "test_database",
+                  "schema_name": "test_schema",
                   "query_type": "INSERT",
                   "warehouse_type": "DEFAULT",
                   "execution_status": "Success",
@@ -192,14 +374,15 @@ async fn test_query_lifecycle_ok_insert() {
                   "release_version": "test-version",
                   "query_hash": "17856184221539895914",
                   "query_hash_version": 1,
-                  "query_metrics": "[query_metrics]"
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema",
+                  "query_metrics": "[query_metrics]",
+                  "query_submission_time": "2026-01-01T01:01:01.001Z"
                 }
                 "#);
             });
             true
         });
-
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
 
     let metastore = Arc::new(InMemoryMetastore::new());
     MetastoreBootstrapConfig::bootstrap()
@@ -207,71 +390,57 @@ async fn test_query_lifecycle_ok_insert() {
         .await
         .expect("Failed to bootstrap metastore");
 
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
+    let ctx = QueryContext::new(
+        Some(TEST_DATABASE.to_string()),
+        Some(TEST_SCHEMA.to_string()),
+        None,
     )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    .with_query_submission_time(Some(TEST_TIMESTAMP))
+    .with_request_id(Uuid::default());
 
-    // prepare table
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "create table if not exists embucket.public.table (id int)",
-            query_context.clone(),
-        ),
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "create table if not exists embucket.public.table (id int)",
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 
-    // insert
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "INSERT INTO embucket.public.table VALUES (1)",
-            query_context,
-        ),
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "INSERT INTO embucket.public.table VALUES (1)",
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_update() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
-    state_store_mock
-        .expect_put_query()
-        .times(2)
-        .returning(|_| Ok(()));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_queries_mock(&mut state_store_mock, 1);
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
 
-    // bypass 1st update
-    state_store_mock
-        .expect_update_query()
-        .times(1)
-        .returning(|_| Ok(()));
     // verify 2nd update
     state_store_mock
         .expect_update_query()
@@ -303,7 +472,7 @@ async fn test_query_lifecycle_ok_update() {
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::default().with_request_id(Uuid::default());
 
     let metastore = Arc::new(InMemoryMetastore::new());
     MetastoreBootstrapConfig::bootstrap()
@@ -311,29 +480,25 @@ async fn test_query_lifecycle_ok_update() {
         .await
         .expect("Failed to bootstrap metastore");
 
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
 
-    // prepare table
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "
-        CREATE TABLE embucket.public.table AS SELECT 
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "CREATE TABLE embucket.public.table AS SELECT 
             id, 
             name, 
             RANDOM() AS random_value, 
@@ -344,50 +509,30 @@ async fn test_query_lifecycle_ok_update() {
             (3, 'Charlie'),
             (4, 'David')
         ) AS t(id, name);",
-            query_context.clone(),
-        ),
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 
-    // update
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "UPDATE embucket.public.table SET name = 'John'",
-            query_context,
-        ),
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "UPDATE embucket.public.table SET name = 'John'",
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_delete_failed() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
-    state_store_mock
-        .expect_put_query()
-        .times(2)
-        .returning(|_| Ok(()));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_queries_mock(&mut state_store_mock, 1);
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
 
-    // bypass 1st update
-    state_store_mock
-        .expect_update_query()
-        .times(1)
-        .returning(|_| Ok(()));
-    // verify 2nd update
     state_store_mock
         .expect_update_query()
         .times(1)
@@ -419,7 +564,7 @@ async fn test_query_lifecycle_delete_failed() {
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::default().with_request_id(Uuid::default());
 
     let metastore = Arc::new(InMemoryMetastore::new());
     MetastoreBootstrapConfig::bootstrap()
@@ -427,29 +572,25 @@ async fn test_query_lifecycle_delete_failed() {
         .await
         .expect("Failed to bootstrap metastore");
 
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
 
-    // prepare table
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "
-        CREATE TABLE embucket.public.table AS SELECT 
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "CREATE TABLE embucket.public.table AS SELECT 
             id, 
             name, 
             RANDOM() AS random_value, 
@@ -460,50 +601,30 @@ async fn test_query_lifecycle_delete_failed() {
             (3, 'Charlie'),
             (4, 'David')
         ) AS t(id, name);",
-            query_context.clone(),
-        ),
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 
-    // update
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "DELETE FROM embucket.public.table",
-            query_context,
-        ),
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "DELETE FROM embucket.public.table",
     )
     .await
-    .expect("Query timed out")
     .expect_err("Query expected to fail");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_truncate() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
-    state_store_mock
-        .expect_put_query()
-        .times(2)
-        .returning(|_| Ok(()));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_queries_mock(&mut state_store_mock, 1);
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
 
-    // bypass 1st update
-    state_store_mock
-        .expect_update_query()
-        .times(1)
-        .returning(|_| Ok(()));
-    // verify 2nd update
     state_store_mock
         .expect_update_query()
         .times(1)
@@ -535,7 +656,7 @@ async fn test_query_lifecycle_ok_truncate() {
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::default().with_request_id(Uuid::default());
 
     let metastore = Arc::new(InMemoryMetastore::new());
     MetastoreBootstrapConfig::bootstrap()
@@ -543,29 +664,25 @@ async fn test_query_lifecycle_ok_truncate() {
         .await
         .expect("Failed to bootstrap metastore");
 
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
 
-    // prepare table
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "
-        CREATE TABLE embucket.public.table AS SELECT 
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "CREATE TABLE embucket.public.table AS SELECT 
             id, 
             name, 
             RANDOM() AS random_value, 
@@ -576,49 +693,30 @@ async fn test_query_lifecycle_ok_truncate() {
             (3, 'Charlie'),
             (4, 'David')
         ) AS t(id, name);",
-            query_context.clone(),
-        ),
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 
-    // update
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "TRUNCATE TABLE embucket.public.table",
-            query_context,
-        ),
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "TRUNCATE TABLE embucket.public.table",
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_ok_merge() {
-    let query_context = QueryContext::default().with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
-    state_store_mock
-        .expect_put_query()
-        .times(3)
-        .returning(|_| Ok(()));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+    Mocker::apply_bypass_queries_mock(&mut state_store_mock, 2);
+    Mocker::apply_bypass_put_queries_only_mock(&mut state_store_mock, 1);
 
-    // bypass first two updates
-    state_store_mock
-        .expect_update_query()
-        .times(2)
-        .returning(|_| Ok(()));
     // verify 3rd update
     state_store_mock
         .expect_update_query()
@@ -630,7 +728,7 @@ async fn test_query_lifecycle_ok_merge() {
                 {
                   "query_id": "00000000-0000-0000-0000-000000000000",
                   "request_id": "00000000-0000-0000-0000-000000000000",
-                  "query_text": "MERGE INTO t1 USING (SELECT * FROM t2) AS t2 ON t1.a = t2.a WHEN MATCHED THEN UPDATE SET t1.c = t2.c WHEN NOT MATCHED THEN INSERT (a,c) VALUES(t2.a,t2.c)",
+                  "query_text": "MERGE INTO t1 USING \n        (SELECT * FROM t2) AS t2 \n        ON t1.a = t2.a \n        WHEN MATCHED THEN UPDATE SET t1.c = t2.c \n        WHEN NOT MATCHED THEN INSERT (a,c) VALUES(t2.a,t2.c)",
                   "session_id": "test_session_id",
                   "database_name": "embucket",
                   "schema_name": "public",
@@ -643,7 +741,7 @@ async fn test_query_lifecycle_ok_merge() {
                   "rows_inserted": 1,
                   "execution_time": "1",
                   "release_version": "test-version",
-                  "query_hash": "16532873076018472935",
+                  "query_hash": "10180476120311618623",
                   "query_hash_version": 1,
                   "query_metrics": "[query_metrics]"
                 }
@@ -652,7 +750,7 @@ async fn test_query_lifecycle_ok_merge() {
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::default().with_request_id(Uuid::default());
 
     let metastore = Arc::new(InMemoryMetastore::new());
     MetastoreBootstrapConfig::bootstrap()
@@ -660,29 +758,25 @@ async fn test_query_lifecycle_ok_merge() {
         .await
         .expect("Failed to bootstrap metastore");
 
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
 
-    // prepare tables
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "
-        CREATE TABLE embucket.public.t1 AS SELECT 
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "CREATE TABLE embucket.public.t1 AS SELECT 
         a,b,c
         FROM (VALUES 
             (1,'b1','c1'),
@@ -690,19 +784,15 @@ async fn test_query_lifecycle_ok_merge() {
             (2,'b3','c3'),
             (3,'b4','c4')
         ) AS t(a, b, c);",
-            query_context.clone(),
-        ),
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "
-        CREATE TABLE embucket.public.t2 AS SELECT
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "CREATE TABLE embucket.public.t2 AS SELECT
         a,b,c
         FROM (VALUES 
             (1,'b_5','c_5'),
@@ -710,39 +800,32 @@ async fn test_query_lifecycle_ok_merge() {
             (2,'b_7','c_7'),
             (4,'b_8','c_8')
         ) AS t(a, b, c);",
-            query_context.clone(),
-        ),
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(TEST_SESSION_ID, "MERGE INTO t1 USING (SELECT * FROM t2) AS t2 ON t1.a = t2.a WHEN MATCHED THEN UPDATE SET t1.c = t2.c WHEN NOT MATCHED THEN INSERT (a,c) VALUES(t2.a,t2.c)", query_context),
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "MERGE INTO t1 USING 
+        (SELECT * FROM t2) AS t2 
+        ON t1.a = t2.a 
+        WHEN MATCHED THEN UPDATE SET t1.c = t2.c 
+        WHEN NOT MATCHED THEN INSERT (a,c) VALUES(t2.a,t2.c)",
     )
     .await
-    .expect("Query timed out")
     .expect("Query execution failed");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
-    let query_context = QueryContext::new(
-        Some(TEST_DATABASE.to_string()),
-        Some(TEST_SCHEMA.to_string()),
-        None,
-    )
-    .with_request_id(Uuid::default());
-
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+
     state_store_mock.expect_put_query()
         .returning(|_| Ok(()) )
         .times(1)
@@ -764,49 +847,55 @@ async fn test_query_lifecycle_query_status_incident_limit_exceeded() {
                   "execution_time": "1",
                   "release_version": "test-version",
                   "query_hash": "8436521302113462945",
-                  "query_hash_version": 1
+                  "query_hash_version": 1,
+                  "user_database_name": "test_database",
+                  "user_schema_name": "test_schema"
                 }
                 "#);
             });
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::new(
+        Some(TEST_DATABASE.to_string()),
+        Some(TEST_SCHEMA.to_string()),
+        None,
+    )
+    .with_request_id(Uuid::default());
 
     let metastore = Arc::new(InMemoryMetastore::new());
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default().with_max_concurrency_level(0)),
-    )
-    .await
-    .expect("Failed to create execution service");
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");
 
-    execution_svc
-        .create_session(TEST_SESSION_ID)
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default().with_max_concurrency_level(0)),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
+
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
         .await
         .expect("Failed to create session");
 
-    // See note about timeout above
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(TEST_SESSION_ID, "SELECT 1", query_context),
-    )
-    .await
-    .expect("Query timed out")
-    .expect_err("Query execution should fail");
+    Mocker::query(ex.clone(), TEST_SESSION_ID, ctx.clone(), "SELECT 1")
+        .await
+        .expect_err("Query execution should fail");
 }
 
 #[allow(clippy::expect_used)]
 #[tokio::test]
 async fn test_query_lifecycle_query_status_fail() {
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+
     state_store_mock
         .expect_put_query()
         .times(1)
@@ -860,36 +949,35 @@ async fn test_query_lifecycle_query_status_fail() {
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::default().with_request_id(Uuid::new_v4());
 
     let metastore = Arc::new(InMemoryMetastore::new());
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
 
-    // See note about timeout above
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.query(
-            TEST_SESSION_ID,
-            "SELECT should fail",
-            QueryContext::default().with_request_id(Uuid::new_v4()),
-        ),
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
+
+    Mocker::query(
+        ex.clone(),
+        TEST_SESSION_ID,
+        ctx.clone(),
+        "SELECT should fail",
     )
     .await
-    .expect("Query timed out")
     .expect_err("Query execution should fail");
 }
 
@@ -897,12 +985,10 @@ async fn test_query_lifecycle_query_status_fail() {
 #[tokio::test]
 async fn test_query_lifecycle_query_status_cancelled() {
     let mut state_store_mock = MockStateStore::new();
-    state_store_mock
-        .expect_put_new_session()
-        .returning(|_| Ok(()));
-    state_store_mock
-        .expect_get_session()
-        .returning(|_| Ok(SessionRecord::new(TEST_SESSION_ID)));
+    Mocker::apply_create_session_mock(&mut state_store_mock, |_| {
+        Ok(SessionRecord::new(TEST_SESSION_ID))
+    });
+
     state_store_mock
         .expect_put_query()
         .times(1)
@@ -955,43 +1041,39 @@ async fn test_query_lifecycle_query_status_cancelled() {
             true
         });
 
-    let state_store: Arc<dyn StateStore> = Arc::new(state_store_mock);
+    let ctx = QueryContext::default().with_request_id(Uuid::default());
 
     let metastore = Arc::new(InMemoryMetastore::new());
-    let execution_svc = CoreExecutionService::new_test_executor(
-        metastore,
-        state_store,
-        Arc::new(Config::default()),
-    )
-    .await
-    .expect("Failed to create execution service");
+    MetastoreBootstrapConfig::bootstrap()
+        .apply(metastore.clone())
+        .await
+        .expect("Failed to bootstrap metastore");
 
-    timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.create_session(TEST_SESSION_ID),
-    )
-    .await
-    .expect("Create session timed out")
-    .expect("Failed to create session");
+    let ex: Arc<dyn ExecutionService> = Arc::new(
+        CoreExecutionService::new_test_executor(
+            metastore,
+            Arc::new(state_store_mock),
+            Arc::new(Config::default()),
+        )
+        .await
+        .expect("Failed to create execution service"),
+    );
+
+    Mocker::create_session(ex.clone(), TEST_SESSION_ID)
+        .await
+        .expect("Failed to create session");
 
     // See note about timeout above
     let query_handle = timeout(
         MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.submit(
-            TEST_SESSION_ID,
-            "SELECT 1",
-            QueryContext::default().with_request_id(Uuid::new_v4()),
-        ),
+        ex.submit(TEST_SESSION_ID, "SELECT 1", ctx),
     )
     .await
     .expect("Query timed out")
     .expect("Query submit error");
 
-    let _ = timeout(
-        MOCK_RELATED_TIMEOUT_DURATION,
-        execution_svc.abort(query_handle),
-    )
-    .await
-    .expect("Query timed out")
-    .expect("Failed to cancel query");
+    let _ = timeout(MOCK_RELATED_TIMEOUT_DURATION, ex.abort(query_handle))
+        .await
+        .expect("Query timed out")
+        .expect("Failed to cancel query");
 }

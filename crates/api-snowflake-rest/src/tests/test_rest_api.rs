@@ -87,6 +87,11 @@ mod compatible {
     );
 
     sql_test!(
+        set_command_show_variables,
+        SqlTest::new(&["SHOW VARIABLES"]).with_setup_queries(&["set variable_name = 'value'"])
+    );
+
+    sql_test!(
         create_table_missing_schema,
         SqlTest::new(&[
             // "Snowflake:
