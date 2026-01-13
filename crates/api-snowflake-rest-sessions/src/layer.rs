@@ -1,7 +1,7 @@
 use crate::error as session_error;
 use crate::error::{Error, Result};
 use crate::session::{
-    DFSessionId, SESSION_ID_COOKIE_NAME, SessionStore, extract_token_from_cookie,
+    SESSION_ID_COOKIE_NAME, SessionStore, TokenizedSession, extract_token_from_cookie,
 };
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{HeaderMap, HeaderName, request::Parts};
@@ -39,6 +39,7 @@ where
     }
 }
 
+// this method loads just session_id, so that won't include any session attrs
 #[allow(clippy::unwrap_used, clippy::cognitive_complexity)]
 pub async fn propagate_session_cookie(
     State(state): State<SessionStore>,
@@ -54,24 +55,26 @@ pub async fn propagate_session_cookie(
 
             let session_id = uuid::Uuid::new_v4().to_string();
             //Propagate new session_id to the extractor
-            req.extensions_mut().insert(DFSessionId(session_id.clone()));
+            req.extensions_mut()
+                .insert(TokenizedSession::new(session_id.clone()));
             let mut res = next.run(req).await;
             set_headers_in_flight(
                 res.headers_mut(),
                 SET_COOKIE,
                 SESSION_ID_COOKIE_NAME,
-                session_id.as_str(),
+                &session_id,
             )?;
             return Ok(res);
         }
         tracing::debug!("This DF session_id is not expired or deleted.");
         //Propagate in-use (valid) session_id to the extractor
-        req.extensions_mut().insert(DFSessionId(token));
+        req.extensions_mut().insert(TokenizedSession::new(token));
     } else {
         let session_id = uuid::Uuid::new_v4().to_string();
         tracing::debug!(session_id = %session_id, "Created new DF session_id");
         //Propagate new session_id to the extractor
-        req.extensions_mut().insert(DFSessionId(session_id.clone()));
+        req.extensions_mut()
+            .insert(TokenizedSession::new(session_id.clone()));
         let mut res = next.run(req).await;
         set_headers_in_flight(
             res.headers_mut(),

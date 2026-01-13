@@ -4,21 +4,23 @@ use crate::models::{
     QueryRequest, QueryRequestBody,
 };
 use crate::server::error::{
-    self as api_snowflake_rest_error, CreateJwtSnafu, NoJwtSecretSnafu, Result, SetVariableSnafu,
+    self as api_snowflake_rest_error, CreateJwtSnafu, NoJwtSecretSnafu, Result,
 };
 use crate::server::helpers::handle_query_ok_result;
+use api_snowflake_rest_sessions::TokenizedSession;
 use api_snowflake_rest_sessions::helpers::{create_jwt, ensure_jwt_secret_is_valid, jwt_claims};
 use executor::RunningQueryId;
-use executor::models::QueryContext;
+use executor::models::{QueryContext, SessionMetadata, SessionMetadataAttr};
 use snafu::{OptionExt, ResultExt};
 use time::Duration;
 
 pub const JWT_TOKEN_EXPIRATION_SECONDS: u32 = 3 * 24 * 60 * 60;
 
 #[tracing::instrument(
-    name = "api_snowflake_rest::logic::login",
+    name = "api_snowflake_rest::handle_login_request",
     level = "debug",
     skip(state, credentials),
+    fields(session_metadata),
     err,
     ret(level = tracing::Level::TRACE)
 )]
@@ -32,6 +34,9 @@ pub async fn handle_login_request(
     let LoginRequestData {
         login_name,
         password,
+        account_name,
+        client_app_id,
+        client_app_version,
         ..
     } = credentials;
 
@@ -43,39 +48,39 @@ pub async fn handle_login_request(
     let jwt_secret = &*state.config.auth.jwt_secret;
     let _ = ensure_jwt_secret_is_valid(jwt_secret).context(NoJwtSecretSnafu)?;
 
+    let mut session_metadata = SessionMetadata::default();
+    session_metadata.set_attr(SessionMetadataAttr::UserName, login_name.clone());
+    session_metadata.set_attr(SessionMetadataAttr::AccountName, account_name);
+    session_metadata.set_attr(SessionMetadataAttr::ClientAppId, client_app_id);
+    session_metadata.set_attr(SessionMetadataAttr::ClientAppVersion, client_app_version);
+    // set database, schema when provided
+    if let Some(db) = params.database_name {
+        session_metadata.set_attr(SessionMetadataAttr::Database, db);
+    }
+    if let Some(schema) = params.schema_name {
+        session_metadata.set_attr(SessionMetadataAttr::Schema, schema);
+    }
+    if let Some(warehouse) = params.warehouse {
+        session_metadata.set_attr(SessionMetadataAttr::Warehouse, warehouse);
+    }
+
+    tracing::Span::current().record("session_metadata", format!("{session_metadata:?}"));
+
+    let tokenized_session = TokenizedSession::default().with_metadata(session_metadata);
+
     let jwt_claims = jwt_claims(
         &login_name,
         &host,
         Duration::seconds(JWT_TOKEN_EXPIRATION_SECONDS.into()),
+        tokenized_session,
     );
 
     tracing::info!("Host '{host}' for token creation");
 
-    let session_id = jwt_claims.session_id.clone();
-    let session = state.execution_svc.create_session(&session_id).await?;
+    let session_id = jwt_claims.session.session_id();
+    let _session = state.execution_svc.create_session(session_id).await?;
 
     let jwt_token = create_jwt(&jwt_claims, jwt_secret).context(CreateJwtSnafu)?;
-
-    // set database, schema when provided
-    if let Some(db) = params.database_name {
-        session.set_database(&db).await.context(SetVariableSnafu {
-            variable: "database",
-        })?;
-    }
-    if let Some(schema) = params.schema_name {
-        session
-            .set_schema(&schema)
-            .await
-            .context(SetVariableSnafu { variable: "schema" })?;
-    }
-    if let Some(warehouse) = params.warehouse {
-        session
-            .set_warehouse(&warehouse)
-            .await
-            .context(SetVariableSnafu {
-                variable: "warehouse",
-            })?;
-    }
 
     Ok(LoginResponse {
         data: Option::from(LoginResponseData { token: jwt_token }),
@@ -85,7 +90,7 @@ pub async fn handle_login_request(
 }
 
 #[tracing::instrument(
-    name = "api_snowflake_rest::logic::query",
+    name = "api_snowflake_rest::handle_query_request",
     level = "debug",
     skip(state, query_body, client_ip),
     fields(request_id = %query.request_id),
@@ -94,7 +99,7 @@ pub async fn handle_login_request(
 )]
 pub async fn handle_query_request(
     state: &AppState,
-    session_id: &str,
+    TokenizedSession(session_id, session_metadata): TokenizedSession,
     query: QueryRequest,
     query_body: QueryRequestBody,
     client_ip: Option<String>,
@@ -102,6 +107,7 @@ pub async fn handle_query_request(
     let QueryRequestBody {
         sql_text,
         async_exec,
+        query_submission_time,
     } = query_body;
     let async_exec = async_exec.unwrap_or(false);
     if async_exec {
@@ -109,7 +115,14 @@ pub async fn handle_query_request(
     }
 
     let serialization_format = state.config.dbt_serialization_format;
-    let mut query_context = QueryContext::default().with_request_id(query.request_id);
+    let mut query_context = QueryContext::new(
+        session_metadata.attr(SessionMetadataAttr::Database),
+        session_metadata.attr(SessionMetadataAttr::Schema),
+        None,
+    )
+    .with_request_id(query.request_id)
+    .with_query_submission_time(query_submission_time)
+    .with_session_metadata(Some(session_metadata));
 
     if let Some(ip) = client_ip {
         query_context = query_context.with_ip_address(ip);
@@ -123,7 +136,7 @@ pub async fn handle_query_request(
             sql_text.clone(),
         ));
 
-    // if retry-disable feature is enabled we ignory retries regardless of query_id is located or not
+    // if retry-disable feature is enabled we ignore retries regardless of query_id is located or not
     #[cfg(feature = "retry-disable")]
     if query.retry_count.unwrap_or_default() > 0 {
         return api_snowflake_rest_error::RetryDisabledSnafu.fail();
@@ -138,7 +151,7 @@ pub async fn handle_query_request(
         let query_id = query_context.query_id;
         let result = state
             .execution_svc
-            .query(session_id, &sql_text, query_context)
+            .query(&session_id, &sql_text, query_context)
             .await?;
         (result, query_id)
     };

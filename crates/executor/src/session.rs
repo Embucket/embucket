@@ -19,6 +19,7 @@ use catalog::catalog_list::{DEFAULT_CATALOG, EmbucketCatalogList};
 use catalog_metastore::Metastore;
 #[cfg(feature = "state-store")]
 use chrono::{TimeZone, Utc};
+use dashmap::DashMap;
 use datafusion::config::ConfigOptions;
 use datafusion::execution::runtime_env::RuntimeEnv;
 use datafusion::execution::{SessionStateBuilder, SessionStateDefaults};
@@ -64,6 +65,7 @@ pub struct UserSession {
     pub session_params: Arc<SessionParams>,
     pub recent_queries: Arc<RwLock<VecDeque<QueryId>>>,
     pub session_id: String,
+    pub attrs: DashMap<String, String>,
 }
 
 impl UserSession {
@@ -160,6 +162,7 @@ impl UserSession {
             session_params: session_params_arc,
             recent_queries: Arc::new(RwLock::new(VecDeque::new())),
             session_id: session_id.to_string(),
+            attrs: DashMap::new(),
         };
         Ok(session)
     }
@@ -222,24 +225,13 @@ impl UserSession {
             .context(ex_error::StateStoreSnafu)
     }
 
-    pub async fn set_database(&self, database: &str) -> Result<()> {
-        self.set_variable("database", database).await
-    }
-
-    pub async fn set_schema(&self, schema: &str) -> Result<()> {
-        self.set_variable("schema", schema).await
-    }
-
-    pub async fn set_warehouse(&self, warehouse: &str) -> Result<()> {
-        self.set_variable("warehouse", warehouse).await
-    }
-
     #[tracing::instrument(
         name = "api_snowflake_rest::session::set_variable",
         level = "info",
         skip(self),
         err
     )]
+    #[allow(dead_code)]
     async fn set_variable(&self, key: &str, value: &str) -> Result<()> {
         if key.is_empty() || value.is_empty() {
             return ex_error::OnyUseWithVariablesSnafu.fail();
