@@ -147,21 +147,26 @@ impl ExecutionTaskResult {
 #[cfg(feature = "state-store-query")]
 #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
 fn value_by_row_column(result: &QueryResult, row_idx: usize, col_idx: usize) -> Option<u64> {
-    result.records.first()?.columns().get(col_idx).and_then(|col| {
-        if let Some(cols) = col.as_any().downcast_ref::<Int64Array>() {
-            if row_idx < cols.len() {
-                Some(cols.value(row_idx) as u64)
+    result
+        .records
+        .first()?
+        .columns()
+        .get(col_idx)
+        .and_then(|col| {
+            if let Some(cols) = col.as_any().downcast_ref::<Int64Array>() {
+                if row_idx < cols.len() {
+                    Some(cols.value(row_idx) as u64)
+                } else {
+                    None
+                }
+            } else if let Some(cols) = col.as_any().downcast_ref::<UInt64Array>() {
+                if row_idx < cols.len() {
+                    Some(cols.value(row_idx))
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else if let Some(cols) = col.as_any().downcast_ref::<UInt64Array>() {
-            if row_idx < cols.len() {
-                Some(cols.value(row_idx))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    })
+        })
 }
