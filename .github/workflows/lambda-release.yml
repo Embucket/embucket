@@ -1,0 +1,56 @@
+name: Lambda Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: lambda-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Lambda zip
+        run: cargo lambda build --release -F state-store-query -p embucket-lambda --arm64 -o zip
+
+      - name: Upload to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-2
+        run: |
+          VERSION=${GITHUB_REF_NAME:-latest}
+          aws s3 cp target/lambda/embucket-lambda/bootstrap.zip \
+            s3://embucket-releases/lambda/embucket-lambda-${VERSION}.zip
+          aws s3 cp target/lambda/embucket-lambda/bootstrap.zip \
+            s3://embucket-releases/lambda/embucket-lambda-latest.zip
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/lambda/embucket-lambda/bootstrap.zip
