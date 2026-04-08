@@ -42,17 +42,30 @@ cargo build
 
 The repo contributing guide uses `cargo build` as the standard source-build path.
 
-## Step 2: Create a local env file
+## Step 2: Create a minimal metastore file
 
-Copy the checked-in example env file:
+Create a local `metastore.yaml` file in the repo root:
+
+```yaml
+volumes: []
+```
+
+## Step 3: Create a local env file
+
+Create a local `.env` file:
 
 ```bash
-cp config/.env.example .env
+cat > .env <<'EOF'
+METASTORE_CONFIG=./metastore.yaml
+JWT_SECRET=secret
+TRACING_LEVEL=debug
+RUST_LOG=info
+EOF
 ```
 
 That file sets:
 
-- `METASTORE_CONFIG=config/metastore.yaml`
+- `METASTORE_CONFIG=./metastore.yaml`
 - `JWT_SECRET=secret`
 - `TRACING_LEVEL=debug`
 - `RUST_LOG=info`
@@ -62,7 +75,7 @@ That file sets:
   one by one for the basic local path.
 </Aside>
 
-## Step 3: Start the binary
+## Step 4: Start the binary
 
 Run the local binary from the repo root:
 
@@ -76,7 +89,7 @@ Expected startup signals:
 - the service binds to `localhost:3000`
 - you can open `http://127.0.0.1:3000/` in your browser
 
-## Step 4: Configure the Snowflake command-line tool
+## Step 5: Configure the Snowflake command-line tool
 
 Find your Snowflake command-line tool config file:
 
@@ -100,7 +113,7 @@ user = "embucket"
 password = "embucket"
 ```
 
-## Step 5: Verify the local deployment
+## Step 6: Verify the local deployment
 
 Check the connection:
 
@@ -136,7 +149,7 @@ If you need an external catalog or richer metadata, continue to [AWS S3 table bu
 
 - **binary not found**: make sure `cargo build` completed successfully and run from the repo root
 - **auth issues**: the local defaults are `embucket` / `embucket` unless you changed `AUTH_DEMO_USER` or `AUTH_DEMO_PASSWORD`
-- **missing config**: make sure `.env` points at `config/metastore.yaml`
+- **missing config**: make sure `.env` points at `./metastore.yaml`
 - **Snowflake command-line tool SSL/protocol errors**: set `protocol = "http"`
 
 ## Related guides
