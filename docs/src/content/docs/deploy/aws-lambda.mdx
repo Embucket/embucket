@@ -1,0 +1,242 @@
+---
+title: AWS Lambda
+description: Deploy Embucket to AWS Lambda with S3 Tables storage.
+sidebar:
+  order: 0
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Embucket runs as an AWS Lambda function that uses S3 Tables (Apache Iceberg) for storage. This guide walks you through the full deployment, from creating your S3 table bucket to verifying a working query.
+
+## Prerequisites
+
+Before you begin, make sure you have the following:
+
+- Rust toolchain installed (stable)
+- `cargo-lambda` installed (`cargo install cargo-lambda`)
+- AWS CLI installed and configured
+- AWS credentials with permissions for Lambda, S3 Tables, and IAM
+- A clone of the Embucket repository
+
+## Deploy Embucket to Lambda
+
+<Steps>
+
+1. ### Create an S3 table bucket
+
+   Create a new S3 table bucket to store your Iceberg tables:
+
+   ```bash
+   aws s3tables create-table-bucket --name my-table-bucket --region us-east-2
+   ```
+
+   The command returns a JSON response with the bucket ARN:
+
+   ```json
+   {
+       "arn": "arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket"
+   }
+   ```
+
+   Save the bucket name, region, and ARN. You need these values in the next step.
+
+2. ### Configure the metastore
+
+   Create the file `config/metastore.yaml` in the repository root:
+
+   ```yaml
+   volumes:
+     - ident: embucket
+       type: s3-tables
+       database: demo
+       credentials:
+         credential_type: access_key
+         aws-access-key-id: ACCESS_KEY
+         aws-secret-access-key: SECRET_ACCESS_KEY
+       arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+   ```
+
+   <Aside type="tip">
+   Replace `ACCESS_KEY`, `SECRET_ACCESS_KEY`, and the ARN with your real values from the previous step. Each S3 table bucket maps to one database.
+   </Aside>
+
+3. ### Build and deploy
+
+   Run the following command from the repository root:
+
+   ```bash
+   make -C crates/embucket-lambda deploy
+   ```
+
+   To specify an environment file:
+
+   ```bash
+   ENV_FILE=config/.env.lambda make -C crates/embucket-lambda deploy
+   ```
+
+   To specify an IAM execution role:
+
+   ```bash
+   AWS_LAMBDA_ROLE_ARN=arn:aws:iam::123456789012:role/embucket-lambda-role make -C crates/embucket-lambda deploy
+   ```
+
+   The Makefile accepts the following variables:
+
+   | Variable | Purpose | Default |
+   |---|---|---|
+   | `FUNCTION_NAME` | Lambda function name | `embucket-lambda` |
+   | `ENV_FILE` | Environment file path | `config/.env.lambda` |
+   | `AWS_LAMBDA_ROLE_ARN` | Execution role ARN | unset |
+   | `FEATURES` | Cargo features, comma-separated | unset |
+   | `LAYERS` | Additional Lambda layer ARNs | unset |
+   | `WITH_OTEL_CONFIG` | OpenTelemetry collector config | unset |
+
+4. ### Verify the deployment
+
+   Run the verification command:
+
+   ```bash
+   make -C crates/embucket-lambda verify
+   ```
+
+   This runs `snow sql -c lambda -q "SELECT 1 as test_column"` to confirm the Lambda function responds to queries.
+
+   To tail CloudWatch logs:
+
+   ```bash
+   make -C crates/embucket-lambda logs
+   ```
+
+   For HTTP-level validation, send a login request directly with `curl`:
+
+   ```bash
+   curl -X POST https://FUNCTION_URL.lambda-url.us-east-2.on.aws/session/v1/login-request \
+     -H "Content-Type: application/json" \
+     -d '{"data": {"ACCOUNT_NAME": "account", "LOGIN_NAME": "embucket", "PASSWORD": "embucket", "CLIENT_APP_ID": "test"}}'
+   ```
+
+   Replace `FUNCTION_URL` with your actual Lambda function URL.
+
+</Steps>
+
+## IAM and access
+
+Three separate permission concerns apply to an Embucket Lambda deployment.
+
+**Deployer permissions** -- The identity that runs `cargo lambda deploy` needs permission to create and update Lambda functions. This is the IAM user or role you use locally with the AWS CLI.
+
+**Execution role** -- The Lambda function itself needs an IAM execution role with access to S3 and S3 Tables. Attach a policy that allows `s3tables:*` and `s3:*` on the relevant resources. You specify this role with the `AWS_LAMBDA_ROLE_ARN` variable during deployment.
+
+**Client invoke** -- Users who connect through dbt-embucket need `lambda:InvokeFunctionUrl` or `lambda:InvokeFunction` permission on the function ARN. Grant this permission in the client's IAM policy.
+
+## Lambda sizing
+
+The default configuration sets memory to 3008 MB and timeout to 30 seconds. Tracing is set to `Active` by default.
+
+3008 MB is the standard Lambda maximum. To increase memory beyond this limit (up to 10 GB), submit an AWS support ticket.
+
+Override memory and timeout through `cargo lambda deploy` flags or the AWS Console. The `Cargo.toml` in `crates/embucket-lambda` defines these defaults under `[package.metadata.lambda.deploy]`.
+
+## State store (optional)
+
+By default, query state does not persist across Lambda invocations. To enable persistent query state, build with the `state-store-query` feature:
+
+```bash
+FEATURES=state-store-query make -C crates/embucket-lambda deploy
+```
+
+This feature requires a DynamoDB table. Create the table with the following command:
+
+```bash
+aws dynamodb create-table \
+    --table-name embucket-statestore \
+    --attribute-definitions \
+        AttributeName=PK,AttributeType=S \
+        AttributeName=SK,AttributeType=S \
+        AttributeName=query_id,AttributeType=S \
+        AttributeName=request_id,AttributeType=S \
+        AttributeName=session_id,AttributeType=S \
+    --key-schema AttributeName=PK,KeyType=HASH AttributeName=SK,KeyType=RANGE \
+    --global-secondary-indexes \
+        "IndexName=GSI_QUERY_ID_INDEX,KeySchema=[{AttributeName=query_id,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+        "IndexName=GSI_REQUEST_ID_INDEX,KeySchema=[{AttributeName=request_id,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+        "IndexName=GSI_SESSION_ID_INDEX,KeySchema=[{AttributeName=session_id,KeyType=HASH}],Projection={ProjectionType=ALL},ProvisionedThroughput={ReadCapacityUnits=5,WriteCapacityUnits=5}" \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    --region us-east-2
+```
+
+Configure the state store with the following environment variables:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `STATESTORE_TABLE_NAME` | DynamoDB table name | `embucket-statestore` |
+| `STATESTORE_DYNAMODB_ENDPOINT` | Custom DynamoDB endpoint (for local testing) | unset |
+| `AWS_DDB_ACCESS_KEY_ID` | DynamoDB access key (optional) | unset |
+| `AWS_DDB_SECRET_ACCESS_KEY` | DynamoDB secret key (optional) | unset |
+| `AWS_DDB_SESSION_TOKEN` | DynamoDB session token (optional) | unset |
+
+## Production ingress
+
+<Aside type="caution">
+Function URLs are acceptable for testing but not for production. For production traffic, keep the Lambda private and use an API Gateway.
+</Aside>
+
+The following CloudFormation skeleton provisions a private API Gateway with a VPC endpoint for `execute-api`, Lambda proxy integration, and a stage named `v1`:
+
+```yaml
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: embucket-lambda
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+Resources:
+  ExecuteApiVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+  PrivateApi:
+    Type: AWS::ApiGateway::RestApi
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+```
+
+This template creates a private API Gateway accessible only from within your VPC. Adapt the parameters and resource properties to match your networking setup.
+
+## Rollback and redeploy
+
+Keep your environment file and `metastore.yaml` in version control. If a deployment causes a regression, redeploy with the previous configuration:
+
+1. Restore the previous `config/.env.lambda` and `config/metastore.yaml`.
+2. Run `make -C crates/embucket-lambda deploy`.
+3. Run `make -C crates/embucket-lambda verify` to confirm the rollback.
+
+## Cleanup
+
+To remove the Lambda function URL:
+
+```bash
+aws lambda delete-function-url-config --function-name embucket-lambda
+```
+
+After removing the function URL, delete the following resources if they are no longer needed:
+
+- Lambda function (`embucket-lambda`)
+- CloudWatch log group (`/aws/lambda/embucket-lambda`)
+- API Gateway and VPC endpoint (if you created them for production ingress)
+- OpenTelemetry layers (if you deployed telemetry)
+
+## Troubleshooting
+
+**Deploy succeeds but queries fail** -- Check that the `METASTORE_CONFIG` environment variable points to a valid `metastore.yaml` and that the credentials and ARN inside the file are correct.
+
+**dbt cannot connect** -- Verify that the client's AWS credentials have `lambda:InvokeFunction` permission on the function ARN. Confirm that `EMBUCKET_FUNCTION_ARN` is set correctly in your dbt profile.
+
+**Timeouts on large queries** -- Review the Lambda timeout and memory settings. Increase the timeout with `cargo lambda deploy` flags or through the AWS Console. Request a memory increase through AWS Support if you need more than 3008 MB.
+
+**No traces or logs** -- Verify that `RUST_LOG` and `TRACING_LEVEL` are set in your environment file. If you use OpenTelemetry, confirm that `WITH_OTEL_CONFIG` points to a valid collector config and that the OTEL exporter endpoint is reachable.
