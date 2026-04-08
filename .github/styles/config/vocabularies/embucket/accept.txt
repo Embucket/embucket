@@ -33,3 +33,16 @@ NYC
 UTC
 DBAs?
 config
+repo
+repos
+serverless
+toolchain
+Makefile
+walkthrough
+rollout
+charset
+env
+hardcoded
+hardcode
+unpatched
+deployer
