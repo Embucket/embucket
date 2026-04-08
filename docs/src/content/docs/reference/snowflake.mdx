@@ -20,9 +20,7 @@ Key features:
 
 Embucket exposes a Snowflake v1 REST API that works with any Snowflake client. The API handles login, session management, and query execution through the same endpoints that Snowflake clients expect. Testing focuses primarily on snowflake-connector-python and tools that depend on it, including dbt, snowflake-cli, and Superset.
 
-{/* vale Google.Headings = NO */}
-
-## SQL engine compatibility
+## SQL engine
 
 Embucket uses [Apache DataFusion](https://datafusion.apache.org/) as its query engine -- an Apache Arrow-native analytical query engine. The goal is full SQL dialect compatibility with Snowflake. Embucket supports a growing set of Snowflake SQL features. DataFusion also includes some built-in functions that Snowflake does not provide.
 

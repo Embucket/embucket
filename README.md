@@ -19,28 +19,28 @@ Run Embucket locally with Docker:
 docker run --name embucket --rm -p 3000:3000 embucket/embucket
 ```
 
-See the full [Quick Start guide](docs/src/content/docs/getting-started/quick-start.mdx) for next steps.
+See the full [Quick Start guide](https://docs.embucket.com/getting-started/quick-start/) for next steps.
 
 ## Deploy
 
-Deploy Embucket to AWS Lambda:
+Deploy Embucket to AWS Lambda with the pre-built zip:
 
 ```bash
-make -C crates/embucket-lambda deploy
+aws s3 cp s3://embucket-releases/lambda/embucket-lambda-latest.zip .
 ```
 
-See the [AWS Lambda deployment guide](docs/src/content/docs/deploy/aws-lambda.mdx) for configuration and production setup.
+See the [AWS Lambda deployment guide](https://docs.embucket.com/deploy/aws-lambda/) for configuration and production setup.
 
 ## Connect
 
-- **Snowflake CLI** -- connect any Snowflake-compatible client to your Embucket endpoint. See the [Snowflake CLI guide](docs/src/content/docs/connect/snowflake-cli.mdx).
-- **dbt adapter** -- use `dbt-embucket` for analytics workflows. See the [dbt guide](docs/src/content/docs/connect/dbt.mdx).
+- **Snowflake CLI** -- connect any Snowflake-compatible client to your Embucket endpoint. See the [Snowflake CLI guide](https://docs.embucket.com/connect/snowflake-cli/).
+- **dbt adapter** -- use `dbt-embucket` for analytics workflows. See the [dbt guide](https://docs.embucket.com/connect/dbt/).
 
 ## Documentation
 
-- [Architecture](docs/src/content/docs/reference/architecture.mdx)
-- [Snowflake compatibility](docs/src/content/docs/reference/snowflake.mdx)
-- [Troubleshooting](docs/src/content/docs/reference/troubleshooting.mdx)
+- [Architecture](https://docs.embucket.com/reference/architecture/)
+- [Snowflake compatibility](https://docs.embucket.com/reference/snowflake/)
+- [Troubleshooting](https://docs.embucket.com/reference/troubleshooting/)
 
 ## Contributing
 

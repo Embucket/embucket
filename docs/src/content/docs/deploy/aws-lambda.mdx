@@ -13,11 +13,8 @@ Embucket runs as an AWS Lambda function that uses S3 Tables (Apache Iceberg) for
 
 Before you begin, make sure you have the following:
 
-- Rust toolchain installed (stable)
-- `cargo-lambda` installed (`cargo install cargo-lambda`)
 - AWS CLI installed and configured
 - AWS credentials with permissions for Lambda, S3 Tables, and IAM
-- A clone of the Embucket repository
 
 ## Deploy Embucket to Lambda
 
@@ -62,27 +59,51 @@ Before you begin, make sure you have the following:
      step. Each S3 table bucket maps to one database.
    </Aside>
 
-3. ### Build and deploy
+3. ### Deploy the Lambda function
 
-   Run the following command from the repository root:
+   Download the pre-built Lambda zip and deploy it with the AWS CLI:
+
+   ```bash
+   aws s3 cp s3://embucket-releases/lambda/embucket-lambda-latest.zip .
+   ```
+
+   Create the Lambda function:
+
+   ```bash
+   aws lambda create-function \
+     --function-name embucket-lambda \
+     --runtime provided.al2023 \
+     --architectures arm64 \
+     --handler bootstrap \
+     --zip-file fileb://embucket-lambda-latest.zip \
+     --role arn:aws:iam::123456789012:role/embucket-lambda-role \
+     --memory-size 3008 \
+     --timeout 30 \
+     --environment "Variables={METASTORE_CONFIG=config/metastore.yaml,LOG_FORMAT=json,TRACING_LEVEL=debug,RUST_LOG=info}"
+   ```
+
+   <Aside type="tip">
+     Replace the role ARN with your own execution role. The pre-built zip includes the
+     `state-store-query` feature for DynamoDB-backed query state persistence.
+   </Aside>
+
+   To update an existing function:
+
+   ```bash
+   aws lambda update-function-code \
+     --function-name embucket-lambda \
+     --zip-file fileb://embucket-lambda-latest.zip
+   ```
+
+   #### Build from source (alternative)
+
+   If you prefer to build from source, clone the repository and use the Makefile:
 
    ```bash
    make -C crates/embucket-lambda deploy
    ```
 
-   To specify an environment file:
-
-   ```bash
-   ENV_FILE=config/.env.lambda make -C crates/embucket-lambda deploy
-   ```
-
-   To specify an IAM execution role:
-
-   ```bash
-   AWS_LAMBDA_ROLE_ARN=arn:aws:iam::123456789012:role/embucket-lambda-role make -C crates/embucket-lambda deploy
-   ```
-
-   The Makefile accepts the following variables:
+   This requires the Rust toolchain and `cargo-lambda`. The Makefile accepts the following variables:
 
    | Variable              | Purpose                         | Default              |
    | --------------------- | ------------------------------- | -------------------- |
@@ -137,17 +158,11 @@ The default configuration sets memory to 3008 MB and timeout to 30 seconds. Trac
 
 3008 MB is the standard Lambda maximum. To increase memory beyond this limit (up to 10 GB), submit an AWS support ticket.
 
-Override memory and timeout through `cargo lambda deploy` flags or the AWS Console. The `Cargo.toml` in `crates/embucket-lambda` defines these defaults under `[package.metadata.lambda.deploy]`.
+Override memory and timeout through the AWS Console or the `aws lambda update-function-configuration` command.
 
-## State store (optional)
+## State store
 
-By default, query state does not persist across Lambda invocations. To enable persistent query state, build with the `state-store-query` feature:
-
-```bash
-FEATURES=state-store-query make -C crates/embucket-lambda deploy
-```
-
-This feature requires a DynamoDB table. Create the table with the following command:
+The pre-built Lambda zip includes the `state-store-query` feature, which persists query state in DynamoDB across invocations. To use it, create a DynamoDB table:
 
 ```bash
 aws dynamodb create-table \
