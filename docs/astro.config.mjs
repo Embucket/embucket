@@ -26,6 +26,10 @@ export default defineConfig({
           autogenerate: { directory: 'deploy' },
         },
         {
+          label: 'Configuration',
+          autogenerate: { directory: 'configuration' },
+        },
+        {
           label: 'Connect',
           autogenerate: { directory: 'connect' },
         },
@@ -57,7 +61,8 @@ export default defineConfig({
     '/': '/getting-started/quick-start/',
     '/essentials/quick-start/': '/getting-started/quick-start/',
     '/essentials/architecture/': '/reference/architecture/',
-    '/essentials/configuration/': '/deploy/configuration/',
+    '/essentials/configuration/': '/configuration/configuration/',
+    '/deploy/configuration/': '/configuration/configuration/',
     '/essentials/runtime-modes/': '/deploy/aws-lambda/',
     '/essentials/snowflake/': '/reference/snowflake/',
     '/essentials/support-matrix/': '/deploy/aws-lambda/',

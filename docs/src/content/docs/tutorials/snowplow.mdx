@@ -35,7 +35,7 @@ Before you begin, make sure you have the following:
 
 <Steps>
 
-1. ### Clone the repository
+1. **Clone the repository**
 
    Clone the Snowplow demo repository and change into the project directory:
 
@@ -43,7 +43,7 @@ Before you begin, make sure you have the following:
    git clone https://github.com/Embucket/embucket-snowplow.git && cd embucket-snowplow
    ```
 
-2. ### Set deploy values
+2. **Set deploy values**
 
    Define a unique stack name and your S3 Table Bucket ARN:
 
@@ -54,7 +54,7 @@ Before you begin, make sure you have the following:
 
    Replace `YOUR_ACCOUNT` and `YOUR_BUCKET` with your actual AWS account ID and bucket name.
 
-3. ### Deploy the Lambda stack
+3. **Deploy the Lambda stack**
 
    Deploy the CloudFormation stack that provisions the Lambda function:
 
@@ -75,7 +75,7 @@ Before you begin, make sure you have the following:
    echo "$LAMBDA_ARN"
    ```
 
-4. ### Install dependencies
+4. **Install dependencies**
 
    Install the Python dependencies with `uv`:
 
@@ -83,7 +83,7 @@ Before you begin, make sure you have the following:
    uv sync
    ```
 
-5. ### Configure the dbt profile
+5. **Configure the dbt profile**
 
    Copy the example profile and substitute your Lambda ARN:
 
@@ -97,7 +97,7 @@ Before you begin, make sure you have the following:
      connection values match your environment.
    </Aside>
 
-6. ### Install dbt packages
+6. **Install dbt packages**
 
    Pull the Snowplow dbt packages:
 
@@ -105,7 +105,7 @@ Before you begin, make sure you have the following:
    uv run dbt deps --profiles-dir .
    ```
 
-7. ### Patch packages for compatibility
+7. **Patch packages for compatibility**
 
    Run the compatibility patch script:
 
@@ -118,7 +118,7 @@ Before you begin, make sure you have the following:
      step if your packages already support the `embucket` target type.
    </Aside>
 
-8. ### Load example data
+8. **Load example data**
 
    Load sample Snowplow event data into your S3 Table Bucket:
 
@@ -126,7 +126,7 @@ Before you begin, make sure you have the following:
    uv run python scripts/load_data.py "$LAMBDA_ARN"
    ```
 
-9. ### Run the pipeline
+9. **Run the pipeline**
 
    Seed reference data and run the dbt transformations:
 
@@ -135,7 +135,7 @@ Before you begin, make sure you have the following:
    uv run dbt run --profiles-dir .
    ```
 
-10. ### Verify the results
+10. **Verify the results**
 
     Query the derived tables to confirm the pipeline completed successfully.
 

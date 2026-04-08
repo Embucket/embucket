@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-import { Aside, Steps } from '@astrojs/starlight/components';
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
 Embucket runs as an AWS Lambda function that uses S3 Tables (Apache Iceberg) for storage. This guide walks you through the full deployment, from creating your S3 table bucket to verifying a working query.
 
@@ -16,141 +16,266 @@ Before you begin, make sure you have the following:
 - AWS CLI installed and configured
 - AWS credentials with permissions for Lambda, S3 Tables, and IAM
 
-## Deploy Embucket to Lambda
+## Step 1: Create an S3 table bucket
 
-<Steps>
+Create a new S3 table bucket to store your Iceberg tables:
 
-1. ### Create an S3 table bucket
+```bash
+aws s3tables create-table-bucket --name my-table-bucket --region us-east-2
+```
 
-   Create a new S3 table bucket to store your Iceberg tables:
+The command returns a JSON response with the bucket ARN:
 
-   ```bash
-   aws s3tables create-table-bucket --name my-table-bucket --region us-east-2
-   ```
+```json
+{
+  "arn": "arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket"
+}
+```
 
-   The command returns a JSON response with the bucket ARN:
+Save the bucket name, region, and ARN. You need these values in the next step.
 
-   ```json
-   {
-     "arn": "arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket"
-   }
-   ```
+## Step 2: Configure the metastore
 
-   Save the bucket name, region, and ARN. You need these values in the next step.
+<Tabs>
+  <TabItem label="YAML file">
+    Create the file `config/metastore.yaml`:
 
-2. ### Configure the metastore
+    ```yaml
+    volumes:
+      - ident: embucket
+        type: s3-tables
+        database: demo
+        credentials:
+          credential_type: access_key
+          aws-access-key-id: ACCESS_KEY
+          aws-secret-access-key: SECRET_ACCESS_KEY
+        arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+    ```
 
-   Create the file `config/metastore.yaml` in the repository root:
+    <Aside type="tip">
+      Replace `ACCESS_KEY`, `SECRET_ACCESS_KEY`, and the ARN with your real values. Each S3 table bucket maps to one database.
+    </Aside>
 
-   ```yaml
-   volumes:
-     - ident: embucket
-       type: s3-tables
-       database: demo
-       credentials:
-         credential_type: access_key
-         aws-access-key-id: ACCESS_KEY
-         aws-secret-access-key: SECRET_ACCESS_KEY
-       arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
-   ```
+    Set the `METASTORE_CONFIG` environment variable on your Lambda function to the path of this file (for example, `config/metastore.yaml`).
 
-   <Aside type="tip">
-     Replace `ACCESS_KEY`, `SECRET_ACCESS_KEY`, and the ARN with your real values from the previous
-     step. Each S3 table bucket maps to one database.
-   </Aside>
+  </TabItem>
+  <TabItem label="Environment variables">
+    Configure a single volume through environment variables on the Lambda function:
 
-3. ### Deploy the Lambda function
+    | Variable                   | Purpose                                    | Example              |
+    | -------------------------- | ------------------------------------------ | -------------------- |
+    | `VOLUME_TYPE`              | Volume type: `s3tables`, `s3`, or `memory` | `s3tables`           |
+    | `VOLUME_IDENT`             | Volume identifier                          | `embucket`           |
+    | `VOLUME_DATABASE`          | Database name to associate                 | `demo`               |
+    | `VOLUME_ARN`               | S3 table bucket ARN (s3tables only)        | `arn:aws:s3tables:…` |
+    | `VOLUME_ACCESS_KEY`        | AWS access key ID                          | —                    |
+    | `VOLUME_SECRET_KEY`        | AWS secret access key                      | —                    |
+    | `VOLUME_AWS_SESSION_TOKEN` | AWS session token (optional)               | —                    |
 
-   Download the pre-built Lambda zip and deploy it with the AWS CLI:
+    <Aside type="note">
+      `VOLUME_ARN` is required for the `s3tables` volume type. `VOLUME_ACCESS_KEY` and `VOLUME_SECRET_KEY` apply to both `s3tables` and `s3` volume types.
+    </Aside>
 
-   ```bash
-   aws s3 cp s3://embucket-releases/lambda/embucket-lambda-latest.zip .
-   ```
+  </TabItem>
+</Tabs>
 
-   Create the Lambda function:
+## Step 3: Deploy the Lambda function
 
-   ```bash
-   aws lambda create-function \
-     --function-name embucket-lambda \
-     --runtime provided.al2023 \
-     --architectures arm64 \
-     --handler bootstrap \
-     --zip-file fileb://embucket-lambda-latest.zip \
-     --role arn:aws:iam::123456789012:role/embucket-lambda-role \
-     --memory-size 3008 \
-     --timeout 30 \
-     --environment "Variables={METASTORE_CONFIG=config/metastore.yaml,LOG_FORMAT=json,TRACING_LEVEL=debug,RUST_LOG=info}"
-   ```
+<Tabs>
+  <TabItem label="Build from source">
+    Install the Rust toolchain and [cargo-lambda](https://www.cargo-lambda.info/guide/installation.html). Build and deploy:
 
-   <Aside type="tip">
-     Replace the role ARN with your own execution role. The pre-built zip includes the
-     `state-store-query` feature for DynamoDB-backed query state persistence.
-   </Aside>
+    ```bash
+    cargo lambda build --release -p embucket-lambda --arm64 -o zip
+    cargo lambda deploy --binary-name bootstrap embucket-lambda
+    ```
 
-   To update an existing function:
+    You can also use the Makefile, which wraps `cargo lambda` and accepts several variables:
 
-   ```bash
-   aws lambda update-function-code \
-     --function-name embucket-lambda \
-     --zip-file fileb://embucket-lambda-latest.zip
-   ```
+    ```bash
+    make -C crates/embucket-lambda deploy
+    ```
 
-   #### Build from source (alternative)
+    | Variable              | Purpose                         | Default              |
+    | --------------------- | ------------------------------- | -------------------- |
+    | `FUNCTION_NAME`       | Lambda function name            | `embucket-lambda`    |
+    | `ENV_FILE`            | Environment file path           | `config/.env.lambda` |
+    | `AWS_LAMBDA_ROLE_ARN` | Execution role ARN              | unset                |
+    | `FEATURES`            | Cargo features, comma-separated | unset                |
+    | `LAYERS`              | Additional Lambda layer ARNs    | unset                |
+    | `WITH_OTEL_CONFIG`    | OpenTelemetry collector config  | unset                |
 
-   If you prefer to build from source, clone the repository and use the Makefile:
+  </TabItem>
+  <TabItem label="Pre-built binary">
+    Download the pre-built Lambda zip from S3:
 
-   ```bash
-   make -C crates/embucket-lambda deploy
-   ```
+    ```bash
+    aws s3 cp s3://embucket-releases/lambda/embucket-lambda-latest.zip .
+    ```
 
-   This requires the Rust toolchain and `cargo-lambda`. The Makefile accepts the following variables:
+    <Aside type="note">
+      The pre-built binary includes the `state-store-query` feature for DynamoDB-backed query state persistence.
+    </Aside>
 
-   | Variable              | Purpose                         | Default              |
-   | --------------------- | ------------------------------- | -------------------- |
-   | `FUNCTION_NAME`       | Lambda function name            | `embucket-lambda`    |
-   | `ENV_FILE`            | Environment file path           | `config/.env.lambda` |
-   | `AWS_LAMBDA_ROLE_ARN` | Execution role ARN              | unset                |
-   | `FEATURES`            | Cargo features, comma-separated | unset                |
-   | `LAYERS`              | Additional Lambda layer ARNs    | unset                |
-   | `WITH_OTEL_CONFIG`    | OpenTelemetry collector config  | unset                |
+    Create the Lambda function:
 
-4. ### Verify the deployment
+    ```bash
+    aws lambda create-function \
+      --function-name embucket-lambda \
+      --runtime provided.al2023 \
+      --architectures arm64 \
+      --handler bootstrap \
+      --zip-file fileb://embucket-lambda-latest.zip \
+      --role arn:aws:iam::123456789012:role/embucket-lambda-role \
+      --memory-size 3008 \
+      --timeout 30 \
+      --environment "Variables={METASTORE_CONFIG=config/metastore.yaml,LOG_FORMAT=json,TRACING_LEVEL=debug,RUST_LOG=info}"
+    ```
 
-   Run the verification command:
+    Replace the role ARN with your own execution role.
 
-   ```bash
-   make -C crates/embucket-lambda verify
-   ```
+    To update an existing function:
 
-   This runs `snow sql -c lambda -q "SELECT 1 as test_column"` to confirm the Lambda function responds to queries.
+    ```bash
+    aws lambda update-function-code \
+      --function-name embucket-lambda \
+      --zip-file fileb://embucket-lambda-latest.zip
+    ```
 
-   To tail CloudWatch logs:
+  </TabItem>
+</Tabs>
 
-   ```bash
-   make -C crates/embucket-lambda logs
-   ```
+## Step 4: Verify the deployment
 
-   For HTTP-level validation, send a login request directly with `curl`:
+For HTTP-level validation, send a login request directly with `curl`:
 
-   ```bash
-   curl -X POST https://FUNCTION_URL.lambda-url.us-east-2.on.aws/session/v1/login-request \
-     -H "Content-Type: application/json" \
-     -d '{"data": {"ACCOUNT_NAME": "account", "LOGIN_NAME": "embucket", "PASSWORD": "embucket", "CLIENT_APP_ID": "test"}}'
-   ```
+```bash
+curl -X POST https://FUNCTION_URL.lambda-url.us-east-2.on.aws/session/v1/login-request \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"ACCOUNT_NAME": "account", "LOGIN_NAME": "embucket", "PASSWORD": "embucket", "CLIENT_APP_ID": "test"}}'
+```
 
-   Replace `FUNCTION_URL` with your actual Lambda function URL.
+Replace `FUNCTION_URL` with your actual Lambda function URL.
 
-</Steps>
+To tail CloudWatch logs:
 
-## IAM and access
+```bash
+aws logs tail /aws/lambda/embucket-lambda --since 5m --follow
+```
 
-Three separate permission concerns apply to an Embucket Lambda deployment.
+## IAM permissions
 
-**Deployer permissions** -- The identity that runs `cargo lambda deploy` needs permission to create and update Lambda functions. This is the IAM user or role you use locally with the AWS CLI.
+You need separate IAM policies for the identity that deploys the function and for the Lambda execution role.
 
-**Execution role** -- The Lambda function itself needs an IAM execution role with access to S3 and S3 Tables. Attach a policy that allows `s3tables:*` and `s3:*` on the relevant resources. You specify this role with the `AWS_LAMBDA_ROLE_ARN` variable during deployment.
+### Deployer permissions
 
-**Client invoke** -- Users who connect through dbt-embucket need `lambda:InvokeFunctionUrl` or `lambda:InvokeFunction` permission on the function ARN. Grant this permission in the client's IAM policy.
+The identity that runs `cargo lambda deploy` or `aws lambda create-function` needs the following permissions:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "lambda:CreateFunction",
+    "lambda:UpdateFunctionCode",
+    "lambda:UpdateFunctionConfiguration",
+    "lambda:GetFunction",
+    "lambda:TagResource",
+    "lambda:CreateFunctionUrlConfig",
+    "lambda:UpdateFunctionUrlConfig",
+    "lambda:GetFunctionUrlConfig",
+    "lambda:AddPermission",
+    "logs:CreateLogGroup",
+    "iam:PassRole"
+  ],
+  "Resource": "*"
+}
+```
+
+<Aside type="tip">
+  Scope `Resource` to specific function ARNs and the execution role ARN for least-privilege access.
+</Aside>
+
+### Lambda execution role
+
+Attach policies that grant the Lambda function access to the services it uses. The required permissions depend on your volume type and whether you enable the state store.
+
+**S3 Tables permissions (for `s3tables` volume type):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3tables:GetTableBucket",
+    "s3tables:ListTableBuckets",
+    "s3tables:ListNamespaces",
+    "s3tables:GetNamespace",
+    "s3tables:ListTables",
+    "s3tables:GetTable",
+    "s3tables:GetTableMetadata",
+    "s3tables:PutTableMetadata",
+    "s3tables:CreateTable",
+    "s3tables:DeleteTable"
+  ],
+  "Resource": "arn:aws:s3tables:*:123456789012:bucket/*"
+}
+```
+
+**S3 permissions (for `s3` volume type):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:GetObject",
+    "s3:PutObject",
+    "s3:DeleteObject",
+    "s3:ListBucket",
+    "s3:HeadObject",
+    "s3:HeadBucket"
+  ],
+  "Resource": ["arn:aws:s3:::your-bucket", "arn:aws:s3:::your-bucket/*"]
+}
+```
+
+**DynamoDB permissions (when state store is enabled):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "dynamodb:PutItem",
+    "dynamodb:GetItem",
+    "dynamodb:DeleteItem",
+    "dynamodb:Query",
+    "dynamodb:UpdateItem"
+  ],
+  "Resource": "arn:aws:dynamodb:*:123456789012:table/embucket-statestore*"
+}
+```
+
+**CloudWatch Logs permissions:**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+  "Resource": "arn:aws:logs:*:123456789012:log-group:/aws/lambda/embucket-lambda:*"
+}
+```
+
+**X-Ray permissions (optional, for tracing):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
+  "Resource": "*"
+}
+```
+
+### Client invoke
+
+Users who connect through dbt-embucket need `lambda:InvokeFunctionUrl` or `lambda:InvokeFunction` permission on the function ARN. Grant this permission in the client's IAM policy.
 
 ## Lambda sizing
 

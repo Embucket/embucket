@@ -31,7 +31,7 @@ Before you begin, make sure you have the following:
 
 <Steps>
 
-1. ### Find your configuration file
+1. **Find your configuration file**
 
    Run the following command to locate your Snowflake CLI configuration file:
 
@@ -55,7 +55,7 @@ Before you begin, make sure you have the following:
    password = "embucket"
    ```
 
-2. ### Test the connection
+2. **Test the connection**
 
    Verify that the Snowflake CLI can reach your Embucket instance:
 
@@ -80,7 +80,7 @@ Before you begin, make sure you have the following:
    +--------------------------------------------------------+
    ```
 
-3. ### Run a query
+3. **Run a query**
 
    Execute a SQL query through the Snowflake CLI:
 
@@ -102,9 +102,9 @@ Before you begin, make sure you have the following:
 
 ## Troubleshooting
 
-| Problem                 | Solution                                                                                                         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Protocol or TLS errors  | Set `protocol = "http"` in your connection block. Embucket does not require TLS for local connections.           |
-| Authentication failures | Use `embucket` for both the `user` and `password` fields.                                                        |
-| Connection refused      | Confirm that your Docker container is running and listening on port 3000.                                        |
-| No data returned        | Configure a metastore so Embucket can access your data. See [Configuration](/deploy/configuration/) for details. |
+| Problem                 | Solution                                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Protocol or TLS errors  | Set `protocol = "http"` in your connection block. Embucket does not require TLS for local connections.                  |
+| Authentication failures | Use `embucket` for both the `user` and `password` fields.                                                               |
+| Connection refused      | Confirm that your Docker container is running and listening on port 3000.                                               |
+| No data returned        | Configure a metastore so Embucket can access your data. See [Configuration](/configuration/configuration/) for details. |

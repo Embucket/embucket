@@ -25,7 +25,7 @@ Before you begin, make sure you have the following:
 
 <Steps>
 
-1. ### Install the adapter
+1. **Install the adapter**
 
    Install the `dbt-embucket` adapter from PyPI:
 
@@ -33,7 +33,7 @@ Before you begin, make sure you have the following:
    python -m pip install dbt-embucket
    ```
 
-2. ### Create a minimal project
+2. **Create a minimal project**
 
    Create a project directory with a model:
 
@@ -64,7 +64,7 @@ Before you begin, make sure you have the following:
    select 1 as id, 'hello embucket' as message
    ```
 
-3. ### Configure the profile
+3. **Configure the profile**
 
    Add the following block to your `profiles.yml` file:
 
@@ -89,7 +89,7 @@ Before you begin, make sure you have the following:
    export EMBUCKET_FUNCTION_ARN=arn:aws:lambda:us-east-2:123456789012:function:embucket-lambda
    ```
 
-   #### Profile field reference
+   **Profile field reference**
 
    | Field          | Required | Description                        |
    | -------------- | -------- | ---------------------------------- |
@@ -102,7 +102,7 @@ Before you begin, make sure you have the following:
    | `schema`       | Yes      | Target schema name.                |
    | `threads`      | Yes      | Number of concurrent dbt threads.  |
 
-4. ### Check the connection
+4. **Check the connection**
 
    Verify that dbt can reach the Lambda function:
 
@@ -117,7 +117,7 @@ Before you begin, make sure you have the following:
    All checks passed!
    ```
 
-5. ### Run a model
+5. **Run a model**
 
    Build the example model:
 
@@ -127,12 +127,12 @@ Before you begin, make sure you have the following:
 
    dbt compiles and runs the `hello_embucket` model against Embucket.
 
-6. ### Verify the result
+6. **Verify the result**
 
-   Query the model output with the Snowflake CLI:
+   Query the model output with `dbt show`:
 
    ```bash
-   snow sql -c lambda -q "select * from demo.public.hello_embucket"
+   dbt show --inline "select * from demo.public.hello_embucket"
    ```
 
    The query returns the following result:
@@ -145,7 +145,7 @@ Before you begin, make sure you have the following:
    +----+----------------+
    ```
 
-   <Aside type="tip">The adapter talks to Lambda by ARN. No public Function URL is needed.</Aside>
+   <Aside type="tip">The adapter talks to Lambda by ARN. No public endpoint is needed.</Aside>
 
 </Steps>
 

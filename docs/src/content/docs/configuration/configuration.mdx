@@ -2,10 +2,10 @@
 title: Configuration
 description: Environment variables, flags, and metastore settings for Embucket.
 sidebar:
-  order: 1
+  order: 0
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
 This page covers every configuration option for Embucket, including CLI flags, environment variables, metastore YAML, and deploy-time settings. It does not cover connection setup for clients such as the Snowflake CLI or dbt.
 
@@ -38,6 +38,11 @@ When the same setting appears at more than one level, the higher-priority source
 
 ## Metastore configuration
 
+Embucket supports two ways to configure the metastore: a YAML configuration file or environment variables. The YAML file supports multiple volumes and full schema/table definitions. Environment variables configure a single volume and are useful for simple deployments.
+
+<Tabs>
+  <TabItem label="YAML file">
+
 Set `METASTORE_CONFIG` to the path of a YAML file that defines volumes, databases, schemas, and tables. Embucket reads this file at startup and registers every declared object.
 
 A minimal configuration with no external volumes:
@@ -46,9 +51,7 @@ A minimal configuration with no external volumes:
 volumes: []
 ```
 
-### S3 Tables volume
-
-The following example registers an S3 Tables volume with access-key credentials:
+**S3 Tables volume:**
 
 ```yaml
 volumes:
@@ -62,9 +65,7 @@ volumes:
     arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
 ```
 
-### External Iceberg tables on S3
-
-The following example mounts an S3 bucket as a volume and registers existing Iceberg tables by their metadata location:
+**External Iceberg tables on S3:**
 
 ```yaml
 volumes:
@@ -91,6 +92,47 @@ tables:
     table: customer
     metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/customer/metadata/00001.metadata.json
 ```
+
+  </TabItem>
+  <TabItem label="Environment variables">
+
+Set the following environment variables to configure a single volume without a YAML file. When `VOLUME_TYPE` is set, Embucket uses these variables instead of `METASTORE_CONFIG`.
+
+| Variable          | Purpose                                        | Default    |
+| ----------------- | ---------------------------------------------- | ---------- |
+| `VOLUME_TYPE`     | Storage backend: `s3tables`, `s3`, or `memory` | unset      |
+| `VOLUME_IDENT`    | Volume identifier                              | `embucket` |
+| `VOLUME_DATABASE` | Database name to associate with the volume     | unset      |
+
+**For S3 Tables (`VOLUME_TYPE=s3tables`):**
+
+| Variable                   | Purpose                         |
+| -------------------------- | ------------------------------- |
+| `VOLUME_ARN`               | S3 Tables bucket ARN (required) |
+| `VOLUME_ACCESS_KEY`        | AWS access key ID               |
+| `VOLUME_SECRET_KEY`        | AWS secret access key           |
+| `VOLUME_AWS_SESSION_TOKEN` | AWS session token (optional)    |
+
+**For S3 (`VOLUME_TYPE=s3`):**
+
+| Variable            | Purpose                          |
+| ------------------- | -------------------------------- |
+| `VOLUME_ACCESS_KEY` | AWS access key ID (required)     |
+| `VOLUME_SECRET_KEY` | AWS secret access key (required) |
+
+Example for S3 Tables:
+
+```bash
+export VOLUME_TYPE=s3tables
+export VOLUME_IDENT=embucket
+export VOLUME_DATABASE=demo
+export VOLUME_ARN=arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+export VOLUME_ACCESS_KEY=YOUR_ACCESS_KEY
+export VOLUME_SECRET_KEY=YOUR_SECRET_KEY
+```
+
+  </TabItem>
+</Tabs>
 
 ## Statestore settings
 
