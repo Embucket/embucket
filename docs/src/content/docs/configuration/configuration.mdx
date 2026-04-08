@@ -38,7 +38,7 @@ When the same setting appears at more than one level, the higher-priority source
 
 ## Metastore configuration
 
-Embucket supports two ways to configure the metastore: a YAML configuration file or environment variables. The YAML file supports multiple volumes and full schema/table definitions. Environment variables configure a single volume and are useful for simple deployments.
+Embucket supports two ways to configure the metastore: a YAML configuration file or environment variables. The YAML file supports many volumes and full schema/table definitions. Environment variables configure a single volume and are useful for simple deployments.
 
 <Tabs>
   <TabItem label="YAML file">
@@ -96,7 +96,7 @@ tables:
   </TabItem>
   <TabItem label="Environment variables">
 
-Set the following environment variables to configure a single volume without a YAML file. When `VOLUME_TYPE` is set, Embucket uses these variables instead of `METASTORE_CONFIG`.
+Set the following environment variables to configure a single volume without a YAML file. When you set `VOLUME_TYPE`, Embucket uses these variables instead of `METASTORE_CONFIG`.
 
 | Variable          | Purpose                                        | Default    |
 | ----------------- | ---------------------------------------------- | ---------- |
@@ -136,7 +136,7 @@ export VOLUME_SECRET_KEY=YOUR_SECRET_KEY
 
 ## Statestore settings
 
-When the `state-store-query` feature is enabled, Embucket persists query state in DynamoDB. See [AWS Lambda deployment](/deploy/aws-lambda/) for how to enable this feature. Configure the table name and connection with the following variables.
+When you enable the `state-store-query` feature, Embucket persists query state in DynamoDB. See [AWS Lambda deployment](/deploy/aws-lambda/) for how to enable this feature. Configure the table name and connection with the following variables.
 
 | Environment variable               | Default               |
 | ---------------------------------- | --------------------- |

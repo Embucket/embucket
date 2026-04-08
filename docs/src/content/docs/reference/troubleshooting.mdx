@@ -69,7 +69,7 @@ If data still does not appear, confirm that the credentials and resource ARNs in
 When a Lambda deployment succeeds but queries fail at runtime, check the following items in order:
 
 1. **Metastore config** -- Verify that `METASTORE_CONFIG` points to the packaged `metastore.yaml` file inside the Lambda deployment artifact.
-2. **Memory and timeout** -- Confirm that the Lambda function has sufficient memory (default is 3008 MB) and an appropriate timeout (default is 30 seconds).
+2. **Memory and timeout** -- Confirm that the Lambda function has enough memory (default is 3008 MB) and an appropriate timeout (default is 30 seconds).
 3. **CloudWatch logs** -- Open the log group for your Lambda function and look for error messages that identify the root cause.
 4. **Ingress path** -- Confirm that the ingress path matches the client path. Use a Function URL for the Snowflake CLI and direct Lambda invoke for dbt.
 
@@ -90,8 +90,8 @@ If `dbt debug` fails, work through the following checklist:
 Run `dbt debug` after each change to isolate the issue. Also check the following:
 
 - The AWS credential chain resolves to the correct identity.
-- The ARN region matches the region where the Lambda function is deployed.
-- The Lambda function is deployed and reachable.
+- The ARN region matches the region where you deployed the Lambda function.
+- The Lambda function exists and responds to requests.
 - The demo credentials in your profile match the values configured on the Lambda function.
 
 ## dbt runs but model doesn't appear
@@ -121,7 +121,7 @@ This is a compatibility workaround. The script modifies package files to accept 
 
 ## Sessions feel short-lived
 
-Embucket issues JWT tokens with a 3-day lifetime. However, sessions expire after 60 seconds of inactivity. This means interactive sessions may appear to disconnect if you pause between queries.
+Embucket issues JWT tokens with a 3-day lifetime. Sessions expire after 60 seconds of inactivity, so interactive sessions may appear to disconnect if you pause between queries.
 
 For long-running workflows, use automated tools like dbt rather than interactive sessions. The dbt adapter handles authentication and session management automatically.
 

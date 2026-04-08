@@ -51,3 +51,7 @@ bootable
 APIs?
 ARNs?
 [Dd]eployers?
+CLI
+[Ss]tatestore
+GitLab
+[Oo]pen-source

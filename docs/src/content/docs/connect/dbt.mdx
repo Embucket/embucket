@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-[dbt](https://docs.getdbt.com/) is a SQL-first transformation tool for analytics engineering. The `dbt-embucket` adapter connects to Embucket by invoking the Lambda function directly through AWS APIs, so no public endpoint is required.
+[dbt](https://docs.getdbt.com/) is a SQL-first transformation tool for analytics engineering. The `dbt-embucket` adapter connects to Embucket by invoking the Lambda function directly through AWS APIs, so no public endpoint is necessary.
 
 ## Prerequisites
 
@@ -145,7 +145,7 @@ Before you begin, make sure you have the following:
    +----+----------------+
    ```
 
-   <Aside type="tip">The adapter talks to Lambda by ARN. No public endpoint is needed.</Aside>
+   <Aside type="tip">The adapter talks to Lambda by ARN. You do not need a public endpoint.</Aside>
 
 </Steps>
 

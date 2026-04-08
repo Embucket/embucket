@@ -237,7 +237,7 @@ Attach policies that grant the Lambda function access to the services it uses. T
 }
 ```
 
-**DynamoDB permissions (when state store is enabled):**
+**DynamoDB permissions (when you enable the state store):**
 
 ```json
 {
@@ -279,9 +279,9 @@ Users who connect through dbt-embucket need `lambda:InvokeFunctionUrl` or `lambd
 
 ## Lambda sizing
 
-The default configuration sets memory to 3008 MB and timeout to 30 seconds. Tracing is set to `Active` by default.
+The default configuration sets memory to 3008 MB and timeout to 30 seconds. Tracing defaults to `Active`.
 
-3008 MB is the standard Lambda maximum. To increase memory beyond this limit (up to 10 GB), submit an AWS support ticket.
+3008 MB is the standard Lambda limit. To increase memory beyond this cap (up to 10 GB), submit an AWS support ticket.
 
 Override memory and timeout through the AWS Console or the `aws lambda update-function-configuration` command.
 
@@ -377,8 +377,8 @@ After removing the function URL, delete the following resources if they are no l
 
 **Deploy succeeds but queries fail** -- Check that the `METASTORE_CONFIG` environment variable points to a valid `metastore.yaml` and that the credentials and ARN inside the file are correct.
 
-**dbt cannot connect** -- Verify that the client's AWS credentials have `lambda:InvokeFunction` permission on the function ARN. Confirm that `EMBUCKET_FUNCTION_ARN` is set correctly in your dbt profile.
+**dbt cannot connect** -- Verify that the client's AWS credentials have `lambda:InvokeFunction` permission on the function ARN. Confirm that your dbt profile sets `EMBUCKET_FUNCTION_ARN` correctly.
 
 **Timeouts on large queries** -- Review the Lambda timeout and memory settings. Increase the timeout with `cargo lambda deploy` flags or through the AWS Console. Request a memory increase through AWS Support if you need more than 3008 MB.
 
-**No traces or logs** -- Verify that `RUST_LOG` and `TRACING_LEVEL` are set in your environment file. If you use OpenTelemetry, confirm that `WITH_OTEL_CONFIG` points to a valid collector config and that the OTEL exporter endpoint is reachable.
+**No traces or logs** -- Verify that your environment file defines `RUST_LOG` and `TRACING_LEVEL`. If you use OpenTelemetry, confirm that `WITH_OTEL_CONFIG` points to a valid collector config and that the OTEL exporter endpoint is reachable.
