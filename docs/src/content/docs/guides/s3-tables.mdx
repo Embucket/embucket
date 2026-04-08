@@ -1,11 +1,14 @@
 ---
 title: AWS S3 table bucket
-description: Store and query your data using AWS S3 table buckets with Embucket for enhanced table management capabilities.
+description: Configure Embucket to read catalog metadata from an AWS S3 table bucket.
 ---
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
-This guide walks you through configuring AWS S3 table buckets as an external catalog in Embucket. Currently, Embucket supports S3 table buckets as the sole external catalog. AWS S3 table buckets provide built-in table maintenance, automatic compaction, and optimization features.
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+Use this guide when you want Embucket to read catalog metadata from AWS S3 Tables. In the current docs set, S3 table buckets are the documented external catalog path.
 
 ## What you'll learn
 
@@ -17,15 +20,6 @@ Follow this guide to:
 - Create tables and load data using familiar SQL commands
 - Verify table creation and query data through AWS Console
 
-## What this guide covers
-
-This guide covers basic setup and usage of S3 table buckets with Embucket. Advanced table maintenance features, cross-region replication, and enterprise security configurations fall outside the scope of this guide.
-
-<Aside type="note">
-  S3 table buckets offer built-in table maintenance, automatic compaction, and optimization
-  features.
-</Aside>
-
 ## Prerequisites
 
 Before you begin, verify you have:
@@ -34,14 +28,7 @@ Before you begin, verify you have:
 - Embucket instance running locally or in your environment
 - Valid AWS credentials with S3 Tables service permissions
 
-## Understanding AWS S3 table buckets
-
-AWS designed S3 table buckets specifically for tabular data storage. They provide:
-
-- **Automatic optimization**: Built-in compaction and file organization
-- **Schema enforcement**: Native support for table schemas and metadata
-- **Query performance**: Optimized for analytical workloads
-- **AWS integration**: Seamless integration with Athena, Glue, and other AWS services
+S3 table buckets map naturally to the current Embucket external catalog flow: one bucket ARN maps to one configured database.
 
 <Aside type="caution">
   Each S3 table bucket in Embucket maps to exactly one database. You specify the database name in
@@ -251,3 +238,4 @@ Verify table creation and query your data directly through AWS services:
 Now that you have S3 table buckets working with Embucket, consider:
 
 - **Integration**: Connect BI tools and data pipelines to your Embucket instance
+- **Analytics example**: If you want a fuller dbt-based workflow on Lambda, read [Snowplow web analytics](/guides/snowplow/)
