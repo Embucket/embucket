@@ -46,3 +46,5 @@ hardcoded
 hardcode
 unpatched
 deployer
+anonymized
+bootable
