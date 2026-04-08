@@ -14,7 +14,7 @@ Use this guide when you want the current serverless runtime. The runtime artifac
 
 <Aside type="tip">
   The recommended client path on Lambda is [dbt](/guides/dbt/). The Snowflake command-line tool over
-  a Function URL is useful for validation, but it is not the recommended production-facing path.
+  a Function URL helps with validation, but this path is not the recommended production-facing path.
 </Aside>
 
 ## Prerequisites
@@ -158,7 +158,7 @@ The current repo supports this as a test path.
 
 <Aside type="caution">
   A public Function URL is convenient for validation, but the current docs should not call it
-  production-ready because it is publicly accessible.
+  production-ready because the URL stays public.
 </Aside>
 
 ## Step 4: Recommended production-facing ingress
@@ -215,7 +215,7 @@ Before you treat a Lambda deployment as rollout-ready, check:
 The repo does not ship a one-command rollback wrapper, so the safest current guidance is operationally simple:
 
 1. keep the previous env file and metastore config under version control
-2. keep the previously known-good deployment inputs
+2. keep the last known-good deployment inputs
 3. redeploy the function with the previous config if a change regresses behavior
 4. re-run the same verification command you used before the change
 
