@@ -10,16 +10,16 @@ import { Aside } from '@astrojs/starlight/components';
 > Owner: Embucket maintainers  
 > Last reviewed: 2026-04-07
 
-Use this page when the documented path does not behave as expected.
+Use this page when the documented path doesn't behave as expected.
 
-## Local startup succeeds, but the browser step does not work
+## Local startup succeeds, but the browser step doesn't work
 
 Use port `3000` for the current local runtime.
 
 - start command: `docker run --name embucket --rm -p 3000:3000 embucket/embucket`
 - current browser-visible HTTP surface: `http://127.0.0.1:3000/`
 
-If you were expecting a separate default UI on port `8080`, treat that as stale guidance.
+If you expected a separate default UI on port `8080`, treat that as stale guidance.
 
 If you started the local runtime from source instead of Docker, follow [Self-hosted local binary](/guides/self-hosted/) to confirm the build, env file, and startup command.
 
@@ -31,18 +31,18 @@ Set the connection protocol explicitly:
 protocol = "http"
 ```
 
-The local quick start and current Snowflake command-line tool guide both assume the local endpoint is plain HTTP on port `3000`.
+The local quick start and current Snowflake command-line tool guide both describe the local endpoint as plain HTTP on port `3000`.
 
 ## Authentication fails locally
 
-The default demo credentials are:
+Use these default demo credentials:
 
 - user: `embucket`
 - password: `embucket`
 
 If you overrode `AUTH_DEMO_USER` or `AUTH_DEMO_PASSWORD`, update your client config to match.
 
-## Snowflake command-line tool connects, but data does not appear
+## Snowflake command-line tool connects, but data doesn't appear
 
 The runtime only exposes what you configure.
 
@@ -62,9 +62,9 @@ For current public docs, use:
 
 Treat `embucket-labs` references in current docs as legacy drift unless a page explicitly calls out migration or historical context.
 
-## Lambda works with the Snowflake command-line tool, but public access is a problem
+## Lambda works with the Snowflake command-line tool, but public access creates a problem
 
-That concern is valid. The current docs treat Function URLs as a test path, not the production-ready ingress path.
+That concern makes sense. The current docs treat Function URLs as a test path, not the production-ready ingress path.
 
 Use a private API gateway layer in front of the Lambda instead. The [AWS Lambda](/guides/aws-lambda/) guide includes an anonymized private API Gateway example you can adapt.
 
@@ -79,7 +79,7 @@ Check these in order:
 
 If you recently changed env vars or metastore config, redeploy with the last known-good inputs and check again.
 
-## dbt cannot connect
+## dbt can't connect
 
 Start with these checks:
 
@@ -101,7 +101,7 @@ If `dbt debug` still fails, also check:
 - deploy the target Lambda and confirm the function responds
 - the Lambda-side demo credentials still match the values in your profile
 
-## dbt runs, but the model is missing
+## dbt runs, but the model doesn't appear
 
 Check the exact target database and schema from your profile.
 
@@ -111,15 +111,15 @@ For the minimal example in the docs, verify with:
 snow sql -c lambda -q "select * from demo.public.hello_embucket"
 ```
 
-If the object is missing, check whether the Lambda-side metastore and the dbt target schema point at the same location.
+If the object goes missing, check whether the Lambda-side metastore and the dbt target schema point at the same location.
 
-If you are following the larger example workflow, continue with [Snowplow web analytics](/guides/snowplow/) and verify the derived tables with `dbt show`.
+If you follow the larger example workflow, continue with [Snowplow web analytics](/guides/snowplow/) and verify the derived tables with `dbt show`.
 
 ## Snowplow package checks fail on `target.type`
 
-Some dbt packages assume `target.type == 'snowflake'` and do not recognize `embucket` yet.
+Some dbt packages assume `target.type == 'snowflake'` and don't recognize `embucket` yet.
 
-If you are following the official Snowplow example, use the patch step documented in [Snowplow web analytics](/guides/snowplow/). Treat that as a compatibility workaround, not as a default step for every dbt workload.
+If you follow the official Snowplow example, use the patch step documented in [Snowplow web analytics](/guides/snowplow/). Treat that as a compatibility workaround, not as a default step for every dbt workload.
 
 ## Sessions or auth feel short-lived
 

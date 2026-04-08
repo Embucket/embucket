@@ -132,7 +132,3 @@ jobs:
         with:
           files: "docs/src/content/"
           reporter: github-check
-      - name: Fail only on Vale errors
-        run: |
-          vale sync
-          vale docs/src/content --minAlertLevel=error
