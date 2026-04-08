@@ -123,13 +123,6 @@ This is a compatibility workaround. The script modifies package files to accept 
 
 Embucket issues JWT tokens with a 3-day lifetime. However, sessions expire after 60 seconds of inactivity. This means interactive sessions may appear to disconnect if you pause between queries.
 
-For long-running workflows, use automated client paths like dbt rather than interactive sessions. The dbt adapter handles authentication and session management automatically.
-
-## Legacy embucket-labs references
-
-The project has moved from the `embucket-labs` namespace. Use the following current references:
-
-- **Container image**: `embucket/embucket`
-- **Lambda artifact**: `embucket-lambda`
+For long-running workflows, use automated tools like dbt rather than interactive sessions. The dbt adapter handles authentication and session management automatically.
 
 Treat any `embucket-labs` references in older documentation, scripts, or configuration files as outdated.
