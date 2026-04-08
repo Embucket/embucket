@@ -1,0 +1,161 @@
+---
+title: Snowplow web analytics
+description: Run the embucket-snowplow example on the documented AWS Lambda plus dbt path.
+sidebar:
+  order: 5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+Use this guide when you want a fuller analytics example on top of the documented AWS Lambda + `dbt-embucket` workflow. This guide follows the public `Embucket/embucket-snowplow` repository.
+
+<Aside type="tip">
+  This is an example workflow built on the current recommended runtime and client path. Start with
+  [AWS Lambda](/guides/aws-lambda/) and [dbt](/guides/dbt/) if you want the smaller building blocks
+  first.
+</Aside>
+
+## What success looks like
+
+By the end of this guide, you should be able to:
+
+- deploy the Snowplow example runtime path on Lambda
+- run `dbt run` successfully
+- inspect derived results with `dbt show`
+
+## Prerequisites
+
+- AWS credentials
+- an AWS S3 Table Bucket ARN
+- `uv` or a Python environment that can run the example project
+- Git
+
+## Step 1: Clone the example repo
+
+```bash
+git clone https://github.com/Embucket/embucket-snowplow.git
+cd embucket-snowplow
+```
+
+This example is designed to run without a Snowflake account.
+
+## Step 2: Set deploy-time values
+
+Set the stack name and S3 Table Bucket ARN:
+
+```bash
+STACK_NAME="embucket-demo-$(whoami)-$(date +%s)"
+BUCKET_ARN="arn:aws:s3tables:us-east-2:YOUR_ACCOUNT:bucket/YOUR_BUCKET"
+```
+
+Use your own deployment values here. Database, schema, credentials, and the Lambda ARN are all deployment-defined in this flow.
+
+## Step 3: Deploy the Lambda stack
+
+```bash
+aws cloudformation deploy \
+  --template-file deploy/embucket-lambda.cfn.yaml \
+  --stack-name "$STACK_NAME" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides S3TableBucketArn="$BUCKET_ARN"
+```
+
+Capture the Lambda ARN after deploy:
+
+```bash
+LAMBDA_ARN=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+  --query 'Stacks[0].Outputs[?OutputKey==`LambdaFunctionArn`].OutputValue' \
+  --output text)
+echo "$LAMBDA_ARN"
+```
+
+## Step 4: Install dependencies
+
+```bash
+uv sync
+```
+
+## Step 5: Configure the dbt profile
+
+Start from the example profile:
+
+```bash
+cp profiles.yml.example profiles.yml
+sed -i '' "s|YOUR_LAMBDA_ARN_HERE|$LAMBDA_ARN|" profiles.yml
+```
+
+Review the profile values before you run dbt. Credentials, database, and schema should match your deployment choices rather than a hardcoded docs default.
+
+## Step 6: Install dbt packages
+
+```bash
+uv run dbt deps --profiles-dir .
+```
+
+## Step 7: Patch only if package checks require it
+
+Some dbt packages check `target.type == 'snowflake'` and do not recognize `embucket` yet.
+
+If your package has that kind of target-type check, run the example patch script:
+
+```bash
+./scripts/patch_snowplow.sh
+```
+
+Treat this as a **compatibility workaround**. If your package already supports `embucket` or does not hardcode `snowflake` checks, prefer the unpatched path.
+
+## Step 8: Load the example source data
+
+```bash
+uv run python scripts/load_data.py "$LAMBDA_ARN"
+```
+
+The example loader creates the required schemas and source tables for the Snowplow workflow.
+
+## Step 9: Run the pipeline
+
+```bash
+uv run dbt seed --profiles-dir .
+uv run dbt run --profiles-dir .
+```
+
+This is the primary success signal for the example workflow.
+
+## Step 10: Verify the results with `dbt show`
+
+Run `dbt show` against one of the derived relations produced by your deployment.
+
+For the official example layout, start with:
+
+```bash
+uv run dbt show --profiles-dir . --inline "SELECT * FROM demo.atomic_derived.snowplow_web_page_views" --limit 10
+```
+
+You can repeat that for other derived relations, for example:
+
+```bash
+uv run dbt show --profiles-dir . --inline "SELECT * FROM demo.atomic_derived.snowplow_web_sessions" --limit 10
+uv run dbt show --profiles-dir . --inline "SELECT * FROM demo.atomic_derived.snowplow_web_users" --limit 10
+```
+
+If your deployment uses different database or schema names, update the relation names accordingly.
+
+## Cleanup
+
+Delete the CloudFormation stack when you are done:
+
+```bash
+aws cloudformation delete-stack --stack-name "$STACK_NAME"
+```
+
+The example repo notes that this does not remove data from your S3 Table Bucket automatically.
+
+## Related guides
+
+- [AWS Lambda](/guides/aws-lambda/)
+- [dbt](/guides/dbt/)
+- [End-to-end dbt workflow](/guides/end-to-end-dbt/)
+- [Troubleshooting](/guides/troubleshooting/)
