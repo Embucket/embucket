@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Embucket runs as an AWS Lambda function that uses S3 Tables (Apache Iceberg) for storage. This guide walks you through the full deployment, from creating your S3 table bucket to verifying a working query.
+Embucket runs as an AWS Lambda function that uses S3 Tables with Apache Iceberg for storage. This guide walks you through the full deployment, from creating your S3 table bucket to verifying a working query.
 
 ## Prerequisites
 
@@ -83,7 +83,9 @@ Save the bucket name, region, and ARN. You need these values in the next step.
 
 <Tabs>
   <TabItem label="Build from source">
-    Install the Rust toolchain and [cargo-lambda](https://www.cargo-lambda.info/guide/installation.html). Build and deploy:
+    Install the Rust toolchain and [cargo-lambda][cargo-lambda-install]. Build and deploy:
+
+[cargo-lambda-install]: https://www.cargo-lambda.info/guide/installation.html
 
     ```bash
     cargo lambda build --release -p embucket-lambda --arm64 -o zip
@@ -199,7 +201,7 @@ The identity that runs `cargo lambda deploy` or `aws lambda create-function` nee
 
 Attach policies that grant the Lambda function access to the services it uses. The required permissions depend on your volume type and whether you enable the state store.
 
-**S3 Tables permissions (for `s3tables` volume type):**
+**S3 Tables permissions -- for the `s3tables` volume type:**
 
 ```json
 {
@@ -220,7 +222,7 @@ Attach policies that grant the Lambda function access to the services it uses. T
 }
 ```
 
-**S3 permissions (for `s3` volume type):**
+**S3 permissions -- for the `s3` volume type:**
 
 ```json
 {
@@ -237,7 +239,7 @@ Attach policies that grant the Lambda function access to the services it uses. T
 }
 ```
 
-**DynamoDB permissions (when you enable the state store):**
+**DynamoDB permissions -- required when you enable the state store:**
 
 ```json
 {
@@ -263,7 +265,7 @@ Attach policies that grant the Lambda function access to the services it uses. T
 }
 ```
 
-**X-Ray permissions (optional, for tracing):**
+**X-Ray permissions -- optional, for tracing:**
 
 ```json
 {
@@ -281,7 +283,7 @@ Users who connect through dbt-embucket need `lambda:InvokeFunctionUrl` or `lambd
 
 The default configuration sets memory to 3008 MB and timeout to 30 seconds. Tracing defaults to `Active`.
 
-3008 MB is the standard Lambda limit. To increase memory beyond this cap (up to 10 GB), submit an AWS support ticket.
+3008 MB represents the standard Lambda limit. To increase memory beyond this cap, up to 10 GB, submit an AWS support ticket.
 
 Override memory and timeout through the AWS Console or the `aws lambda update-function-configuration` command.
 
@@ -309,22 +311,26 @@ aws dynamodb create-table \
 
 Configure the state store with the following environment variables:
 
-| Variable                       | Purpose                                      | Default               |
-| ------------------------------ | -------------------------------------------- | --------------------- |
-| `STATESTORE_TABLE_NAME`        | DynamoDB table name                          | `embucket-statestore` |
-| `STATESTORE_DYNAMODB_ENDPOINT` | Custom DynamoDB endpoint (for local testing) | unset                 |
-| `AWS_DDB_ACCESS_KEY_ID`        | DynamoDB access key (optional)               | unset                 |
-| `AWS_DDB_SECRET_ACCESS_KEY`    | DynamoDB secret key (optional)               | unset                 |
-| `AWS_DDB_SESSION_TOKEN`        | DynamoDB session token (optional)            | unset                 |
+| Variable                       | Purpose                                    | Default               |
+| ------------------------------ | ------------------------------------------ | --------------------- |
+| `STATESTORE_TABLE_NAME`        | DynamoDB table name                        | `embucket-statestore` |
+| `STATESTORE_DYNAMODB_ENDPOINT` | Custom DynamoDB endpoint for local testing | unset                 |
+| `AWS_DDB_ACCESS_KEY_ID`        | DynamoDB access key                        | unset                 |
+| `AWS_DDB_SECRET_ACCESS_KEY`    | DynamoDB secret key                        | unset                 |
+| `AWS_DDB_SESSION_TOKEN`        | DynamoDB session token                     | unset                 |
 
 ## Production ingress
 
 <Aside type="caution">
-  Function URLs are acceptable for testing but not for production. For production traffic, keep the
-  Lambda private and use an API Gateway.
+  Function URLs work for testing but not for production. For production traffic, keep the Lambda
+  private and use an API Gateway.
 </Aside>
 
-The following CloudFormation skeleton provisions a private API Gateway with a VPC endpoint for `execute-api`, Lambda proxy integration, and a stage named `v1`:
+{/* vale Google.Parens = NO */}
+{/* vale Google.WordList = NO */}
+The following CloudFormation skeleton provisions a private API Gateway with a VPC (Virtual Private Cloud) endpoint for `execute-api`, Lambda proxy integration, and a stage named `v1`:
+{/* vale Google.WordList = YES */}
+{/* vale Google.Parens = YES */}
 
 ```yaml
 Parameters:
@@ -366,19 +372,19 @@ To remove the Lambda function URL:
 aws lambda delete-function-url-config --function-name embucket-lambda
 ```
 
-After removing the function URL, delete the following resources if they are no longer needed:
+After removing the function URL, delete the following resources if you no longer need them:
 
-- Lambda function (`embucket-lambda`)
-- CloudWatch log group (`/aws/lambda/embucket-lambda`)
-- API Gateway and VPC endpoint (if you created them for production ingress)
-- OpenTelemetry layers (if you deployed telemetry)
+- Lambda function -- `embucket-lambda`
+- CloudWatch log group -- `/aws/lambda/embucket-lambda`
+- API Gateway and VPC endpoint, if you created them for production ingress
+- OpenTelemetry layers, if you deployed telemetry
 
 ## Troubleshooting
 
-**Deploy succeeds but queries fail** -- Check that the `METASTORE_CONFIG` environment variable points to a valid `metastore.yaml` and that the credentials and ARN inside the file are correct.
+**Deploy succeeds but queries fail** -- Check that the `METASTORE_CONFIG` environment variable points to a valid `metastore.yaml` and that the credentials and ARN inside the file remain correct.
 
-**dbt cannot connect** -- Verify that the client's AWS credentials have `lambda:InvokeFunction` permission on the function ARN. Confirm that your dbt profile sets `EMBUCKET_FUNCTION_ARN` correctly.
+**dbt can't connect** -- Verify that the client's AWS credentials have `lambda:InvokeFunction` permission on the function ARN. Confirm that your dbt profile sets `EMBUCKET_FUNCTION_ARN` correctly.
 
 **Timeouts on large queries** -- Review the Lambda timeout and memory settings. Increase the timeout with `cargo lambda deploy` flags or through the AWS Console. Request a memory increase through AWS Support if you need more than 3008 MB.
 
-**No traces or logs** -- Verify that your environment file defines `RUST_LOG` and `TRACING_LEVEL`. If you use OpenTelemetry, confirm that `WITH_OTEL_CONFIG` points to a valid collector config and that the OTEL exporter endpoint is reachable.
+**No traces or logs** -- Verify that your environment file defines `RUST_LOG` and `TRACING_LEVEL`. If you use OpenTelemetry, confirm that `WITH_OTEL_CONFIG` points to a valid collector config and that the OTEL exporter endpoint remains reachable.

@@ -11,7 +11,7 @@ Build a complete web analytics pipeline using Embucket on AWS Lambda with the db
 
 ## What you'll build
 
-Snowplow is an open source behavioral data platform that captures granular, event-level web analytics. In this tutorial you connect Snowplow's dbt packages to Embucket and produce three derived tables:
+Snowplow provides an open source behavioral data platform that captures granular, event-level web analytics. In this tutorial you connect Snowplow's dbt packages to Embucket and produce three derived tables:
 
 - **Page views** -- aggregated metrics for each page view event.
 - **Sessions** -- session-level summaries stitched from individual events.
@@ -27,11 +27,13 @@ Before you begin, make sure you have the following:
 - Git
 
 {/* vale Vale.Terms = NO */}
+{/* vale Google.Parens = NO */}
 
 <Aside type="tip">
   If you haven't deployed Embucket to Lambda before, complete the [AWS Lambda
   deployment](/deploy/aws-lambda/) guide first.
 </Aside>
+{/* vale Google.Parens = YES */}
 {/* vale Vale.Terms = YES */}
 
 ## Tutorial

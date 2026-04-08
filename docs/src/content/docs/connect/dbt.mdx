@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-[dbt](https://docs.getdbt.com/) is a SQL-first transformation tool for analytics engineering. The `dbt-embucket` adapter connects to Embucket by invoking the Lambda function directly through AWS APIs, so no public endpoint is necessary.
+[dbt](https://docs.getdbt.com/) provides a SQL-first transformation tool for analytics engineering. The `dbt-embucket` adapter connects to Embucket by invoking the Lambda function directly through AWS APIs, so no public endpoint proves necessary.
 
 ## Prerequisites
 
@@ -18,10 +18,12 @@ Before you begin, make sure you have the following:
 - **Python 3.8 or later** and **dbt** installed on your system.
 
 {/* vale Vale.Terms = NO */}
+{/* vale Google.Parens = NO */}
 
 <Aside type="tip">
   For deployment instructions, see [AWS Lambda deployment](/deploy/aws-lambda/).
 </Aside>
+{/* vale Google.Parens = YES */}
 {/* vale Vale.Terms = YES */}
 
 ## Set up dbt with Embucket
@@ -96,7 +98,7 @@ Before you begin, make sure you have the following:
 
    | Field          | Required | Description                        |
    | -------------- | -------- | ---------------------------------- |
-   | `type`         | Yes      | Must be `embucket`.                |
+   | `type`         | Yes      | Set to `embucket`.                 |
    | `function_arn` | Yes      | ARN of the target Lambda function. |
    | `account`      | Yes      | Logical account identifier.        |
    | `user`         | Yes      | Authentication user name.          |
@@ -148,23 +150,23 @@ Before you begin, make sure you have the following:
    +----+----------------+
    ```
 
-   <Aside type="tip">The adapter talks to Lambda by ARN. You do not need a public endpoint.</Aside>
+   <Aside type="tip">The adapter talks to Lambda by ARN. You don't need a public endpoint.</Aside>
 
 </Steps>
 
 ## Caveats
 
-The adapter uses Lambda invoke transport, not a TCP connection. Python models are not supported. Use AWS credentials that can invoke the target Lambda function.
+The adapter uses Lambda invoke transport, not a TCP connection. The adapter doesn't support Python models. Use AWS credentials that can invoke the target Lambda function.
 
 ## Troubleshooting
 
-| Problem                          | Solution                                                                                              |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `profiles.yml` not found         | Check that the file exists in your dbt profiles directory. Run `dbt debug --config-dir` to locate it. |
-| `EMBUCKET_FUNCTION_ARN` missing  | Export the variable before running `dbt debug`.                                                       |
-| AWS credentials missing          | The adapter needs IAM credentials with `lambda:InvokeFunction` permission.                            |
-| Authentication failures          | Verify the `user` and `password` values in your profile.                                              |
-| Runs succeed but data is missing | Check the `database`, `schema`, and metastore configuration on the Lambda function.                   |
+| Problem                               | Solution                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `profiles.yml` not found              | Check that the file exists in your dbt profiles directory. Run `dbt debug --config-dir` to locate it. |
+| `EMBUCKET_FUNCTION_ARN` missing       | Export the variable before running `dbt debug`.                                                       |
+| AWS credentials missing               | The adapter needs IAM credentials with `lambda:InvokeFunction` permission.                            |
+| Authentication failures               | Verify the `user` and `password` values in your profile.                                              |
+| Runs succeed but data appears missing | Check the `database`, `schema`, and metastore configuration on the Lambda function.                   |
 
 ## Next step
 

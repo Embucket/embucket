@@ -55,3 +55,6 @@ CLI
 [Ss]tatestore
 GitLab
 [Oo]pen-source
+TLS
+VPC
+OTEL
