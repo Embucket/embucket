@@ -1,0 +1,172 @@
+---
+title: Snowplow web analytics
+description: Build a real-world analytics pipeline with Embucket, dbt, and Snowplow.
+sidebar:
+  order: 0
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Build a complete web analytics pipeline using Embucket on AWS Lambda with the dbt-embucket adapter. You deploy a Snowplow analytics runtime, run dbt transformations, and inspect derived analytics tables. This tutorial follows the [embucket-snowplow](https://github.com/Embucket/embucket-snowplow) repository and runs without a Snowflake account.
+
+## What you'll build
+
+Snowplow is an open source behavioral data platform that captures granular, event-level web analytics. In this tutorial you connect Snowplow's dbt packages to Embucket and produce three derived tables:
+
+- **Page views** -- aggregated metrics for each page view event.
+- **Sessions** -- session-level summaries stitched from individual events.
+- **Users** -- user-level roll-ups across all sessions.
+
+## Prerequisites
+
+Before you begin, make sure you have the following:
+
+- AWS credentials with permissions for Lambda, CloudFormation, IAM, and S3 Tables
+- An S3 Table Bucket ARN (see the [AWS Lambda deployment](/deploy/aws-lambda/) guide to create one)
+- `uv` or another Python environment manager
+- Git
+
+<Aside type="tip">
+If you haven't deployed Embucket to Lambda before, complete the [AWS Lambda deployment](/deploy/aws-lambda/) guide first.
+</Aside>
+
+## Tutorial
+
+<Steps>
+
+1. ### Clone the repository
+
+   Clone the Snowplow demo repository and change into the project directory:
+
+   ```bash
+   git clone https://github.com/Embucket/embucket-snowplow.git && cd embucket-snowplow
+   ```
+
+2. ### Set deploy values
+
+   Define a unique stack name and your S3 Table Bucket ARN:
+
+   ```bash
+   STACK_NAME="embucket-demo-$(whoami)-$(date +%s)"
+   BUCKET_ARN="arn:aws:s3tables:us-east-2:YOUR_ACCOUNT:bucket/YOUR_BUCKET"
+   ```
+
+   Replace `YOUR_ACCOUNT` and `YOUR_BUCKET` with your actual AWS account ID and bucket name.
+
+3. ### Deploy the Lambda stack
+
+   Deploy the CloudFormation stack that provisions the Lambda function:
+
+   ```bash
+   aws cloudformation deploy \
+     --template-file deploy/embucket-lambda.cfn.yaml \
+     --stack-name "$STACK_NAME" \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides S3TableBucketArn="$BUCKET_ARN"
+   ```
+
+   After the stack deploys, capture the Lambda function ARN:
+
+   ```bash
+   LAMBDA_ARN=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+     --query 'Stacks[0].Outputs[?OutputKey==`LambdaFunctionArn`].OutputValue' \
+     --output text)
+   echo "$LAMBDA_ARN"
+   ```
+
+4. ### Install dependencies
+
+   Install the Python dependencies with `uv`:
+
+   ```bash
+   uv sync
+   ```
+
+5. ### Configure the dbt profile
+
+   Copy the example profile and substitute your Lambda ARN:
+
+   ```bash
+   cp profiles.yml.example profiles.yml
+   sed -i '' "s|YOUR_LAMBDA_ARN_HERE|$LAMBDA_ARN|" profiles.yml
+   ```
+
+   <Aside type="note">
+   Review `profiles.yml` before running dbt. Confirm that the database, schema, and other connection values match your environment.
+   </Aside>
+
+6. ### Install dbt packages
+
+   Pull the Snowplow dbt packages:
+
+   ```bash
+   uv run dbt deps --profiles-dir .
+   ```
+
+7. ### Patch packages for compatibility
+
+   Run the compatibility patch script:
+
+   ```bash
+   ./scripts/patch_snowplow.sh
+   ```
+
+   <Aside type="note">
+   This script patches Snowplow dbt packages that check `target.type == 'snowflake'`. Skip this step if your packages already support the `embucket` target type.
+   </Aside>
+
+8. ### Load example data
+
+   Load sample Snowplow event data into your S3 Table Bucket:
+
+   ```bash
+   uv run python scripts/load_data.py "$LAMBDA_ARN"
+   ```
+
+9. ### Run the pipeline
+
+   Seed reference data and run the dbt transformations:
+
+   ```bash
+   uv run dbt seed --profiles-dir .
+   uv run dbt run --profiles-dir .
+   ```
+
+10. ### Verify the results
+
+    Query the derived tables to confirm the pipeline completed successfully.
+
+    View page views:
+
+    ```bash
+    uv run dbt show --profiles-dir . --inline \
+      "SELECT * FROM demo.atomic_derived.snowplow_web_page_views" --limit 10
+    ```
+
+    View sessions:
+
+    ```bash
+    uv run dbt show --profiles-dir . --inline \
+      "SELECT * FROM demo.atomic_derived.snowplow_web_sessions" --limit 10
+    ```
+
+    View users:
+
+    ```bash
+    uv run dbt show --profiles-dir . --inline \
+      "SELECT * FROM demo.atomic_derived.snowplow_web_users" --limit 10
+    ```
+
+</Steps>
+
+## Cleanup
+
+Delete the CloudFormation stack to remove all deployed resources:
+
+```bash
+aws cloudformation delete-stack --stack-name "$STACK_NAME"
+```
+
+<Aside type="caution">
+Deleting the stack removes the Lambda function and IAM role but doesn't remove data from your S3 Table Bucket. Delete the tables manually if you no longer need them.
+</Aside>
