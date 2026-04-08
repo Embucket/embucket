@@ -94,7 +94,7 @@ AWS_LAMBDA_ROLE_ARN=arn:aws:iam::123456789012:role/embucket-lambda-role make -C 
 
 ## IAM and access model
 
-There are two IAM concerns in the current deployment story:
+Two IAM concerns matter in the current deployment story:
 
 1. **deployer permissions** for the human or CI identity running `cargo lambda deploy`
 2. **execution role permissions** for the Lambda function itself
