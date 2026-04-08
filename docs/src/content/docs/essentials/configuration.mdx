@@ -1,98 +1,96 @@
 ---
 title: Configuration
-description: Configure Embucket for different deployment scenarios using environment variables or configuration files.
+description: Configure Embucket with the current source-backed flags, environment variables, and metastore settings.
+sidebar:
+  order: 2
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-This guide covers how to configure Embucket for your specific deployment needs. You can configure Embucket using environment variables, configuration files, or command-line options to control storage backends, networking, authentication, and performance settings.
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
 
-Embucket supports flexible configuration through many methods, allowing you to adapt it for development, testing, and production environments.
+This page covers the current configuration surface backed by the repository. It focuses on settings that are visible in `crates/embucketd/src/cli.rs`, plus the checked-in config examples in `config/`.
 
-## Configuration methods
+## Configuration precedence
 
-You can configure Embucket using three methods, in order of precedence:
+The current local runtime supports these configuration sources, from highest to lowest precedence:
 
-1. **Command-line arguments** - Highest precedence
-2. **Environment variables** - Medium precedence
-3. **Configuration file** `.env` - Lowest precedence
+1. command-line flags
+2. environment variables
+3. `.env` loaded at startup
 
-### Configuration file
-
-Create a `.env` file in your working directory with key-value pairs. Embucket automatically loads this file at startup.
-
-```bash
-# Basic configuration example
-METASTORE_CONFIG=config/metastore.yaml
-JWT_SECRET=your-secret-key
-```
-
-### Environment variables
-
-Set environment variables in your shell or deployment environment. Environment variables override configuration file settings.
-
-```bash
-export METASTORE_CONFIG=config/metastore.yaml
-export JWT_SECRET=your-secret-key
-```
-
-### Command-line arguments
-
-Pass configuration options directly to the `embucketd` command. Command-line arguments override both environment variables and configuration file settings.
-
-```bash
-embucketd --metastore-config config/metastore.yaml --port 3001
-```
-
-## Core settings
-
-These settings control Embucket's basic operation and most deployments need them.
-
-### Network configuration
-
-| Setting  | Environment Variable | Default     | Description                         |
-| -------- | -------------------- | ----------- | ----------------------------------- |
-| `--host` | `BUCKET_HOST`        | `localhost` | Host address to bind the API server |
-| `--port` | `BUCKET_PORT`        | `3000`      | Port for the API server             |
-
-### Authentication
-
-| Setting                | Environment Variable | Default    | Description                                  |
-| ---------------------- | -------------------- | ---------- | -------------------------------------------- |
-| `--jwt-secret`         | `JWT_SECRET`         | None       | Required secret key for JWT token generation |
-| `--auth-demo-user`     | `AUTH_DEMO_USER`     | `embucket` | Username for demo authentication             |
-| `--auth-demo-password` | `AUTH_DEMO_PASSWORD` | `embucket` | Password for demo authentication             |
-
-<Aside type="caution">
-  Set `JWT_SECRET` to a strong, random string in production environments. The demo user credentials
-  work only for testing.
+<Aside type="note">
+  `embucketd` calls `dotenv()` on startup, so a local `.env` file is part of the current runtime
+  story.
 </Aside>
+
+## Core runtime settings
+
+| Purpose               | Flag                      | Environment variable    | Default     |
+| --------------------- | ------------------------- | ----------------------- | ----------- |
+| metastore config path | `--metastore-config`      | `METASTORE_CONFIG`      | unset       |
+| bind host             | `--host`                  | `BUCKET_HOST`           | `localhost` |
+| bind port             | `--port`                  | `BUCKET_PORT`           | `3000`      |
+| result serialization  | `--data-format`           | `DATA_FORMAT`           | `json`      |
+| parser dialect        | `--sql-parser-dialect`    | `SQL_PARSER_DIALECT`    | `snowflake` |
+| query concurrency     | `--max-concurrency-level` | `MAX_CONCURRENCY_LEVEL` | `8`         |
+| query timeout         | `--query-timeout-secs`    | `QUERY_TIMEOUT_SECS`    | `1200`      |
+| demo user             | `--auth-demo-user`        | `AUTH_DEMO_USER`        | `embucket`  |
+| demo password         | `--auth-demo-password`    | `AUTH_DEMO_PASSWORD`    | `embucket`  |
+| JWT signing secret    | `--jwt-secret`            | `JWT_SECRET`            | unset       |
+| tracing level         | `--tracing-level`         | `TRACING_LEVEL`         | `info`      |
+| service idle timeout  | `--idle-timeout-seconds`  | `IDLE_TIMEOUT_SECONDS`  | `18000`     |
+
+## Local `.env` example
+
+The repo ships this minimal example:
+
+```bash
+METASTORE_CONFIG=config/metastore.yaml
+JWT_SECRET=secret
+TRACING_LEVEL=debug
+RUST_LOG=info
+```
+
+Use stronger secrets than the example when you share an environment with anyone else.
 
 ## Metastore configuration
 
-The Embucket metastore uses a YAML file that defines volumes, databases, schemas, and tables.
-Specify the path with the `--metastore-config` command-line argument or the `METASTORE_CONFIG` environment variable.
+Embucket currently expects metastore configuration through `METASTORE_CONFIG` or `--metastore-config`. The checked-in starter file is `config/metastore.yaml`.
 
-In Embucket, a volume defines the storage location for data. Configure either an S3 volume or an S3 tables volume.
-
-### S3 volume
-
-Use an S3 volume to point at Iceberg tables already stored on S3—for example, Snowflake Open Catalog Managed tables.
+### AWS S3 Tables volume
 
 ```yaml
 volumes:
-  - ident: tpch
-    type: s3
-    region: us-east-2
-    bucket: embucket-lakehouse
+  - ident: embucket
+    type: s3-tables
+    database: demo
     credentials:
       credential_type: access_key
-      aws-access-key-id: <your-aws-access-key-id>
-      aws-secret-access-key: <your-aws-secret-access-key>
+      aws-access-key-id: ACCESS_KEY
+      aws-secret-access-key: SECRET_ACCESS_KEY
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+```
+
+Use this path if you want the currently documented external catalog flow. See [AWS S3 table bucket](/guides/s3-tables/) for the end-to-end setup.
+
+### External Iceberg tables on S3
+
+```yaml
+volumes:
+  - ident: lakehouse
+    type: s3
+    region: us-east-2
+    bucket: YOUR_BUCKET_NAME
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
 
 databases:
   - ident: demo
-    volume: tpch
+    volume: lakehouse
 
 schemas:
   - database: demo
@@ -102,93 +100,39 @@ tables:
   - database: demo
     schema: tpch_10
     table: customer
-    metadata_location: s3://<your-bucket-name>/metadata/00001-eea1cccb-38a4-4fe2-8c95-c01dae9d0c60.metadata.json
-
-  - database: demo
-    schema: tpch_10
-    table: lineitem
-    metadata_location: s3://<your-bucket-name>/metadata/00001-d777220e-d508-4033-a229-8c4c8d8fe514.metadata.json
+    metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/customer/metadata/00001.metadata.json
 ```
 
-In this example:
+This path is useful when you already have Iceberg metadata in object storage and want Embucket to expose it through the Snowflake-compatible API.
 
-- Define a single `tpch` volume with type `s3`
-- Create one database, `demo`, that uses the `tpch` volume
-- Create the `tpch_10` schema inside the `demo` database
-- Create two tables, `customer` and `lineitem`, inside the `tpch_10` schema
+## Runtime and tracing settings
 
-When loaded, Embucket creates a database `demo` with schema `tpch_10` and two tables `customer` and `lineitem`. It uses the `tpch` volume information in the configuration file to access data.
+The current runtime also exposes memory, disk, AWS SDK, and object-store timeout controls. The most important ones for everyday operation are:
 
-### S3 tables volume
+- `MEM_POOL_TYPE`
+- `MEM_POOL_SIZE_MB`
+- `DISK_POOL_SIZE_MB`
+- `AWS_SDK_CONNECT_TIMEOUT_SECS`
+- `AWS_SDK_OPERATION_TIMEOUT_SECS`
+- `OBJECT_STORE_TIMEOUT_SECS`
+- `OBJECT_STORE_CONNECT_TIMEOUT_SECS`
+- `TRACING_LEVEL`
+- `RUST_LOG`
 
-Use S3 tables volume for data managed by AWS S3 Table buckets.
+For deeper tracing guidance, see [Tracing and profiling](/development/tracing/).
 
-```yaml
-volumes:
-  - ident: tpch
-    type: s3-tables
-    database: demo
-    credentials:
-      credential_type: access_key
-      aws-access-key-id: <your-aws-access-key-id>
-      aws-secret-access-key: <your-aws-secret-access-key>
-    arn: arn:aws:s3tables:us-east-2:767397688925:bucket/my-testing-minimal
-```
+## Current authentication defaults
 
-In this example:
+Local quick starts assume demo authentication:
 
-- Define a single `tpch` volume of type `s3-tables`
-- Each `s3-tables` volume maps to one database; here, `demo`
+- username: `embucket`
+- password: `embucket`
 
-When loaded, Embucket creates a database `demo` and lists all namespaces and tables that exist in the provided S3 Table bucket.
+Override them with `AUTH_DEMO_USER` and `AUTH_DEMO_PASSWORD` when you need different demo credentials.
 
-## Advanced settings
+## Related guides
 
-### Data format
-
-| Setting         | Environment Variable | Default | Description                                                       |
-| --------------- | -------------------- | ------- | ----------------------------------------------------------------- |
-| `--data-format` | `DATA_FORMAT`        | `json`  | Data serialization format for Snowflake v1 API: `json` or `arrow` |
-
-### Memory and disk pools
-
-| Setting | Environment Variable              | Default  | Description                          |
-| ------- | --------------------------------- | -------- | ------------------------------------ |
-| N/A     | `MEM_POOL_TYPE`                   | `greedy` | Memory pool allocation strategy      |
-| N/A     | `MEM_POOL_SIZE_MB`                | `4096`   | Memory pool size in megabytes        |
-| N/A     | `MEM_ENABLE_TRACK_CONSUMERS_POOL` | `true`   | Enable memory pool consumer tracking |
-| N/A     | `DISK_POOL_SIZE_MB`               | `102400` | Disk pool size in megabytes          |
-
-Embucket doesn't create default volumes, databases, or schemas. Seed the metastore with a configuration file or create the necessary entries before querying.
-
-### Tracing and debugging
-
-| Setting                    | Environment Variable | Default                | Description                                   |
-| -------------------------- | -------------------- | ---------------------- | --------------------------------------------- |
-| `--tracing-level`          | `TRACING_LEVEL`      | `info`                 | Log level: `off`, `info`, `debug`, or `trace` |
-| `--tracing-span-processor` | `span_processor`     | `batch-span-processor` | Tracing span processor type                   |
-
-<Aside type="tip">
-  Override tracing level using the `RUST_LOG` environment variable for more granular control.
-</Aside>
-
-## Command-line reference
-
-View all available command-line options:
-
-```bash
-embucketd --help
-```
-
-Common command patterns:
-
-```bash
-# Start with custom port and S3 backend
-embucketd --port 3001 --backend s3 --bucket my-data-bucket
-
-# Start with file backend and custom storage path
-embucketd --backend file --file-storage-path /opt/embucket/data
-
-# Start with debug logging
-embucketd --tracing-level debug
-```
+- [Quick Start](/essentials/quick-start/)
+- [Runtime modes](/essentials/runtime-modes/)
+- [AWS Lambda](/guides/aws-lambda/)
+- [Troubleshooting](/guides/troubleshooting/)
