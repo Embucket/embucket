@@ -128,6 +128,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: errata-ai/vale-action@v2.1.1
+        continue-on-error: true
         with:
           files: "docs/src/content/"
           reporter: github-check
+      - name: Fail only on Vale errors
+        run: |
+          vale sync
+          vale docs/src/content --minAlertLevel=error
