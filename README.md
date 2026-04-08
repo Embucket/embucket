@@ -37,7 +37,7 @@ The current docs should make these distinctions explicit:
 - **Local mode** is the fastest path for tests and evaluation.
 - **AWS Lambda + dbt-embucket** is verified and is the recommended client path.
 - **AWS Lambda + Snowflake CLI over Function URL** is tested, but not production-ready because the Function URL is publicly reachable.
-- **Production-facing Lambda deployments** should avoid a public Function URL. The repo includes a private API Gateway template at `crates/embucket-lambda/private-api.cfn.yaml`.
+- **Production-facing Lambda deployments** should avoid a public Function URL. The AWS Lambda guide includes an anonymized private API Gateway example.
 - **AWS S3 Tables** is the currently documented external catalog path.
 
 ## Local quick start

@@ -42,22 +42,22 @@ Treat them differently:
 
 Current deploy metadata in the repo sets:
 
-| Setting       | Current default         |
-| ------------- | ----------------------- |
-| binary name   | `bootstrap`             |
-| memory        | `3008`                  |
-| timeout       | `30`                    |
-| tracing       | `Active`                |
-| included file | `config/metastore.yaml` |
+| Setting       | Current default            |
+| ------------- | -------------------------- |
+| binary name   | `bootstrap`                |
+| memory        | `3008`                     |
+| timeout       | `30`                       |
+| tracing       | `Active`                   |
+| included file | your metastore config file |
 
 Current deploy-time environment defaults in `Cargo.toml` are:
 
-| Variable           | Default                 |
-| ------------------ | ----------------------- |
-| `LOG_FORMAT`       | `json`                  |
-| `METASTORE_CONFIG` | `config/metastore.yaml` |
-| `TRACING_LEVEL`    | `debug`                 |
-| `RUST_LOG`         | `info`                  |
+| Variable           | Default                                |
+| ------------------ | -------------------------------------- |
+| `LOG_FORMAT`       | `json`                                 |
+| `METASTORE_CONFIG` | path to your packaged metastore config |
+| `TRACING_LEVEL`    | `debug`                                |
+| `RUST_LOG`         | `info`                                 |
 
 Optional deploy-time inputs exposed by the Makefile include:
 
@@ -165,13 +165,33 @@ The current repo supports this as a test path.
 
 For production-facing traffic, keep the Lambda private and put an API gateway layer in front of it.
 
-The repo already includes a private REST API Gateway template at:
+Use a private API Gateway shape like this with your own IDs and names:
 
-```text
-crates/embucket-lambda/private-api.cfn.yaml
+```yaml
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: embucket-lambda
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-xxxxxxxx
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-aaaaaaaa,subnet-bbbbbbbb
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+Resources:
+  ExecuteApiVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+  PrivateApi:
+    Type: AWS::ApiGateway::RestApi
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
 ```
 
-That template provisions:
+This pattern provisions:
 
 - a private API Gateway
 - a VPC endpoint for `execute-api`

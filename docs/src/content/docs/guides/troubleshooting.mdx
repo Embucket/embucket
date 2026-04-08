@@ -48,7 +48,7 @@ The runtime only exposes what you configure.
 
 Check that you have supplied:
 
-- `METASTORE_CONFIG=config/metastore.yaml`, or
+- `METASTORE_CONFIG=./metastore.yaml`, or
 - a metastore config file path with actual volumes, databases, schemas, or tables
 
 If you want the documented external catalog path, follow [AWS S3 table bucket](/guides/s3-tables/).
@@ -66,11 +66,7 @@ Treat `embucket-labs` references in current docs as legacy drift unless a page e
 
 That concern is valid. The current docs treat Function URLs as a test path, not the production-ready ingress path.
 
-Use a private API gateway layer in front of the Lambda instead. The repo includes:
-
-```text
-crates/embucket-lambda/private-api.cfn.yaml
-```
+Use a private API gateway layer in front of the Lambda instead. The [AWS Lambda](/guides/aws-lambda/) guide includes an anonymized private API Gateway example you can adapt.
 
 ## Lambda deploy succeeded, but the runtime still fails
 
