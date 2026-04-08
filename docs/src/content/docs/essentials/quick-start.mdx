@@ -1,54 +1,59 @@
 ---
 title: Quick Start
-description: Get up and running with Embucket in under 5 minutes. From download to first query with zero dependencies.
+description: Start Embucket locally, connect Snowflake CLI, and run a first query in the current test and evaluation path.
 sidebar:
   order: 0
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-This guide shows you how to start Embucket and run your first query in under 5 minutes. You use Embucket's single-binary architecture to start running queries.
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
 
-Read this guide to:
+This quick start is the fastest way to evaluate Embucket locally. It is the current **test and evaluation** path, not the recommended production deployment path.
 
-- Start Embucket with zero external dependencies
-- Connect with the Snowflake command-line tool
-- Run your first query
+By the end of this guide, you will:
 
-This guide doesn't cover production deployment or advanced configuration options.
+- start the current `embucket/embucket` container
+- connect Snowflake CLI to the local endpoint
+- run a query successfully
 
 ## Step 1: Start Embucket
 
-Start the Embucket server:
+Run the local container:
 
 ```bash
-docker run --name embucket --rm -p 3000:3000 embucket/embucket ./embucketd
+docker run --name embucket --rm -p 3000:3000 embucket/embucket
 ```
 
-**Done.** You need no external dependencies, databases, or complex configuration.
+Expected startup output includes a line like:
 
-Embucket displays output like:
-
-```
+```text
 {"timestamp":"2025-07-01T15:35:05.687807Z","level":"INFO","fields":{"message":"Listening on http://0.0.0.0:3000"},"target":"embucketd"}
 ```
 
-<Aside type="caution">
-
-The default Docker configuration uses no metastore configuration. See the [configuration guide](/essentials/configuration) for production options.
-
+<Aside type="note">
+  The local runtime binds to port `3000` by default. The current server also serves Swagger/OpenAPI
+  at `http://127.0.0.1:3000/`.
 </Aside>
 
-## Step 2: Configure the Snowflake command-line tool
+## Step 2: Configure Snowflake CLI
 
-Install and configure the Snowflake command-line tool against the local endpoint:
+Install Snowflake CLI if you do not have it already:
 
 ```bash
-$ pip install snowflake-cli
-# Find the Snowflake command-line tool config file path
-$ snow --info | grep "config_file_path" -A 1
-CONFIG=<your_config_file_path>
-cat <<'EOF' >> $CONFIG
+python -m pip install snowflake-cli
+```
+
+Find your Snowflake CLI config file:
+
+```bash
+snow --info
+```
+
+Add this connection block:
+
+```toml
 [connections.local]
 host = "localhost"
 region = "us-east-2"
@@ -57,16 +62,20 @@ protocol = "http"
 database = "embucket"
 schema = "public"
 warehouse = "em.wh"
-password = "embucket"
 account = "acc.local"
 user = "embucket"
-EOF
-$ snow connection test -c local
+password = "embucket"
+```
+
+Validate the connection:
+
+```bash
+snow connection test -c local
 ```
 
 Expected output:
 
-```
+```text
 +-----------------------------+
 | key             | value     |
 |-----------------+-----------|
@@ -83,15 +92,13 @@ Expected output:
 
 ## Step 3: Run your first query
 
-Use the Snowflake command-line tool to run a query against the local Embucket instance:
-
 ```bash
-$ snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
 ```
 
 Expected output:
 
-```
+```text
 +----------------------------------+
 | yesterday                        |
 |----------------------------------|
@@ -99,6 +106,21 @@ Expected output:
 +----------------------------------+
 ```
 
-Open the browser to `http://127.0.0.1:8080` to explore Embucket's web interface, query editor, and data catalog. The interface resembles Snowflake's interface.
+## Step 4: Inspect the HTTP surface
 
-<Aside type="tip">Use `embucket` as both the username and password to log in.</Aside>
+Open `http://127.0.0.1:3000/` in your browser to inspect the current Swagger/OpenAPI surface served by `embucketd`.
+
+<Aside type="tip">
+  The local demo credentials are `embucket` / `embucket` unless you override `AUTH_DEMO_USER` and
+  `AUTH_DEMO_PASSWORD`.
+</Aside>
+
+## Next steps
+
+- If you want to run the local binary from source instead of Docker, read [Self-hosted local binary](/guides/self-hosted/).
+- If you want the current runtime choices, read [Runtime modes](/essentials/runtime-modes/).
+- If you want serverless deployment, read [AWS Lambda](/guides/aws-lambda/).
+- If you want the recommended client path, read [dbt](/guides/dbt/).
+- If you want a fuller analytics example on the recommended path, read [Snowplow web analytics](/guides/snowplow/).
+- If you want an external catalog, read [AWS S3 table bucket](/guides/s3-tables/).
+- If something fails, read [Troubleshooting](/guides/troubleshooting/).
