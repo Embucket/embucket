@@ -43,7 +43,7 @@ The current docs explicitly cover:
 
 Choose one of those paths first instead of assuming all Snowflake-compatible tools behave the same way.
 
-## SQL engine behavior
+## How the query engine behaves
 
 Embucket uses [Apache DataFusion](https://datafusion.apache.org/) for query execution. The goal is Snowflake-friendly behavior, but the current implementation still differs from Snowflake in important places.
 
@@ -51,12 +51,12 @@ Embucket uses [Apache DataFusion](https://datafusion.apache.org/) for query exec
 
 ### Execution model
 
-- **Single-node execution**: query processing is limited to one node's memory and CPU capacity
+- **Single-node execution**: query processing can use only one node's memory and CPU capacity
 - **No documented distributed parallelism**: the current runtime story is not a distributed query engine
 
 ### Data type limitations
 
-- **VARIANT** is stored as JSON-serialized `TEXT`
+- **VARIANT**: Embucket stores it as JSON-serialized `TEXT`
 - **Numeric coercion** can differ from Snowflake
 - **Timestamp behavior** differs from Snowflake's precision and timezone semantics
 - **Collation and character set support** remains limited
