@@ -42,7 +42,7 @@ Data stays in your object storage. Embucket reads and writes data through three 
 
 ## Query execution
 
-Embucket executes Snowflake-compatible SQL through Apache DataFusion. Query execution is single-node per request. Each invocation handles a complete query independently. There is no distributed query plan across nodes.
+Embucket executes Snowflake-compatible SQL through Apache DataFusion. Query execution is single-node per request. Each invocation handles a complete query independently. The engine does not distribute queries across nodes.
 
 ## Authentication and sessions
 

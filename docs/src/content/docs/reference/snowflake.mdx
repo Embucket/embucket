@@ -52,7 +52,7 @@ The key structural differences are:
 ### Architecture
 
 - **Single-node execution** -- Query processing uses only one node's memory and CPU capacity.
-- **No distributed parallelism** -- There is no distributed query plan across nodes.
+- **No distributed parallelism** -- The engine does not distribute queries across nodes.
 - **Single writer** -- Only one Embucket instance can write to a table at a time.
 
 ### Data types
