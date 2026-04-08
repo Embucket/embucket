@@ -1,0 +1,69 @@
+---
+title: Docs maintenance
+description: How to review docs and keep them current.
+sidebar:
+  order: 1
+---
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+This page documents the current release-gate process for docs changes.
+
+## Automated checks
+
+The repository already includes a docs CI workflow at `.github/workflows/docs-ci.yml`.
+
+On docs changes, it currently runs:
+
+- formatting checks
+- `astro check`
+- repo-safe docs smoke checks for repeated constants, guide metadata, and referenced local files
+- a full docs build
+- Vale linting
+
+The docs site also uses `starlight-links-validator` during the build.
+
+## What still needs manual smoke testing
+
+Before release, manually check the commands in the highest-traffic guides:
+
+- `Quick Start`
+- `Runtime modes`
+- `Self-hosted local binary`
+- `AWS Lambda`
+- `dbt`
+- `End-to-end dbt workflow`
+- `Snowplow web analytics`
+- `Troubleshooting`
+
+Confirm at least these points:
+
+- the local quick start still starts `embucket/embucket`
+- the self-hosted guide still uses `cargo build` and can start `target/debug/embucketd`
+- the Snowflake command-line tool can still run a simple query against the documented path
+- the Lambda guide still reflects the current deploy flow
+- the dbt guide still matches the current `dbt-embucket` adapter contract
+- the Snowplow guide still matches the current `embucket-snowplow` flow and uses `dbt run` plus `dbt show` as the success state
+
+The automated smoke checks stay intentionally static. They do not call AWS, run dbt against a live Lambda, or execute the Snowflake command-line tool against live infrastructure.
+
+## Owner and freshness convention
+
+Major guides should include a short block near the top with:
+
+- owner
+- last reviewed date
+
+This repository now uses that pattern in the highest-traffic guides so readers can see which pages the team reviewed recently.
+
+## Release checklist
+
+Before a release or launch push, confirm:
+
+1. current runtime names are consistent
+2. quick-start ports and URLs still match the implementation
+3. support claims still match verified workflows
+4. docs CI is green
+5. the top guides have a recent review date
+6. self-hosted and Snowplow guides still match the current source repositories and local commands

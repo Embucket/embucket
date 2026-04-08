@@ -1,86 +1,113 @@
 ---
 title: Architecture
-description: Comprehensive overview of Embucket's zero-disk lakehouse architecture, core components, and system design principles
+description: Understand how Embucket handles data, metadata, query execution, authentication, and runtime packaging today.
+sidebar:
+  order: 3
 ---
 
-import { Aside, Steps } from '@astrojs/starlight/components';
+import { Aside } from '@astrojs/starlight/components';
 
-Embucket delivers a Snowflake-compatible lakehouse. This document explains how Embucket's components work together to provide a complete analytics platform in a single binary.
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
 
-You'll learn about the system's architecture, core components, data flow, and operational characteristics. This overview targets data engineers, platform architects, and anyone deploying Embucket in production.
+Embucket exposes a Snowflake-compatible API over lakehouse data. The current implementation is easiest to reason about if you separate it into five layers: runtime, metadata, storage, query execution, and auth/session handling.
 
-## Core components
+Use this page when you want the current mental model before choosing a runtime, configuring metadata, or planning around query and session limits.
 
-Embucket integrates four key components into a single binary that delivers complete lakehouse capabilities.
+## Runtime model
 
-### Query engine
+The repo currently ships two runtime artifacts:
 
-[Apache DataFusion](https://datafusion.apache.org/) powers Embucket's SQL execution. DataFusion provides:
+- `embucketd` for local and self-hosted runs
+- `embucket-lambda` for AWS Lambda deployments
 
-- **Vectorized processing**: Columnar data processing using Apache Arrow
-- **SQL compliance**: ANSI SQL support with Snowflake-specific extensions
-- **Extensibility**: Custom functions and data source integrations
+The Lambda runtime wraps the same Snowflake-compatible router used by `embucketd`, so the client-facing API shape stays aligned across both runtime modes.
 
-Each Embucket node runs a complete query engine, enabling horizontal scalability and fault tolerance.
+Read [Runtime modes](/essentials/runtime-modes/) for the operational tradeoffs.
+
+If you are still choosing a path, start there before deploying.
+
+## Metadata model
+
+Embucket does not present itself as a managed metadata service. Instead, it loads metadata from configuration or supported external catalogs.
+
+Current documented paths are:
+
+- YAML metastore config loaded from `METASTORE_CONFIG`
+- AWS S3 Tables as the documented external catalog path
+- external Iceberg table definitions described in the metastore YAML
+
+If you need to configure metadata now, start with [Configuration](/essentials/configuration/) or [AWS S3 table bucket](/guides/s3-tables/).
 
 <Aside type="note">
-  Each Embucket node can process queries independently. This design eliminates coordinator
-  bottlenecks and provides natural fault tolerance.
+  The inline starter metastore example in these docs is intentionally minimal. You must supply real
+  volumes, databases, schemas, or tables for non-trivial workloads.
 </Aside>
 
-### Data storage
+## Storage model
 
-[Apache Iceberg](https://iceberg.apache.org/) manages table metadata and provides ACID guarantees:
+Data stays in your object storage. The current docs and code paths center on:
 
-- **Schema evolution**: Add, drop, and change columns without rewriting data
-- **Time travel**: Query historical table snapshots
-- **ACID transactions**: Atomic commits with snapshot isolation
-- **Partition pruning**: Efficient query performance on large datasets
+- Apache Iceberg metadata
+- Parquet data files
+- AWS S3 or S3-compatible object storage flows
 
-All table data stays in your object storage using Parquet files organized by Iceberg's metadata structure.
+For AWS-managed table metadata, use [AWS S3 table bucket](/guides/s3-tables/).
 
-### API compatibility
+For a minimal local path, use the checked-in metastore config flow instead of starting with external catalog setup.
 
-Embucket implements Snowflake's SQL dialect and REST API:
+## Query model
 
-- **SQL compatibility**: Snowflake-flavored SQL with existing queries
-- **REST API**: v1 Snowflake REST API for driver compatibility
-- **Tool integration**: Works with dbt, Apache Superset, and BI tools
-- **Protocol support**: All native drivers built on top of REST API
+Embucket executes Snowflake-flavored SQL through Apache DataFusion. The important operational property today is that query execution is **single-node per request**.
 
-### ACID guarantees
+That means:
 
-Embucket provides ACID properties through Iceberg's snapshot isolation:
+- each node handles complete queries independently
+- there is no documented distributed query plan across many nodes
+- scaling is primarily a throughput and placement question, not a distributed execution story
 
-- **Atomicity**: All changes within a transaction succeed or fail together
-- **Consistency**: Schema validation ensures data integrity
-- **Isolation**: Concurrent queries see consistent snapshots
-- **Durability**: Committed changes persist in object storage
+This is why the docs distinguish local evaluation from the current Lambda deployment path instead of treating them as interchangeable production footprints.
 
-## Deployment patterns
+Plan for that limit before treating Lambda as a high-concurrency production endpoint.
 
-Embucket's stateless architecture supports deployment patterns for different requirements.
+## Auth and session model
 
-### Single node deployment
+The current Snowflake-compatible HTTP surface exposes:
 
-Deploy one Embucket instance for development or small workloads:
+- `/session/v1/login-request`
+- `/session`
+- `/queries/v1/query-request`
+- `/queries/v1/abort-request`
 
-- Simple setup with minimal resource requirements
-- Suitable for development and testing environments
-- Single point of failure during maintenance
+The local demo path uses configurable demo credentials, which default to `embucket` / `embucket`.
 
-{/* vale Google.Headings = NO */}
+After login:
 
-### Run on AWS Lambda
+- Embucket issues a JWT token
+- clients can pass it in `Authorization: Snowflake Token="..."`
+- the runtime also uses a `session_id` cookie for session continuity
 
-{/* vale Google.Headings = YES */}
+Current implementation details worth knowing:
 
-Deploy Embucket as an AWS Lambda function:
+- JWT token lifetime is 3 days
+- session inactivity expiry is 60 seconds
 
-- High availability and fault tolerance
-- Horizontal scaling for increased query throughput
+If you are debugging auth problems, continue to [Troubleshooting](/guides/troubleshooting/).
 
-<Aside type="caution">
-  Embucket nodes share no state, making horizontal scaling straightforward. Ensure your object
-  storage and external catalog can handle concurrent access from many nodes.
-</Aside>
+## When to use local mode or Lambda
+
+The API shape stays aligned, but the operational envelope changes:
+
+- **local mode** is the fastest path for tests and evaluation
+- **Lambda + Function URL** is a tested validation path, but not production-ready because the URL is publicly reachable
+- **Lambda + dbt-embucket** is the verified and recommended client workflow
+- **private API gateway in front of Lambda** is the safer production-facing ingress pattern
+
+Use [Quick Start](/essentials/quick-start/) for local evaluation and [End-to-end dbt workflow](/guides/end-to-end-dbt/) for the shortest complete Lambda path.
+
+## Related guides
+
+- [Quick Start](/essentials/quick-start/)
+- [Support matrix](/essentials/support-matrix/)
+- [AWS Lambda](/guides/aws-lambda/)
+- [dbt](/guides/dbt/)

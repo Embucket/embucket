@@ -9,7 +9,7 @@ Embucket uses `tracing::instrument` to instrument code for tracing. You can use 
 
 ### Tracing span processor experimental async runtime
 
-Embucket uses `BatchSpanProcessor`, which uses a dedicated background thread for collecting and exporting spans. This processor works well in production. Some development environments may hang on startup as reported in [issue #1123](https://github.com/embucket/embucket-labs/issues/1123). In this case, you can switch to `BatchSpanProcessor` using the experimental async runtime.
+Embucket uses `BatchSpanProcessor`, which uses a dedicated background thread for collecting and exporting spans. This processor works well in production. If a development environment hangs on startup, switch to the experimental async runtime instead.
 Use this command-line argument: `--tracing-span-processor=batch-span-processor-experimental-async-runtime`.
 
 ### Tracing span processor tuning
@@ -43,8 +43,8 @@ docker run --rm --name jaeger -p 16686:16686 -p 4317:4317 -p 4318:4318 -p 5778:5
 Use the `RUST_LOG` environment variable to define log levels and the `--tracing-level` argument to enable tracing with [Jaeger](https://www.jaegertracing.io/).
 Both default log level and default tracing level use `info`.
 
-```
-target/debug/embucketd --jwt-secret=test --backend=memory '--cors-allow-origin=http://localhost:8080' --cors-enabled=true --tracing-level=trace
+```bash
+target/debug/embucketd --jwt-secret=test --tracing-level=trace
 ```
 
 ## Profiling
@@ -54,11 +54,11 @@ This guide includes Samply as one way to profile, presented here as an experimen
 
 To start profiling, prepend `samply record` to the `embucketd` command invocation. Perform the actions you need to profile, then stop profiling to open a profile report in the browser.
 
-```
+```bash
 # install Samply
 cargo install --locked samply
 
 # Profile debug build
-cargo build && samply record RUST_LOG=debug target/debug/embucketd --jwt-secret=test --backend=memory '--cors-allow-origin=http://localhost:8080' --cors-enabled=true
+cargo build && samply record RUST_LOG=debug target/debug/embucketd --jwt-secret=test
 
 ```

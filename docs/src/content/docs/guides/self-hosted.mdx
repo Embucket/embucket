@@ -1,0 +1,160 @@
+---
+title: Self-hosted local binary
+description: Build and run embucketd from source for local evaluation and testing.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+Use this guide when you want to build `embucketd` from source and run it locally. This path is currently for **evaluation and testing**, not the primary production deployment recommendation.
+
+<Aside type="note">
+  The confusion around local startup comes from the repo describing `embucketd` as a local and
+  self-hosted runtime while most user-facing docs only showed the Docker path. This guide is the
+  source-build version of that local workflow.
+</Aside>
+
+## What you can do
+
+- build the workspace from source with `cargo build`
+- start `target/debug/embucketd` with local config
+- connect the Snowflake command-line tool to the local deployment
+- run a query successfully
+
+## Prerequisites
+
+- Rust toolchain
+- Python 3.8 or newer
+- Snowflake command-line tool
+- a clone of `Embucket/embucket`
+
+## Step 1: Build the repo
+
+From the repository root:
+
+```bash
+cargo build
+```
+
+The repo contributing guide uses `cargo build` as the standard source-build path.
+
+## Step 2: Create a minimal metastore file
+
+Create a local `metastore.yaml` file in the repo root:
+
+```yaml
+volumes: []
+```
+
+## Step 3: Create a local env file
+
+Create a local `.env` file:
+
+```bash
+cat > .env <<'EOF'
+METASTORE_CONFIG=./metastore.yaml
+JWT_SECRET=secret
+TRACING_LEVEL=debug
+RUST_LOG=info
+EOF
+```
+
+That file sets:
+
+- `METASTORE_CONFIG=./metastore.yaml`
+- `JWT_SECRET=secret`
+- `TRACING_LEVEL=debug`
+- `RUST_LOG=info`
+
+<Aside type="tip">
+  `embucketd` loads `.env` automatically at startup, so you do not need to export these variables
+  one by one for the basic local path.
+</Aside>
+
+## Step 4: Start the binary
+
+Run the local binary from the repo root:
+
+```bash
+target/debug/embucketd
+```
+
+Expected startup signals:
+
+- the process stays running
+- the service binds to `localhost:3000`
+- you can open `http://127.0.0.1:3000/` in your browser
+
+## Step 5: Configure the Snowflake command-line tool
+
+Find your Snowflake command-line tool config file:
+
+```bash
+snow --info
+```
+
+Add this connection block:
+
+```toml
+[connections.embucket]
+host = "localhost"
+region = "us-east-2"
+port = 3000
+protocol = "http"
+database = "embucket"
+schema = "public"
+warehouse = "em.wh"
+account = "acc.local"
+user = "embucket"
+password = "embucket"
+```
+
+## Step 6: Verify the local deployment
+
+Check the connection:
+
+```bash
+snow connection test -c embucket
+```
+
+Run a query:
+
+```bash
+snow sql -c embucket -q "SELECT 1 AS ok"
+```
+
+Expected output:
+
+```text
++----+
+| ok |
+|----|
+| 1  |
++----+
+```
+
+## Current limits of this path
+
+- this is the current source-build local workflow for evaluation and testing
+- this path is not the recommended production deployment path
+- the starter metastore config is minimal and does not populate example tables by itself
+
+If you need an external catalog or richer metadata, continue to [AWS S3 table bucket](/guides/s3-tables/).
+
+## Troubleshooting
+
+- **binary not found**: make sure `cargo build` completed successfully and run from the repo root
+- **auth issues**: the local defaults are `embucket` / `embucket` unless you changed `AUTH_DEMO_USER` or `AUTH_DEMO_PASSWORD`
+- **missing config**: make sure `.env` points at `./metastore.yaml`
+- **Snowflake command-line tool SSL/protocol errors**: set `protocol = "http"`
+
+## Related guides
+
+- [Quick Start](/essentials/quick-start/)
+- [Snowflake command-line tool](/guides/snowflake-cli/)
+- [Runtime modes](/essentials/runtime-modes/)
+- [Troubleshooting](/guides/troubleshooting/)

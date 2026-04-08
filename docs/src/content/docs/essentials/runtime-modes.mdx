@@ -1,0 +1,86 @@
+---
+title: Runtime modes
+description: Choose between local evaluation, AWS Lambda validation, and the current recommended production-facing path.
+sidebar:
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+Embucket currently has two runtime artifacts: `embucketd` and `embucket-lambda`. The right path depends on whether you are evaluating the product, validating a client, or planning a production-facing deployment.
+
+If you already know what you want to do, use this page as a chooser:
+
+- Local evaluation → [Quick Start](/essentials/quick-start/)
+- Source-built local binary → [Self-hosted local binary](/guides/self-hosted/)
+- Lambda API validation → [AWS Lambda](/guides/aws-lambda/)
+- Recommended client workflow → [dbt](/guides/dbt/)
+- Shortest complete walkthrough → [End-to-end dbt workflow](/guides/end-to-end-dbt/)
+- Fuller analytics example → [Snowplow web analytics](/guides/snowplow/)
+
+## Choose your path
+
+| Path                                                    | Best for                                                | Current status                                             | Start here                              |
+| ------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- |
+| local `embucketd` via Docker or source build            | tests, evaluation, local debugging                      | current local path                                         | [Quick Start](/essentials/quick-start/) |
+| AWS Lambda + Function URL + Snowflake command-line tool | validating the API with the Snowflake command-line tool | tested, but not production-ready because the URL is public | [AWS Lambda](/guides/aws-lambda/)       |
+| AWS Lambda + `dbt-embucket` adapter                     | dbt projects and repeatable workflows                   | verified and recommended                                   | [dbt](/guides/dbt/)                     |
+| AWS Lambda + private API gateway                        | production-facing ingress pattern                       | recommended deployment shape                               | [AWS Lambda](/guides/aws-lambda/)       |
+
+## If you want local evaluation
+
+Use local mode when you want the shortest feedback loop.
+
+- default host: `localhost`
+- default port: `3000`
+- default demo credentials: `embucket` / `embucket`
+- current browser-visible HTTP surface: `http://127.0.0.1:3000/`
+
+This is the fastest path for tests and evaluation, but the docs do not currently treat it as the primary production deployment recommendation.
+
+Start with [Quick Start](/essentials/quick-start/).
+
+If you want to build the binary yourself, use [Self-hosted local binary](/guides/self-hosted/). That path is currently for evaluation and testing rather than long-lived production deployment.
+
+## If you want the current Lambda runtime
+
+Use Lambda when you want the current serverless runtime.
+
+- runtime artifact: `embucket-lambda`
+- deployment toolchain: `cargo lambda` plus the repo Makefile
+- current test path: Function URL plus the Snowflake command-line tool
+- current recommended client path: `dbt-embucket`
+
+<Aside type="caution">
+  A public Function URL is acceptable for testing and validation, but the current docs should not
+  call it production-ready.
+</Aside>
+
+For the recommended client path on Lambda, continue to [dbt](/guides/dbt/).
+
+If you want a fuller example on top of that path, continue to [Snowplow web analytics](/guides/snowplow/).
+
+## If you are deploying for production-facing traffic
+
+For production-facing traffic, the current guidance is:
+
+1. deploy `embucket-lambda` with the Lambda guide
+2. avoid exposing a public Function URL as your main ingress
+3. put an API gateway layer in front of the Lambda
+4. use the dbt adapter as the primary documented client path
+5. verify the full client path with the end-to-end dbt workflow
+
+The AWS Lambda guide includes an anonymized private API Gateway example for this ingress pattern.
+
+## Related guides
+
+- [Quick Start](/essentials/quick-start/)
+- [Support matrix](/essentials/support-matrix/)
+- [AWS Lambda](/guides/aws-lambda/)
+- [dbt](/guides/dbt/)
+- [End-to-end dbt workflow](/guides/end-to-end-dbt/)
+- [Self-hosted local binary](/guides/self-hosted/)
+- [Snowplow web analytics](/guides/snowplow/)

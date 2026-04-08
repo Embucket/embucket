@@ -1,0 +1,52 @@
+---
+title: Support matrix
+description: The currently documented and verified runtime and client combinations for Embucket.
+sidebar:
+  order: 4
+---
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+Use this matrix to choose a supported runtime and client combination before you deploy, check, or troubleshoot.
+
+## Runtime and client matrix
+
+| Runtime + client path                                     | Status                         | Recommended use                                       | Evidence                                                                            |
+| --------------------------------------------------------- | ------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| local `embucketd` + Snowflake command-line tool           | documented                     | tests, evaluation, and local debugging                | current quick start, self-hosted guide, and Snowflake command-line tool guide       |
+| AWS Lambda + `dbt-embucket` adapter                       | verified                       | recommended client path                               | official adapter tests run `dbt debug` and `dbt run` against a real Embucket Lambda |
+| AWS Lambda + Snowflake command-line tool via Function URL | tested                         | API validation, but not production-facing traffic     | current Lambda README and user guidance                                             |
+| AWS Lambda + private REST API gateway                     | recommended deployment pattern | production-facing ingress in front of the Lambda      | AWS Lambda guide with an anonymized private API Gateway example                     |
+| AWS S3 Tables external catalog                            | documented and supported       | current external catalog path described in these docs | current S3 Tables guide and README                                                  |
+
+## Not currently covered in this docs set
+
+The current docs should **not** claim the following as verified unless new evidence supports them:
+
+- serverless deployments on GCP or Azure Functions
+- a non-Lambda dbt transport for `dbt-embucket`
+- broad benchmark conclusions not stated in official benchmark materials
+- a full migration path from `embucket-labs` unless the docs include a dedicated migration guide
+
+## Names used in this guide
+
+- Use `embucket/embucket` for the current container image in public docs.
+- Use `embucket-lambda` for the AWS Lambda runtime artifact.
+- Treat `embucket-labs` as legacy naming unless a guide explicitly explains otherwise.
+
+## Example workflows in this docs set
+
+- [End-to-end dbt workflow](/guides/end-to-end-dbt/) is the shortest complete Lambda + dbt path.
+- [Snowplow web analytics](/guides/snowplow/) is a fuller example built on the documented Lambda + `dbt-embucket` path.
+- [Self-hosted local binary](/guides/self-hosted/) covers source-build local evaluation and testing.
+
+## Related guides
+
+- [Runtime modes](/essentials/runtime-modes/)
+- [AWS Lambda](/guides/aws-lambda/)
+- [dbt](/guides/dbt/)
+- [End-to-end dbt workflow](/guides/end-to-end-dbt/)
+- [Self-hosted local binary](/guides/self-hosted/)
+- [Snowplow web analytics](/guides/snowplow/)
+- [Troubleshooting](/guides/troubleshooting/)
