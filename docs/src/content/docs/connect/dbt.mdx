@@ -1,0 +1,170 @@
+---
+title: dbt adapter
+description: Connect dbt to Embucket using the dbt-embucket adapter.
+sidebar:
+  order: 1
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+[dbt](https://docs.getdbt.com/) is a SQL-first transformation tool for analytics engineering. The `dbt-embucket` adapter connects to Embucket by invoking the Lambda function directly through AWS APIs, so no public endpoint is required.
+
+## Prerequisites
+
+Before you begin, make sure you have the following:
+
+- **A deployed Embucket Lambda function** and its ARN.
+- **AWS credentials** with permission to invoke the Lambda function.
+- **Python 3.8 or later** and **dbt** installed on your system.
+
+<Aside type="tip">
+For deployment instructions, see [AWS Lambda deployment](/deploy/aws-lambda/).
+</Aside>
+
+## Set up dbt with Embucket
+
+<Steps>
+
+1. ### Install the adapter
+
+   Install the `dbt-embucket` adapter from PyPI:
+
+   ```bash
+   python -m pip install dbt-embucket
+   ```
+
+2. ### Create a minimal project
+
+   Create a project directory with a model:
+
+   ```bash
+   mkdir embucket-dbt-demo && cd embucket-dbt-demo
+   mkdir -p models
+   ```
+
+   Create a `dbt_project.yml` file:
+
+   ```yaml
+   name: embucket_demo
+   version: 1.0.0
+   config-version: 2
+
+   profile: embucket
+
+   model-paths: ['models']
+
+   models:
+     embucket_demo:
+       +materialized: view
+   ```
+
+   Create a `models/hello_embucket.sql` file:
+
+   ```sql
+   select 1 as id, 'hello embucket' as message
+   ```
+
+3. ### Configure the profile
+
+   Add the following block to your `profiles.yml` file:
+
+   ```yaml
+   embucket:
+     target: dev
+     outputs:
+       dev:
+         type: embucket
+         function_arn: "{{ env_var('EMBUCKET_FUNCTION_ARN') }}"
+         account: "{{ env_var('EMBUCKET_ACCOUNT', 'embucket') }}"
+         user: "{{ env_var('EMBUCKET_USER', 'embucket') }}"
+         password: "{{ env_var('EMBUCKET_PASSWORD', 'embucket') }}"
+         database: "{{ env_var('EMBUCKET_DATABASE', 'demo') }}"
+         schema: public
+         threads: 1
+   ```
+
+   Export the Lambda function ARN as an environment variable:
+
+   ```bash
+   export EMBUCKET_FUNCTION_ARN=arn:aws:lambda:us-east-2:123456789012:function:embucket-lambda
+   ```
+
+   #### Profile field reference
+
+   | Field | Required | Description |
+   | --- | --- | --- |
+   | `type` | Yes | Must be `embucket`. |
+   | `function_arn` | Yes | ARN of the target Lambda function. |
+   | `account` | Yes | Logical account identifier. |
+   | `user` | Yes | Authentication user name. |
+   | `password` | Yes | Authentication password. |
+   | `database` | Yes | Target database name. |
+   | `schema` | Yes | Target schema name. |
+   | `threads` | Yes | Number of concurrent dbt threads. |
+
+4. ### Check the connection
+
+   Verify that dbt can reach the Lambda function:
+
+   ```bash
+   dbt debug
+   ```
+
+   A successful check produces the following output:
+
+   ```text
+   Connection test: [OK connection ok]
+   All checks passed!
+   ```
+
+5. ### Run a model
+
+   Build the example model:
+
+   ```bash
+   dbt run
+   ```
+
+   dbt compiles and runs the `hello_embucket` model against Embucket.
+
+6. ### Verify the result
+
+   Query the model output with the Snowflake CLI:
+
+   ```bash
+   snow sql -c lambda -q "select * from demo.public.hello_embucket"
+   ```
+
+   The query returns the following result:
+
+   ```text
+   +----+----------------+
+   | ID | MESSAGE        |
+   |----+----------------|
+   | 1  | hello embucket |
+   +----+----------------+
+   ```
+
+   <Aside type="tip">
+   The adapter talks to Lambda by ARN. No public Function URL is needed.
+   </Aside>
+
+</Steps>
+
+## Caveats
+
+The adapter uses Lambda invoke transport, not a TCP connection. Python models are not supported. Use AWS credentials that can invoke the target Lambda function.
+
+## Troubleshooting
+
+| Problem | Solution |
+| --- | --- |
+| `profiles.yml` not found | Check that the file exists in your dbt profiles directory. Run `dbt debug --config-dir` to locate it. |
+| `EMBUCKET_FUNCTION_ARN` missing | Export the variable before running `dbt debug`. |
+| AWS credentials missing | The adapter needs IAM credentials with `lambda:InvokeFunction` permission. |
+| Authentication failures | Verify the `user` and `password` values in your profile. |
+| Runs succeed but data is missing | Check the `database`, `schema`, and metastore configuration on the Lambda function. |
+
+## Next step
+
+For a complete analytics pipeline example, see [Snowplow web analytics](/tutorials/snowplow/).
