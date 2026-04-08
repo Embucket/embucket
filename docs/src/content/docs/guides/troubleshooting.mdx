@@ -42,14 +42,14 @@ The default demo credentials are:
 
 If you overrode `AUTH_DEMO_USER` or `AUTH_DEMO_PASSWORD`, update your client config to match.
 
-## Snowflake command-line tool connects, but I cannot see data
+## Snowflake command-line tool connects, but data does not appear
 
 The runtime only exposes what you configure.
 
 Check that you have supplied:
 
 - `METASTORE_CONFIG=./metastore.yaml`, or
-- a metastore config file path with actual volumes, databases, schemas, or tables
+- a metastore config path with actual volumes, databases, schemas, or tables
 
 If you want the documented external catalog path, follow [AWS S3 table bucket](/guides/s3-tables/).
 
@@ -62,7 +62,7 @@ For current public docs, use:
 
 Treat `embucket-labs` references in current docs as legacy drift unless a page explicitly calls out migration or historical context.
 
-## Lambda works with the Snowflake command-line tool, but I do not want a public endpoint
+## Lambda works with the Snowflake command-line tool, but public access is a problem
 
 That concern is valid. The current docs treat Function URLs as a test path, not the production-ready ingress path.
 
@@ -83,8 +83,8 @@ If you recently changed env vars or metastore config, redeploy with the last kno
 
 Start with these checks:
 
-- `dbt-embucket` is installed
-- `EMBUCKET_FUNCTION_ARN` is set
+- install `dbt-embucket`
+- set `EMBUCKET_FUNCTION_ARN`
 - your AWS credentials can invoke the Lambda
 - your profile has `type: embucket`
 
@@ -98,10 +98,10 @@ If `dbt debug` still fails, also check:
 
 - your local AWS credential chain can invoke Lambda
 - the ARN region is correct
-- the target Lambda is deployed and reachable
+- deploy the target Lambda and confirm the function responds
 - the Lambda-side demo credentials still match the values in your profile
 
-## dbt runs, but I cannot find the model
+## dbt runs, but the model is missing
 
 Check the exact target database and schema from your profile.
 
@@ -119,7 +119,7 @@ If you are following the larger example workflow, continue with [Snowplow web an
 
 Some dbt packages assume `target.type == 'snowflake'` and do not recognize `embucket` yet.
 
-If you are following the official Snowplow example, use the patch step documented in [Snowplow web analytics](/guides/snowplow/). Treat that as a compatibility workaround, not as a universal requirement for every dbt workload.
+If you are following the official Snowplow example, use the patch step documented in [Snowplow web analytics](/guides/snowplow/). Treat that as a compatibility workaround, not as a default step for every dbt workload.
 
 ## Sessions or auth feel short-lived
 
