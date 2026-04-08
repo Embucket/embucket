@@ -1,0 +1,186 @@
+---
+title: Configuration
+description: Environment variables, flags, and metastore settings for Embucket.
+sidebar:
+  order: 0
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This page covers every configuration option for Embucket, including CLI flags, environment variables, metastore YAML, and deploy-time settings. It doesn't cover connection setup for clients such as the Snowflake CLI or dbt.
+
+## Configuration precedence
+
+Embucket resolves each setting in the following order, from highest to lowest priority:
+
+1. **CLI flags** -- passed directly to the binary.
+2. **Environment variables** -- exported in the shell or set in the container.
+3. **`.env` file** -- loaded once at startup from the working directory.
+
+When the same setting appears at more than one level, the higher-priority source wins.
+
+## Core runtime settings
+
+| Purpose               | Flag                      | Environment variable    | Default     |
+| --------------------- | ------------------------- | ----------------------- | ----------- |
+| Metastore config path | `--metastore-config`      | `METASTORE_CONFIG`      | unset       |
+| Bind host             | `--host`                  | `BUCKET_HOST`           | `localhost` |
+| Bind port             | `--port`                  | `BUCKET_PORT`           | `3000`      |
+| Result serialization  | `--data-format`           | `DATA_FORMAT`           | `json`      |
+| Parser dialect        | `--sql-parser-dialect`    | `SQL_PARSER_DIALECT`    | `snowflake` |
+| Query concurrency     | `--max-concurrency-level` | `MAX_CONCURRENCY_LEVEL` | `8`         |
+| Query timeout         | `--query-timeout-secs`    | `QUERY_TIMEOUT_SECS`    | `1200`      |
+| Demo user             | `--auth-demo-user`        | `AUTH_DEMO_USER`        | `embucket`  |
+| Demo password         | `--auth-demo-password`    | `AUTH_DEMO_PASSWORD`    | `embucket`  |
+| JWT signing secret    | `--jwt-secret`            | `JWT_SECRET`            | unset       |
+| Tracing level         | `--tracing-level`         | `TRACING_LEVEL`         | `info`      |
+| Service idle timeout  | `--idle-timeout-seconds`  | `IDLE_TIMEOUT_SECONDS`  | `18000`     |
+
+## Metastore configuration
+
+Embucket supports two ways to configure the metastore: a YAML configuration file or environment variables. The YAML file supports many volumes and full schema/table definitions. Environment variables configure a single volume and work well for simple deployments.
+
+<Tabs>
+  <TabItem label="YAML file">
+
+Set `METASTORE_CONFIG` to the path of a YAML file that defines volumes, databases, schemas, and tables. Embucket reads this file at startup and registers every declared object.
+
+A minimal configuration with no external volumes:
+
+```yaml
+volumes: []
+```
+
+**S3 Tables volume:**
+
+```yaml
+volumes:
+  - ident: embucket
+    type: s3-tables
+    database: demo
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: ACCESS_KEY
+      aws-secret-access-key: SECRET_ACCESS_KEY
+    arn: arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+```
+
+**External Iceberg tables on S3:**
+
+```yaml
+volumes:
+  - ident: lakehouse
+    type: s3
+    region: us-east-2
+    bucket: YOUR_BUCKET_NAME
+    credentials:
+      credential_type: access_key
+      aws-access-key-id: YOUR_ACCESS_KEY
+      aws-secret-access-key: YOUR_SECRET_KEY
+
+databases:
+  - ident: demo
+    volume: lakehouse
+
+schemas:
+  - database: demo
+    schema: tpch_10
+
+tables:
+  - database: demo
+    schema: tpch_10
+    table: customer
+    metadata_location: s3://YOUR_BUCKET_NAME/tpch_10/customer/metadata/00001.metadata.json
+```
+
+  </TabItem>
+  <TabItem label="Environment variables">
+
+Set the following environment variables to configure a single volume without a YAML file. When you set `VOLUME_TYPE`, Embucket uses these variables instead of `METASTORE_CONFIG`.
+
+| Variable          | Purpose                                        | Default    |
+| ----------------- | ---------------------------------------------- | ---------- |
+| `VOLUME_TYPE`     | Storage backend: `s3tables`, `s3`, or `memory` | unset      |
+| `VOLUME_IDENT`    | Volume identifier                              | `embucket` |
+| `VOLUME_DATABASE` | Database name to associate with the volume     | unset      |
+
+{/* vale Google.Parens = NO */}
+
+**For S3 Tables (`VOLUME_TYPE=s3tables`):**
+
+| Variable                   | Purpose               | Required |
+| -------------------------- | --------------------- | -------- |
+| `VOLUME_ARN`               | S3 Tables bucket ARN  | Yes      |
+| `VOLUME_ACCESS_KEY`        | AWS access key ID     | No       |
+| `VOLUME_SECRET_KEY`        | AWS secret access key | No       |
+| `VOLUME_AWS_SESSION_TOKEN` | AWS session token     | No       |
+
+**For S3 (`VOLUME_TYPE=s3`):**
+
+| Variable            | Purpose               | Required |
+| ------------------- | --------------------- | -------- |
+| `VOLUME_ACCESS_KEY` | AWS access key ID     | Yes      |
+| `VOLUME_SECRET_KEY` | AWS secret access key | Yes      |
+
+{/* vale Google.Parens = YES */}
+
+Example for S3 Tables:
+
+```bash
+export VOLUME_TYPE=s3tables
+export VOLUME_IDENT=embucket
+export VOLUME_DATABASE=demo
+export VOLUME_ARN=arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket
+export VOLUME_ACCESS_KEY=YOUR_ACCESS_KEY
+export VOLUME_SECRET_KEY=YOUR_SECRET_KEY
+```
+
+  </TabItem>
+</Tabs>
+
+## Statestore settings
+
+When you enable the `state-store-query` feature, Embucket persists query state in DynamoDB. See [AWS Lambda deployment](/deploy/aws-lambda/) for how to enable this feature. Configure the table name and connection with the following variables.
+
+| Environment variable           | Default               |
+| ------------------------------ | --------------------- |
+| `STATESTORE_TABLE_NAME`        | `embucket-statestore` |
+| `STATESTORE_DYNAMODB_ENDPOINT` | unset                 |
+| `AWS_DDB_ACCESS_KEY_ID`        | unset                 |
+| `AWS_DDB_SECRET_ACCESS_KEY`    | unset                 |
+| `AWS_DDB_SESSION_TOKEN`        | unset                 |
+
+## Lambda deploy-time variables
+
+These variables control the Lambda packaging and deployment process. Set them before you run the deploy script.
+
+| Environment variable  | Default              |
+| --------------------- | -------------------- |
+| `FUNCTION_NAME`       | `embucket-lambda`    |
+| `ENV_FILE`            | `config/.env.lambda` |
+| `AWS_LAMBDA_ROLE_ARN` | unset                |
+| `WITH_OTEL_CONFIG`    | unset                |
+| `FEATURES`            | unset                |
+| `LAYERS`              | unset                |
+
+## Memory and performance tuning
+
+Use these variables to adjust memory pools and network timeouts for your workload.
+
+| Environment variable                | Default  |
+| ----------------------------------- | -------- |
+| `MEM_POOL_TYPE`                     | `greedy` |
+| `MEM_POOL_SIZE_MB`                  | unset    |
+| `DISK_POOL_SIZE_MB`                 | unset    |
+| `AWS_SDK_CONNECT_TIMEOUT_SECS`      | `3`      |
+| `AWS_SDK_OPERATION_TIMEOUT_SECS`    | `30`     |
+| `OBJECT_STORE_TIMEOUT_SECS`         | `10`     |
+| `OBJECT_STORE_CONNECT_TIMEOUT_SECS` | `3`      |
+
+## Authentication defaults
+
+Embucket ships with demo credentials for local development. The default username and password both equal `embucket`. Override them with `AUTH_DEMO_USER` and `AUTH_DEMO_PASSWORD` before you expose the service to any network beyond localhost.
+
+<Aside type="caution">
+  Change the demo credentials and set a strong `JWT_SECRET` before you deploy to production.
+</Aside>

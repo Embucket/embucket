@@ -38,15 +38,12 @@ To ensure everything is working correctly:
 ### Project structure
 
 ```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── components/
-│   ├── content/
-│   │   ├── docs/
-│   └── content.config.ts
-└── astro.config.mjs
+docs/src/content/docs/
+  getting-started/    — Quick Start
+  deploy/             — AWS Lambda, Configuration
+  connect/            — Snowflake CLI, dbt adapter
+  tutorials/          — Snowplow web analytics
+  reference/          — Architecture, Snowflake compatibility, Troubleshooting
 ```
 
 Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its filename.

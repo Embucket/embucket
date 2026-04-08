@@ -1,0 +1,144 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for Embucket deployment and client connections.
+sidebar:
+  order: 2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page covers common issues you may encounter when running Embucket locally, deploying to AWS Lambda, or connecting clients. Individual pages contain inline troubleshooting for their specific workflows.
+
+## Local startup doesn't work
+
+Embucket listens on port 3000 by default. Start the container with the following command:
+
+```bash
+docker run --name embucket --rm -p 3000:3000 embucket/embucket
+```
+
+Verify that the HTTP surface responds at `http://127.0.0.1:3000/`. If another process already occupies port 3000, stop it or map a different host port, for example `-p 3001:3000`.
+
+## Snowflake CLI fails with protocol or SSL errors
+
+{/* vale Google.Parens = NO */}
+Embucket doesn't use TLS (Transport Layer Security) for local connections. Set `protocol = "http"` in your Snowflake CLI connection configuration:
+{/* vale Google.Parens = YES */}
+
+```toml
+[connections.local]
+host = "localhost"
+region = "us-east-2"
+port = 3000
+protocol = "http"
+database = "embucket"
+schema = "public"
+warehouse = "em.wh"
+account = "acc.local"
+user = "embucket"
+password = "embucket"
+```
+
+The Snowflake CLI defaults to HTTPS, which causes protocol and SSL errors when connecting to a plain HTTP endpoint.
+
+## Authentication fails
+
+Embucket ships with default demo credentials. The username and password both default to `embucket`. If you override these values with the `AUTH_DEMO_USER` and `AUTH_DEMO_PASSWORD` environment variables, update your client configuration to match.
+
+{/* vale Google.Parens = NO */}
+
+<Aside type="tip">
+  See [Configuration](/configuration/configuration/) for the full list of authentication and runtime
+  environment variables.
+</Aside>
+{/* vale Google.Parens = YES */}
+
+## Data doesn't appear
+
+Embucket requires a metastore configuration to discover your data. Verify that the `METASTORE_CONFIG` environment variable points to a YAML file that declares your volumes, databases, schemas, or tables.
+
+A minimal configuration with no external volumes looks like this:
+
+```yaml
+volumes: []
+```
+
+If data still doesn't appear, confirm that the credentials and resource ARNs inside your metastore YAML remain correct.
+
+{/* vale Google.Parens = NO */}
+
+<Aside type="tip">
+  See [Configuration](/configuration/configuration/) for metastore setup instructions and examples.
+</Aside>
+{/* vale Google.Parens = YES */}
+
+## Lambda deploy succeeds but runtime fails
+
+When a Lambda deployment succeeds but queries fail at runtime, check the following items in order:
+
+1. **Metastore config** -- Verify that `METASTORE_CONFIG` points to the packaged `metastore.yaml` file inside the Lambda deployment artifact.
+2. **Memory and timeout** -- Confirm that the Lambda function has enough memory, which defaults to 3008 MB, and an appropriate timeout, which defaults to 30 seconds.
+3. **CloudWatch logs** -- Open the log group for your Lambda function and look for error messages that identify the root cause.
+4. **Ingress path** -- Confirm that the ingress path matches the client path. Use a Function URL for the Snowflake CLI and direct Lambda invoke for dbt.
+
+{/* vale Vale.Terms = NO */}
+{/* vale Google.Parens = NO */}
+
+<Aside type="tip">
+  See [AWS Lambda deployment](/deploy/aws-lambda/) for the full deployment and verification
+  workflow.
+</Aside>
+{/* vale Google.Parens = YES */}
+{/* vale Vale.Terms = YES */}
+
+## dbt can't connect
+
+If `dbt debug` fails, work through the following checklist:
+
+- Install the `dbt-embucket` adapter: `python -m pip install dbt-embucket`.
+- Export the `EMBUCKET_FUNCTION_ARN` environment variable with the correct Lambda ARN.
+- Verify that your AWS credentials have `lambda:InvokeFunction` permission on the function ARN.
+- Confirm that your `profiles.yml` contains `type: embucket` in the output configuration.
+
+Run `dbt debug` after each change to isolate the issue. Also check the following:
+
+- The AWS credential chain resolves to the correct identity.
+- The ARN region matches the region where you deployed the Lambda function.
+- The Lambda function exists and responds to requests.
+- The demo credentials in your profile match the values configured on the Lambda function.
+
+## dbt runs but model doesn't appear
+
+Check the `database` and `schema` values in your dbt profile. The model materializes in the database and schema you specify. Verify the result with the Snowflake CLI:
+
+```bash
+snow sql -c lambda -q "select * from demo.public.hello_embucket"
+```
+
+If the query returns no results, confirm that the metastore configuration on the Lambda function includes the target database and schema.
+
+## Snowplow package target.type check fails
+
+Some dbt packages, including Snowplow packages, check `target.type == 'snowflake'` and don't recognize the `embucket` target type. Run the compatibility patch script from the Snowplow demo repository to work around this check:
+
+```bash
+./scripts/patch_snowplow.sh
+```
+
+This script provides a compatibility workaround. It modifies package files to accept the `embucket` target type alongside `snowflake`.
+
+{/* vale Google.Parens = NO */}
+
+<Aside type="tip">
+  See the [Snowplow web analytics tutorial](/tutorials/snowplow/) for the full pipeline setup,
+  including the patch step.
+</Aside>
+{/* vale Google.Parens = YES */}
+
+## Sessions feel short-lived
+
+Embucket issues JWT tokens with a 3-day lifetime. Sessions expire after 60 seconds of inactivity, so interactive sessions may appear to disconnect if you pause between queries.
+
+For long-running workflows, use automated tools like dbt rather than interactive sessions. The dbt adapter handles authentication and session management automatically.
+
+Treat any `embucket-labs` references in older documentation, scripts, or configuration files as outdated.

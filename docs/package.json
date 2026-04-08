@@ -11,7 +11,6 @@
     "format": "prettier --write .",
     "ncu": "ncu -u",
     "preview": "astro preview",
-    "smoke": "node ./scripts/validate-docs-smoke.mjs",
     "start": "astro dev"
   },
   "dependencies": {

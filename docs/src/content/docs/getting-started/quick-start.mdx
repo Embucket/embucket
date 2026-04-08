@@ -1,0 +1,105 @@
+---
+title: Quick Start
+description: Try Embucket locally with Docker and run your first query.
+sidebar:
+  order: 0
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Try Embucket locally before deploying to AWS.
+
+<Steps>
+
+1. **Start Embucket**
+
+   Run the Embucket container:
+
+   ```bash
+   docker run --name embucket --rm -p 3000:3000 embucket/embucket
+   ```
+
+   You see the following output when the container starts accepting connections:
+
+   ```text
+   Listening on http://0.0.0.0:3000
+   ```
+
+2. **Configure Snowflake CLI**
+
+   Install the Snowflake CLI:
+
+   ```bash
+   python -m pip install snowflake-cli
+   ```
+
+   Find your configuration path:
+
+   ```bash
+   snow --info
+   ```
+
+   Open the configuration file and add the following connection block:
+
+   ```toml
+   [connections.local]
+   host = "localhost"
+   region = "us-east-2"
+   port = 3000
+   protocol = "http"
+   database = "embucket"
+   schema = "public"
+   warehouse = "em.wh"
+   account = "acc.local"
+   user = "embucket"
+   password = "embucket"
+   ```
+
+   Test the connection:
+
+   ```bash
+   snow connection test -c local
+   ```
+
+   A successful connection produces the following output:
+
+   ```text
+   +--------------------------------------------------------+
+   | key             | value                                |
+   |-----------------+--------------------------------------|
+   | Connection name | local                                |
+   | Status          | OK                                   |
+   | Host            | localhost                            |
+   | Account         | acc.local                            |
+   | User            | embucket                             |
+   | Role            |                                      |
+   | Database        | embucket                             |
+   | Warehouse       | em.wh                                |
+   +--------------------------------------------------------+
+   ```
+
+3. **Run your first query**
+
+   Execute a SQL query through the Snowflake CLI:
+
+   ```bash
+   snow sql -c local -q "select dateadd(day, -1, current_timestamp()) as yesterday;"
+   ```
+
+   The query returns a result like the following:
+
+   ```text
+   +-------------------------------+
+   | yesterday                     |
+   |-------------------------------|
+   | 2025-06-24T11:30:00.000+0000 |
+   +-------------------------------+
+   ```
+
+</Steps>
+
+## Next steps
+
+- [AWS Lambda deployment](/deploy/aws-lambda/) -- Deploy Embucket to production.
+- [Snowflake CLI](/connect/snowflake-cli/) -- Explore more connection options.
+- [dbt adapter](/connect/dbt/) -- Set up analytics workflows.

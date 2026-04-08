@@ -18,16 +18,28 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/embucket/embucket' }],
       sidebar: [
         {
-          label: 'Essentials',
-          autogenerate: { directory: 'essentials' },
+          label: 'Getting Started',
+          autogenerate: { directory: 'getting-started' },
         },
         {
-          label: 'Guides',
-          autogenerate: { directory: 'guides' },
+          label: 'Deploy',
+          autogenerate: { directory: 'deploy' },
         },
         {
-          label: 'Development',
-          autogenerate: { directory: 'development' },
+          label: 'Configuration',
+          autogenerate: { directory: 'configuration' },
+        },
+        {
+          label: 'Connect',
+          autogenerate: { directory: 'connect' },
+        },
+        {
+          label: 'Tutorials',
+          autogenerate: { directory: 'tutorials' },
+        },
+        {
+          label: 'Reference',
+          autogenerate: { directory: 'reference' },
         },
       ],
       customCss: ['./src/styles/global.css'],
@@ -46,6 +58,21 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   redirects: {
-    '/': '/essentials/quick-start/',
+    '/': '/getting-started/quick-start/',
+    '/essentials/quick-start/': '/getting-started/quick-start/',
+    '/essentials/architecture/': '/reference/architecture/',
+    '/essentials/configuration/': '/configuration/configuration/',
+    '/deploy/configuration/': '/configuration/configuration/',
+    '/essentials/runtime-modes/': '/deploy/aws-lambda/',
+    '/essentials/snowflake/': '/reference/snowflake/',
+    '/essentials/support-matrix/': '/deploy/aws-lambda/',
+    '/guides/aws-lambda/': '/deploy/aws-lambda/',
+    '/guides/dbt/': '/connect/dbt/',
+    '/guides/snowflake-cli/': '/connect/snowflake-cli/',
+    '/guides/snowplow/': '/tutorials/snowplow/',
+    '/guides/troubleshooting/': '/reference/troubleshooting/',
+    '/guides/s3-tables/': '/deploy/aws-lambda/',
+    '/guides/self-hosted/': '/getting-started/quick-start/',
+    '/guides/end-to-end-dbt/': '/connect/dbt/',
   },
 });

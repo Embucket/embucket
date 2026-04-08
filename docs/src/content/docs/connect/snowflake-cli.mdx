@@ -1,0 +1,119 @@
+---
+title: Snowflake CLI
+description: Connect the Snowflake command-line tool to Embucket.
+sidebar:
+  order: 0
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The standard Snowflake command-line tool works with Embucket through its Snowflake-compatible REST API.
+
+## Prerequisites
+
+Before you begin, make sure you have the following:
+
+- **Python 3.8 or later** installed on your system.
+- **Snowflake CLI** installed:
+
+  ```bash
+  python -m pip install snowflake-cli
+  ```
+
+- **A running Embucket instance.** Start one locally with Docker or deploy to AWS Lambda.
+
+{/* vale Vale.Terms = NO */}
+{/* vale Google.Parens = NO */}
+
+<Aside type="tip">
+  For production workloads, deploy Embucket on AWS Lambda. See [AWS Lambda
+  deployment](/deploy/aws-lambda/) for instructions.
+</Aside>
+{/* vale Google.Parens = YES */}
+{/* vale Vale.Terms = YES */}
+
+## Set up the connection
+
+<Steps>
+
+1. **Find your configuration file**
+
+   Run the following command to locate your Snowflake CLI configuration file:
+
+   ```bash
+   snow --info
+   ```
+
+   Open the configuration file and add the following connection block:
+
+   ```toml
+   [connections.local]
+   host = "localhost"
+   region = "us-east-2"
+   port = 3000
+   protocol = "http"
+   database = "embucket"
+   schema = "public"
+   warehouse = "em.wh"
+   account = "acc.local"
+   user = "embucket"
+   password = "embucket"
+   ```
+
+2. **Test the connection**
+
+   Verify that the Snowflake CLI can reach your Embucket instance:
+
+   ```bash
+   snow connection test -c local
+   ```
+
+   A successful connection produces the following output:
+
+   ```text
+   +--------------------------------------------------------+
+   | key             | value                                |
+   |-----------------+--------------------------------------|
+   | Connection name | local                                |
+   | Status          | OK                                   |
+   | Host            | localhost                            |
+   | Account         | acc.local                            |
+   | User            | embucket                             |
+   | Role            |                                      |
+   | Database        | embucket                             |
+   | Warehouse       | em.wh                                |
+   +--------------------------------------------------------+
+   ```
+
+3. **Run a query**
+
+   Execute a SQL query through the Snowflake CLI:
+
+   ```bash
+   snow sql -c local -q "SELECT 1 AS ok"
+   ```
+
+   The query returns the following result:
+
+   ```text
+   +----+
+   | OK |
+   |----|
+   | 1  |
+   +----+
+   ```
+
+</Steps>
+
+## Troubleshooting
+
+{/* vale Google.Parens = NO */}
+
+| Problem                                           | Solution                                                                                                                |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Protocol or TLS (Transport Layer Security) errors | Set `protocol = "http"` in your connection block. Embucket doesn't require TLS for local connections.                   |
+| Authentication failures                           | Use `embucket` for both the `user` and `password` fields.                                                               |
+| Connection refused                                | Confirm that your Docker container runs and listens on port 3000.                                                       |
+| No data returned                                  | Configure a metastore so Embucket can access your data. See [Configuration](/configuration/configuration/) for details. |
+
+{/* vale Google.Parens = YES */}
