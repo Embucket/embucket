@@ -18,7 +18,7 @@ Before you begin, make sure you have the following:
 - **Python 3.8 or later** and **dbt** installed on your system.
 
 <Aside type="tip">
-For deployment instructions, see [AWS Lambda deployment](/deploy/aws-lambda/).
+  For deployment instructions, see [AWS Lambda deployment](/deploy/aws-lambda/).
 </Aside>
 
 ## Set up dbt with Embucket
@@ -91,16 +91,16 @@ For deployment instructions, see [AWS Lambda deployment](/deploy/aws-lambda/).
 
    #### Profile field reference
 
-   | Field | Required | Description |
-   | --- | --- | --- |
-   | `type` | Yes | Must be `embucket`. |
-   | `function_arn` | Yes | ARN of the target Lambda function. |
-   | `account` | Yes | Logical account identifier. |
-   | `user` | Yes | Authentication user name. |
-   | `password` | Yes | Authentication password. |
-   | `database` | Yes | Target database name. |
-   | `schema` | Yes | Target schema name. |
-   | `threads` | Yes | Number of concurrent dbt threads. |
+   | Field          | Required | Description                        |
+   | -------------- | -------- | ---------------------------------- |
+   | `type`         | Yes      | Must be `embucket`.                |
+   | `function_arn` | Yes      | ARN of the target Lambda function. |
+   | `account`      | Yes      | Logical account identifier.        |
+   | `user`         | Yes      | Authentication user name.          |
+   | `password`     | Yes      | Authentication password.           |
+   | `database`     | Yes      | Target database name.              |
+   | `schema`       | Yes      | Target schema name.                |
+   | `threads`      | Yes      | Number of concurrent dbt threads.  |
 
 4. ### Check the connection
 
@@ -145,9 +145,7 @@ For deployment instructions, see [AWS Lambda deployment](/deploy/aws-lambda/).
    +----+----------------+
    ```
 
-   <Aside type="tip">
-   The adapter talks to Lambda by ARN. No public Function URL is needed.
-   </Aside>
+   <Aside type="tip">The adapter talks to Lambda by ARN. No public Function URL is needed.</Aside>
 
 </Steps>
 
@@ -157,13 +155,13 @@ The adapter uses Lambda invoke transport, not a TCP connection. Python models ar
 
 ## Troubleshooting
 
-| Problem | Solution |
-| --- | --- |
-| `profiles.yml` not found | Check that the file exists in your dbt profiles directory. Run `dbt debug --config-dir` to locate it. |
-| `EMBUCKET_FUNCTION_ARN` missing | Export the variable before running `dbt debug`. |
-| AWS credentials missing | The adapter needs IAM credentials with `lambda:InvokeFunction` permission. |
-| Authentication failures | Verify the `user` and `password` values in your profile. |
-| Runs succeed but data is missing | Check the `database`, `schema`, and metastore configuration on the Lambda function. |
+| Problem                          | Solution                                                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `profiles.yml` not found         | Check that the file exists in your dbt profiles directory. Run `dbt debug --config-dir` to locate it. |
+| `EMBUCKET_FUNCTION_ARN` missing  | Export the variable before running `dbt debug`.                                                       |
+| AWS credentials missing          | The adapter needs IAM credentials with `lambda:InvokeFunction` permission.                            |
+| Authentication failures          | Verify the `user` and `password` values in your profile.                                              |
+| Runs succeed but data is missing | Check the `database`, `schema`, and metastore configuration on the Lambda function.                   |
 
 ## Next step
 

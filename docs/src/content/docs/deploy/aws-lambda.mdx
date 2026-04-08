@@ -35,7 +35,7 @@ Before you begin, make sure you have the following:
 
    ```json
    {
-       "arn": "arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket"
+     "arn": "arn:aws:s3tables:us-east-2:123456789012:bucket/my-table-bucket"
    }
    ```
 
@@ -58,7 +58,8 @@ Before you begin, make sure you have the following:
    ```
 
    <Aside type="tip">
-   Replace `ACCESS_KEY`, `SECRET_ACCESS_KEY`, and the ARN with your real values from the previous step. Each S3 table bucket maps to one database.
+     Replace `ACCESS_KEY`, `SECRET_ACCESS_KEY`, and the ARN with your real values from the previous
+     step. Each S3 table bucket maps to one database.
    </Aside>
 
 3. ### Build and deploy
@@ -83,14 +84,14 @@ Before you begin, make sure you have the following:
 
    The Makefile accepts the following variables:
 
-   | Variable | Purpose | Default |
-   |---|---|---|
-   | `FUNCTION_NAME` | Lambda function name | `embucket-lambda` |
-   | `ENV_FILE` | Environment file path | `config/.env.lambda` |
-   | `AWS_LAMBDA_ROLE_ARN` | Execution role ARN | unset |
-   | `FEATURES` | Cargo features, comma-separated | unset |
-   | `LAYERS` | Additional Lambda layer ARNs | unset |
-   | `WITH_OTEL_CONFIG` | OpenTelemetry collector config | unset |
+   | Variable              | Purpose                         | Default              |
+   | --------------------- | ------------------------------- | -------------------- |
+   | `FUNCTION_NAME`       | Lambda function name            | `embucket-lambda`    |
+   | `ENV_FILE`            | Environment file path           | `config/.env.lambda` |
+   | `AWS_LAMBDA_ROLE_ARN` | Execution role ARN              | unset                |
+   | `FEATURES`            | Cargo features, comma-separated | unset                |
+   | `LAYERS`              | Additional Lambda layer ARNs    | unset                |
+   | `WITH_OTEL_CONFIG`    | OpenTelemetry collector config  | unset                |
 
 4. ### Verify the deployment
 
@@ -168,18 +169,19 @@ aws dynamodb create-table \
 
 Configure the state store with the following environment variables:
 
-| Variable | Purpose | Default |
-|---|---|---|
-| `STATESTORE_TABLE_NAME` | DynamoDB table name | `embucket-statestore` |
-| `STATESTORE_DYNAMODB_ENDPOINT` | Custom DynamoDB endpoint (for local testing) | unset |
-| `AWS_DDB_ACCESS_KEY_ID` | DynamoDB access key (optional) | unset |
-| `AWS_DDB_SECRET_ACCESS_KEY` | DynamoDB secret key (optional) | unset |
-| `AWS_DDB_SESSION_TOKEN` | DynamoDB session token (optional) | unset |
+| Variable                       | Purpose                                      | Default               |
+| ------------------------------ | -------------------------------------------- | --------------------- |
+| `STATESTORE_TABLE_NAME`        | DynamoDB table name                          | `embucket-statestore` |
+| `STATESTORE_DYNAMODB_ENDPOINT` | Custom DynamoDB endpoint (for local testing) | unset                 |
+| `AWS_DDB_ACCESS_KEY_ID`        | DynamoDB access key (optional)               | unset                 |
+| `AWS_DDB_SECRET_ACCESS_KEY`    | DynamoDB secret key (optional)               | unset                 |
+| `AWS_DDB_SESSION_TOKEN`        | DynamoDB session token (optional)            | unset                 |
 
 ## Production ingress
 
 <Aside type="caution">
-Function URLs are acceptable for testing but not for production. For production traffic, keep the Lambda private and use an API Gateway.
+  Function URLs are acceptable for testing but not for production. For production traffic, keep the
+  Lambda private and use an API Gateway.
 </Aside>
 
 The following CloudFormation skeleton provisions a private API Gateway with a VPC endpoint for `execute-api`, Lambda proxy integration, and a stage named `v1`:

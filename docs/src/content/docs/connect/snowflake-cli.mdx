@@ -23,7 +23,8 @@ Before you begin, make sure you have the following:
 - **A running Embucket instance.** Start one locally with Docker or deploy to AWS Lambda.
 
 <Aside type="tip">
-For production workloads, deploy Embucket on AWS Lambda. See [AWS Lambda deployment](/deploy/aws-lambda/) for instructions.
+  For production workloads, deploy Embucket on AWS Lambda. See [AWS Lambda
+  deployment](/deploy/aws-lambda/) for instructions.
 </Aside>
 
 ## Set up the connection
@@ -101,9 +102,9 @@ For production workloads, deploy Embucket on AWS Lambda. See [AWS Lambda deploym
 
 ## Troubleshooting
 
-| Problem | Solution |
-| --- | --- |
-| Protocol or TLS errors | Set `protocol = "http"` in your connection block. Embucket does not require TLS for local connections. |
-| Authentication failures | Use `embucket` for both the `user` and `password` fields. |
-| Connection refused | Confirm that your Docker container is running and listening on port 3000. |
-| No data returned | Configure a metastore so Embucket can access your data. See [Configuration](/deploy/configuration/) for details. |
+| Problem                 | Solution                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Protocol or TLS errors  | Set `protocol = "http"` in your connection block. Embucket does not require TLS for local connections.           |
+| Authentication failures | Use `embucket` for both the `user` and `password` fields.                                                        |
+| Connection refused      | Confirm that your Docker container is running and listening on port 3000.                                        |
+| No data returned        | Configure a metastore so Embucket can access your data. See [Configuration](/deploy/configuration/) for details. |

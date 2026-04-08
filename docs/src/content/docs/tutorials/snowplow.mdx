@@ -27,7 +27,8 @@ Before you begin, make sure you have the following:
 - Git
 
 <Aside type="tip">
-If you haven't deployed Embucket to Lambda before, complete the [AWS Lambda deployment](/deploy/aws-lambda/) guide first.
+  If you haven't deployed Embucket to Lambda before, complete the [AWS Lambda
+  deployment](/deploy/aws-lambda/) guide first.
 </Aside>
 
 ## Tutorial
@@ -92,7 +93,8 @@ If you haven't deployed Embucket to Lambda before, complete the [AWS Lambda depl
    ```
 
    <Aside type="note">
-   Review `profiles.yml` before running dbt. Confirm that the database, schema, and other connection values match your environment.
+     Review `profiles.yml` before running dbt. Confirm that the database, schema, and other
+     connection values match your environment.
    </Aside>
 
 6. ### Install dbt packages
@@ -112,7 +114,8 @@ If you haven't deployed Embucket to Lambda before, complete the [AWS Lambda depl
    ```
 
    <Aside type="note">
-   This script patches Snowplow dbt packages that check `target.type == 'snowflake'`. Skip this step if your packages already support the `embucket` target type.
+     This script patches Snowplow dbt packages that check `target.type == 'snowflake'`. Skip this
+     step if your packages already support the `embucket` target type.
    </Aside>
 
 8. ### Load example data
@@ -168,5 +171,6 @@ aws cloudformation delete-stack --stack-name "$STACK_NAME"
 ```
 
 <Aside type="caution">
-Deleting the stack removes the Lambda function and IAM role but doesn't remove data from your S3 Table Bucket. Delete the tables manually if you no longer need them.
+  Deleting the stack removes the Lambda function and IAM role but doesn't remove data from your S3
+  Table Bucket. Delete the tables manually if you no longer need them.
 </Aside>

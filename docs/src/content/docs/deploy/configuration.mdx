@@ -21,20 +21,20 @@ When the same setting appears at more than one level, the higher-priority source
 
 ## Core runtime settings
 
-| Purpose | Flag | Environment variable | Default |
-| --- | --- | --- | --- |
-| Metastore config path | `--metastore-config` | `METASTORE_CONFIG` | unset |
-| Bind host | `--host` | `BUCKET_HOST` | `localhost` |
-| Bind port | `--port` | `BUCKET_PORT` | `3000` |
-| Result serialization | `--data-format` | `DATA_FORMAT` | `json` |
-| Parser dialect | `--sql-parser-dialect` | `SQL_PARSER_DIALECT` | `snowflake` |
-| Query concurrency | `--max-concurrency-level` | `MAX_CONCURRENCY_LEVEL` | `8` |
-| Query timeout | `--query-timeout-secs` | `QUERY_TIMEOUT_SECS` | `1200` |
-| Demo user | `--auth-demo-user` | `AUTH_DEMO_USER` | `embucket` |
-| Demo password | `--auth-demo-password` | `AUTH_DEMO_PASSWORD` | `embucket` |
-| JWT signing secret | `--jwt-secret` | `JWT_SECRET` | unset |
-| Tracing level | `--tracing-level` | `TRACING_LEVEL` | `info` |
-| Service idle timeout | `--idle-timeout-seconds` | `IDLE_TIMEOUT_SECONDS` | `18000` |
+| Purpose               | Flag                      | Environment variable    | Default     |
+| --------------------- | ------------------------- | ----------------------- | ----------- |
+| Metastore config path | `--metastore-config`      | `METASTORE_CONFIG`      | unset       |
+| Bind host             | `--host`                  | `BUCKET_HOST`           | `localhost` |
+| Bind port             | `--port`                  | `BUCKET_PORT`           | `3000`      |
+| Result serialization  | `--data-format`           | `DATA_FORMAT`           | `json`      |
+| Parser dialect        | `--sql-parser-dialect`    | `SQL_PARSER_DIALECT`    | `snowflake` |
+| Query concurrency     | `--max-concurrency-level` | `MAX_CONCURRENCY_LEVEL` | `8`         |
+| Query timeout         | `--query-timeout-secs`    | `QUERY_TIMEOUT_SECS`    | `1200`      |
+| Demo user             | `--auth-demo-user`        | `AUTH_DEMO_USER`        | `embucket`  |
+| Demo password         | `--auth-demo-password`    | `AUTH_DEMO_PASSWORD`    | `embucket`  |
+| JWT signing secret    | `--jwt-secret`            | `JWT_SECRET`            | unset       |
+| Tracing level         | `--tracing-level`         | `TRACING_LEVEL`         | `info`      |
+| Service idle timeout  | `--idle-timeout-seconds`  | `IDLE_TIMEOUT_SECONDS`  | `18000`     |
 
 ## Metastore configuration
 
@@ -96,40 +96,40 @@ tables:
 
 Embucket persists catalog state in DynamoDB. Configure the table name and connection with the following variables.
 
-| Environment variable | Default |
-| --- | --- |
-| `STATESTORE_TABLE_NAME` | `embucket-statestore` |
-| `STATESTORE_DYNAMODB_ENDPOINT` | unset |
-| `AWS_DDB_ACCESS_KEY_ID` | unset |
-| `AWS_DDB_SECRET_ACCESS_KEY` | unset |
-| `AWS_DDB_SESSION_TOKEN` (optional) | unset |
+| Environment variable               | Default               |
+| ---------------------------------- | --------------------- |
+| `STATESTORE_TABLE_NAME`            | `embucket-statestore` |
+| `STATESTORE_DYNAMODB_ENDPOINT`     | unset                 |
+| `AWS_DDB_ACCESS_KEY_ID`            | unset                 |
+| `AWS_DDB_SECRET_ACCESS_KEY`        | unset                 |
+| `AWS_DDB_SESSION_TOKEN` (optional) | unset                 |
 
 ## Lambda deploy-time variables
 
 These variables control the Lambda packaging and deployment process. Set them before you run the deploy script.
 
-| Environment variable | Default |
-| --- | --- |
-| `FUNCTION_NAME` | `embucket-lambda` |
-| `ENV_FILE` | `config/.env.lambda` |
-| `AWS_LAMBDA_ROLE_ARN` | unset |
-| `WITH_OTEL_CONFIG` | unset |
-| `FEATURES` | unset |
-| `LAYERS` | unset |
+| Environment variable  | Default              |
+| --------------------- | -------------------- |
+| `FUNCTION_NAME`       | `embucket-lambda`    |
+| `ENV_FILE`            | `config/.env.lambda` |
+| `AWS_LAMBDA_ROLE_ARN` | unset                |
+| `WITH_OTEL_CONFIG`    | unset                |
+| `FEATURES`            | unset                |
+| `LAYERS`              | unset                |
 
 ## Memory and performance tuning
 
 Use these variables to adjust memory pools and network timeouts for your workload.
 
-| Environment variable | Default |
-| --- | --- |
-| `MEM_POOL_TYPE` | `greedy` |
-| `MEM_POOL_SIZE_MB` | unset |
-| `DISK_POOL_SIZE_MB` | unset |
-| `AWS_SDK_CONNECT_TIMEOUT_SECS` | `3` |
-| `AWS_SDK_OPERATION_TIMEOUT_SECS` | `30` |
-| `OBJECT_STORE_TIMEOUT_SECS` | `10` |
-| `OBJECT_STORE_CONNECT_TIMEOUT_SECS` | `3` |
+| Environment variable                | Default  |
+| ----------------------------------- | -------- |
+| `MEM_POOL_TYPE`                     | `greedy` |
+| `MEM_POOL_SIZE_MB`                  | unset    |
+| `DISK_POOL_SIZE_MB`                 | unset    |
+| `AWS_SDK_CONNECT_TIMEOUT_SECS`      | `3`      |
+| `AWS_SDK_OPERATION_TIMEOUT_SECS`    | `30`     |
+| `OBJECT_STORE_TIMEOUT_SECS`         | `10`     |
+| `OBJECT_STORE_CONNECT_TIMEOUT_SECS` | `3`      |
 
 ## Authentication defaults
 

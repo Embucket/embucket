@@ -59,12 +59,14 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Try Embucket locally in 2 minutes.
 
 **Content:**
+
 1. Start Embucket via Docker (`docker run`)
 2. Install and configure Snowflake CLI
 3. Run a first query
 4. Call to action: "Ready to deploy? See AWS Lambda deployment"
 
 **Changes from current:**
+
 - Remove "Owner/Last reviewed" blockquote
 - Remove hedging ("test and evaluation path, not recommended production...") — say "Try Embucket locally before deploying to AWS"
 - Drop web UI mention (Step 4: Inspect the HTTP surface)
@@ -78,6 +80,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Deploy embucket-lambda to AWS with S3 Tables storage.
 
 **Content — single page covering the full deployment path:**
+
 1. Prerequisites — Rust toolchain, cargo-lambda, AWS credentials
 2. Create an S3 table bucket — absorbed from current `s3-tables.mdx` (bucket creation, ARN capture)
 3. Configure the metastore — volume config YAML with S3 Tables credentials and ARN
@@ -100,6 +103,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Reference for all configuration options.
 
 **Content:**
+
 1. Configuration precedence (flags > env vars > .env)
 2. Core runtime settings table (host, port, auth, timeouts, tracing, idle timeout)
 3. Metastore YAML format — volumes, databases, schemas, tables sections with examples
@@ -111,6 +115,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 9. Authentication defaults
 
 **Changes from current:**
+
 - Remove "Owner/Last reviewed" blockquote
 - Remove "backed by the repository" and "visible in cli.rs" language
 - Add statestore env vars (missing today)
@@ -124,6 +129,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Connect the Snowflake CLI to Embucket.
 
 **Content:**
+
 1. Brief intro — standard Snowflake command-line tool works with Embucket's REST API
 2. Prerequisites
 3. Configure connection — TOML blocks for local and Lambda Function URL
@@ -131,6 +137,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 5. Inline troubleshooting
 
 **Changes from current:**
+
 - Remove "Owner/Last reviewed"
 - Aside linking to Deploy page wherever Function URL is mentioned
 - Remove "current local test and evaluation client flow" framing
@@ -143,6 +150,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Connect dbt to Embucket via the dbt-embucket adapter.
 
 **Content:**
+
 1. One-line explanation of dbt for users who don't know it
 2. Explain the adapter connects to Lambda via AWS invoke (no public endpoint)
 3. Prerequisites — deployed Lambda, ARN, AWS credentials, Python + dbt
@@ -159,6 +167,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Absorbs content from:** `dbt.mdx` and useful parts of `end-to-end-dbt.mdx` (the deploy-first step, export/verify flow)
 
 **Changes from current:**
+
 - Add "what is dbt" intro (one line)
 - Aside linking to Deploy page wherever deployment mentioned
 - Remove hedging language ("recommended client path in the current docs")
@@ -171,6 +180,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Flagship tutorial — build a real analytics pipeline with Embucket.
 
 **Content:** Stays mostly as-is:
+
 1. Clone embucket-snowplow repo
 2. Set deploy-time values
 3. Deploy Lambda stack via CloudFormation
@@ -182,6 +192,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 9. Cleanup
 
 **Changes:**
+
 - Remove "Owner/Last reviewed"
 - Aside linking to Deploy page for deployment references
 - Clean up language (no "current recommended runtime and client path")
@@ -194,6 +205,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** How Embucket works internally.
 
 **Content:** Keep five-layer breakdown:
+
 1. Runtime — embucket-lambda is the production artifact, local embucketd for evaluation
 2. Metadata — YAML metastore config, S3 Tables external catalog, external Iceberg definitions
 3. Storage — Iceberg metadata, Parquet data, S3
@@ -201,6 +213,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 5. Auth/session — JWT tokens, session model, demo credentials
 
 **Changes:**
+
 - Remove "Owner/Last reviewed"
 - Remove "The repo currently ships two runtime artifacts" — describe the system, not the repo
 - Clean up all repo-centric language
@@ -213,6 +226,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** What works, what differs from Snowflake, known limitations.
 
 **Content — restore from previous versions and keep current:**
+
 1. Intro — Snowflake v1 REST API, DataFusion SQL engine, compatible clients
 2. API compatibility — tested with snowflake-connector-python, dbt, snowflake-cli, Superset
 3. SQL engine compatibility — DataFusion-based, aims for 100% dialect compat, currently a subset
@@ -236,6 +250,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** Aggregated common issues when things break.
 
 **Content — organized by symptom:**
+
 1. Local: startup issues, browser/port, protocol errors
 2. Authentication failures
 3. Data not appearing (metastore config)
@@ -245,6 +260,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 7. Sessions feel short-lived
 
 **Changes:**
+
 - Remove "Owner/Last reviewed"
 - Remove support-matrix references
 - Clean up language
@@ -255,6 +271,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 **Purpose:** First thing people see on GitHub. Should clearly explain what Embucket is and how to get started.
 
 **Content:**
+
 1. One-paragraph product description: Snowflake-compatible query engine on AWS Lambda with S3 Tables
 2. Key features (bullet list)
 3. Quick start: link to docs Quick Start
@@ -263,6 +280,7 @@ Before any page ships, spawn an agent assuming a stranger-user role. That agent 
 6. Links to architecture, compatibility, contributing
 
 **Changes:**
+
 - Remove "The repo currently ships two runtime artifacts" framing
 - Remove internal path-chooser language
 - Write for a GitHub visitor, not a repo maintainer

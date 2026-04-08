@@ -16,7 +16,7 @@ Embucket exposes a Snowflake-compatible API over lakehouse data. The system sepa
 Embucket runs as an AWS Lambda function (`embucket-lambda`) for production deployments. A local binary (`embucketd`) is available through Docker for evaluation. Both entry points share the same Snowflake-compatible API router.
 
 <Aside type="tip">
-See [AWS Lambda deployment](/deploy/aws-lambda/) for production setup instructions.
+  See [AWS Lambda deployment](/deploy/aws-lambda/) for production setup instructions.
 </Aside>
 
 ## Metadata
@@ -28,7 +28,8 @@ Embucket loads metadata from a YAML metastore file or external catalogs. You can
 - **External Iceberg tables** -- Define existing Iceberg table locations in the metastore YAML to mount tables stored in your own S3 buckets.
 
 <Aside type="tip">
-See [Configuration](/deploy/configuration/) for the full list of metastore options and environment variables.
+  See [Configuration](/deploy/configuration/) for the full list of metastore options and environment
+  variables.
 </Aside>
 
 ## Storage
