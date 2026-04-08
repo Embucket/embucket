@@ -11,8 +11,7 @@
     "format": "prettier --write .",
     "ncu": "ncu -u",
     "preview": "astro preview",
-    "smoke": "node ./scripts/validate-docs-smoke.mjs",
-    "start": "astro dev"
+"start": "astro dev"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.36.2",

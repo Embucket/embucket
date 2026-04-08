@@ -18,16 +18,24 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/embucket/embucket' }],
       sidebar: [
         {
-          label: 'Essentials',
-          autogenerate: { directory: 'essentials' },
+          label: 'Getting Started',
+          autogenerate: { directory: 'getting-started' },
         },
         {
-          label: 'Guides',
-          autogenerate: { directory: 'guides' },
+          label: 'Deploy',
+          autogenerate: { directory: 'deploy' },
         },
         {
-          label: 'Development',
-          autogenerate: { directory: 'development' },
+          label: 'Connect',
+          autogenerate: { directory: 'connect' },
+        },
+        {
+          label: 'Tutorials',
+          autogenerate: { directory: 'tutorials' },
+        },
+        {
+          label: 'Reference',
+          autogenerate: { directory: 'reference' },
         },
       ],
       customCss: ['./src/styles/global.css'],
@@ -46,6 +54,6 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   redirects: {
-    '/': '/essentials/quick-start/',
+    '/': '/getting-started/quick-start/',
   },
 });
