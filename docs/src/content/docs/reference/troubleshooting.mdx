@@ -73,10 +73,13 @@ When a Lambda deployment succeeds but queries fail at runtime, check the followi
 3. **CloudWatch logs** -- Open the log group for your Lambda function and look for error messages that identify the root cause.
 4. **Ingress path** -- Confirm that the ingress path matches the client path. Use a Function URL for the Snowflake CLI and direct Lambda invoke for dbt.
 
+{/* vale Vale.Terms = NO */}
+
 <Aside type="tip">
   See [AWS Lambda deployment](/deploy/aws-lambda/) for the full deployment and verification
   workflow.
 </Aside>
+{/* vale Vale.Terms = YES */}
 
 ## dbt can't connect
 
