@@ -1,109 +1,51 @@
 # Embucket
 
-Embucket exposes a Snowflake-compatible API over lakehouse data. The repo currently ships two runtime artifacts:
+Embucket is a Snowflake-compatible query engine built on [Apache DataFusion](https://datafusion.apache.org/). It runs as an AWS Lambda function and uses S3 Tables (Apache Iceberg) for storage. Connect with any Snowflake-compatible tool or the [dbt-embucket](https://github.com/Embucket/dbt-embucket) adapter.
 
-- `embucketd` for local and self-hosted runs
-- `embucket-lambda` for AWS Lambda deployments
+## Key features
 
-## Choose your path
+- Snowflake v1 REST API compatibility
+- SQL dialect support via Apache DataFusion
+- AWS Lambda serverless deployment
+- S3 Tables (Iceberg/Parquet) storage
+- Official dbt adapter for analytics workflows
+- Snowflake CLI compatibility
 
-- **Start locally** if you want the fastest test or evaluation loop.
-- **Run from source** if you want to build `embucketd` yourself for local evaluation.
-- **Deploy on AWS Lambda** if you want the current serverless runtime.
-- **Connect dbt** if you want the recommended client path.
-- **Run Snowplow web analytics** if you want a fuller example on the Lambda + dbt path.
-- **Use S3 Tables** if you want the currently documented external catalog.
-- **Troubleshoot** if your client, auth, or runtime setup does not behave as expected.
+## Quick start
 
-Relevant guides live under `docs/src/content/docs/`:
-
-- `essentials/quick-start.mdx`
-- `essentials/runtime-modes.mdx`
-- `guides/aws-lambda.mdx`
-- `guides/dbt.mdx`
-- `guides/self-hosted.mdx`
-- `guides/snowplow.mdx`
-- `guides/s3-tables.mdx`
-- `guides/troubleshooting.mdx`
-
-If you want to build the local binary instead of using Docker, start with `docs/src/content/docs/guides/self-hosted.mdx`.
-
-If you want a fuller example on the recommended client path, start with `docs/src/content/docs/guides/snowplow.mdx`.
-
-## Support summary
-
-The current docs should make these distinctions explicit:
-
-- **Local mode** is the fastest path for tests and evaluation.
-- **AWS Lambda + dbt-embucket** is verified and is the recommended client path.
-- **AWS Lambda + Snowflake CLI over Function URL** is tested, but not production-ready because the Function URL is publicly reachable.
-- **Production-facing Lambda deployments** should avoid a public Function URL. The AWS Lambda guide includes an anonymized private API Gateway example.
-- **AWS S3 Tables** is the currently documented external catalog path.
-
-## Local quick start
-
-Run Embucket locally:
+Run Embucket locally with Docker:
 
 ```bash
 docker run --name embucket --rm -p 3000:3000 embucket/embucket
 ```
 
-Expected startup log:
+See the full [Quick Start guide](docs/src/content/docs/getting-started/quick-start.mdx) for next steps.
 
-```text
-{"timestamp":"2025-07-01T15:35:05.687807Z","level":"INFO","fields":{"message":"Listening on http://0.0.0.0:3000"},"target":"embucketd"}
-```
+## Deploy
 
-Configure Snowflake CLI for the local endpoint:
-
-```bash
-snow --info
-
-# Add this connection block to your Snowflake CLI config file.
-[connections.local]
-host = "localhost"
-region = "us-east-2"
-port = 3000
-protocol = "http"
-database = "embucket"
-schema = "public"
-warehouse = "em.wh"
-account = "acc.local"
-user = "embucket"
-password = "embucket"
-```
-
-Validate the connection and run a query:
-
-```bash
-snow connection test -c local
-snow sql -c local -q "SELECT 1 AS ok"
-```
-
-You can also open `http://127.0.0.1:3000/` to inspect the current Swagger/OpenAPI surface served by `embucketd`.
-
-## AWS Lambda quick pointer
-
-If you want the current serverless path, start with `docs/src/content/docs/guides/aws-lambda.mdx`.
-
-The current runtime is built from `crates/embucket-lambda` and can be deployed with:
+Deploy Embucket to AWS Lambda:
 
 ```bash
 make -C crates/embucket-lambda deploy
 ```
 
-For test-only validation, you can expose a Function URL and connect Snowflake CLI to it. For production-facing traffic, keep the Lambda private and put an API gateway layer in front of it.
+See the [AWS Lambda deployment guide](docs/src/content/docs/deploy/aws-lambda.mdx) for configuration and production setup.
 
-## dbt quick pointer
+## Connect
 
-If you want the recommended client workflow, start with `docs/src/content/docs/guides/dbt.mdx`.
+- **Snowflake CLI** -- connect any Snowflake-compatible client to your Embucket endpoint. See the [Snowflake CLI guide](docs/src/content/docs/connect/snowflake-cli.mdx).
+- **dbt adapter** -- use `dbt-embucket` for analytics workflows. See the [dbt guide](docs/src/content/docs/connect/dbt.mdx).
 
-The official adapter lives in the sibling repository `Embucket/dbt-embucket` and uses:
+## Documentation
 
-- `type: embucket`
-- `function_arn` to reach the deployed Lambda
-- `dbt debug` and `dbt run` as the verified end-to-end checks
+- [Architecture](docs/src/content/docs/reference/architecture.mdx)
+- [Snowflake compatibility](docs/src/content/docs/reference/snowflake.mdx)
+- [Troubleshooting](docs/src/content/docs/reference/troubleshooting.mdx)
 
-## S3 Tables quick pointer
+## Contributing
 
-The current docs treat AWS S3 Tables as the supported external catalog path. Start with `docs/src/content/docs/guides/s3-tables.mdx` for the YAML shape, AWS prerequisites, and query flow.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Embucket is licensed under the [Apache License 2.0](LICENSE).
