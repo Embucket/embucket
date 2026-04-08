@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,13 +56,6 @@ for (const guidePath of highTrafficGuides) {
   );
 }
 
-for (const filePath of ['config/metastore.yaml', 'crates/embucket-lambda/private-api.cfn.yaml']) {
-  assert(
-    existsSync(path.join(repoRoot, filePath)),
-    `Docs-referenced file does not exist: ${filePath}`,
-  );
-}
-
 for (const [content, label] of [
   [quickStart, 'Quick Start'],
   [snowflakeCli, 'Snowflake CLI guide'],
@@ -74,14 +67,18 @@ for (const [content, label] of [
 }
 
 assertIncludes(quickStart, 'http://127.0.0.1:3000/', 'Quick Start');
-assertIncludes(runtimeModes, 'private-api.cfn.yaml', 'Runtime modes');
-assertIncludes(configuration, 'config/metastore.yaml', 'Configuration guide');
+assertIncludes(runtimeModes, 'private API Gateway example', 'Runtime modes');
+assertIncludes(configuration, 'METASTORE_CONFIG=./metastore.yaml', 'Configuration guide');
+assertIncludes(configuration, 'volumes: []', 'Configuration guide');
 assertIncludes(snowflakeCli, 'protocol = "http"', 'Snowflake CLI guide');
 assertIncludes(troubleshooting, 'protocol = "http"', 'Troubleshooting guide');
 assertIncludes(selfHosted, 'cargo build', 'Self-hosted guide');
 assertIncludes(selfHosted, 'target/debug/embucketd', 'Self-hosted guide');
 assertIncludes(selfHosted, 'snow connection test', 'Self-hosted guide');
 assertIncludes(selfHosted, 'evaluation and testing', 'Self-hosted guide');
+assertIncludes(selfHosted, 'METASTORE_CONFIG=./metastore.yaml', 'Self-hosted guide');
+assertIncludes(awsLambda, 'AWS::ApiGateway::RestApi', 'AWS Lambda guide');
+assertIncludes(awsLambda, 'AWS::EC2::VPCEndpoint', 'AWS Lambda guide');
 assertIncludes(snowplow, 'embucket-snowplow', 'Snowplow guide');
 assertIncludes(snowplow, 'dbt run', 'Snowplow guide');
 assertIncludes(snowplow, 'dbt show', 'Snowplow guide');

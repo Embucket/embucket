@@ -6,15 +6,11 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/docs-ci.yml"
-      - "config/metastore.yaml"
-      - "crates/embucket-lambda/private-api.cfn.yaml"
   pull_request:
     branches: [main]
     paths:
       - "docs/**"
       - ".github/workflows/docs-ci.yml"
-      - "config/metastore.yaml"
-      - "crates/embucket-lambda/private-api.cfn.yaml"
 
 # Cancel in-progress runs for the same branch/PR to save resources
 concurrency:
