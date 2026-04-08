@@ -7,11 +7,10 @@ data/
 .env
 metastore.yaml
 
-# Ignore only the root styles directory; allow .github/styles for Vale
-/styles/
-!/styles/config
-!.github/styles/
-!.github/styles/**
+# Vale styles — only keep custom vocabulary, ignore downloaded packages
+.github/styles/Google/
+.github/styles/write-good/
+.github/styles/.vale-config/
 
 **/*.rs.bk
 .DS_Store
