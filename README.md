@@ -4,11 +4,10 @@ Embucket is a Snowflake-compatible query engine built on [Apache DataFusion](htt
 
 ## Key features
 
-- Snowflake v1 REST API compatibility
 - SQL dialect support via Apache DataFusion
 - AWS Lambda serverless deployment
 - S3 Tables (Iceberg/Parquet) storage
-- Official dbt adapter for analytics workflows
+- [dbt-embucket](https://github.com/Embucket/dbt-embucket) adapter
 - Snowflake CLI compatibility
 
 ## Quick start
@@ -34,7 +33,7 @@ See the [AWS Lambda deployment guide](https://docs.embucket.com/deploy/aws-lambd
 ## Connect
 
 - **Snowflake CLI** -- connect any Snowflake-compatible client to your Embucket endpoint. See the [Snowflake CLI guide](https://docs.embucket.com/connect/snowflake-cli/).
-- **dbt adapter** -- use `dbt-embucket` for analytics workflows. See the [dbt guide](https://docs.embucket.com/connect/dbt/).
+- **dbt adapter** -- use `dbt-embucket` for dbt pipelines. See the [dbt guide](https://docs.embucket.com/connect/dbt/).
 
 ## Documentation
 
