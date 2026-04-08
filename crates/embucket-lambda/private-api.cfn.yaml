@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private REST API Gateway for embucket-lambda (VPC-only access)
+
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: embucket-lambda-sturukin_10g
+    Description: Name of the existing Lambda function to integrate with
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0b0902caef1afad23
+    Description: VPC where the execute-api endpoint will be created
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-0de6a3cbce55a0ffe,subnet-0f1e7c04da7fed025,subnet-031ed1d51a578a904
+    Description: Subnets for the VPC Endpoint (one per AZ)
+
+  VpcCidr:
+    Type: String
+    Default: 172.31.0.0/16
+    Description: VPC CIDR block allowed to reach the API via the VPC Endpoint
+
+Resources:
+  # Security Group for the VPC Endpoint - allows HTTPS from within the VPC
+  VpceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS to execute-api VPC Endpoint
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+      Tags:
+        - Key: Name
+          Value: embucket-private-api-vpce-sg
+
+  # Interface VPC Endpoint for execute-api
+  ExecuteApiVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.execute-api
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpceSecurityGroup
+
+  # Private REST API Gateway
+  PrivateApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: embucket-private-api
+      Description: Private API Gateway for embucket-lambda
+      BinaryMediaTypes:
+        - '*/*'
+      EndpointConfiguration:
+        Types:
+          - PRIVATE
+        VpcEndpointIds:
+          - !Ref ExecuteApiVpcEndpoint
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: execute-api:Invoke
+            Resource: execute-api:/*
+            Condition:
+              StringEquals:
+                aws:sourceVpce: !Ref ExecuteApiVpcEndpoint
+
+  # Catch-all proxy resource: {proxy+}
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PrivateApi
+      ParentId: !GetAtt PrivateApi.RootResourceId
+      PathPart: '{proxy+}'
+
+  # ANY method on {proxy+} -> Lambda proxy integration
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PrivateApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaFunctionName}/invocations
+
+  # ANY method on root / -> Lambda proxy integration
+  RootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PrivateApi
+      ResourceId: !GetAtt PrivateApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaFunctionName}/invocations
+
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ProxyMethod
+      - RootMethod
+    Properties:
+      RestApiId: !Ref PrivateApi
+
+  # API Stage
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref PrivateApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: v1
+
+  # Permission for API Gateway to invoke the Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PrivateApi}/*
+
+Outputs:
+  ApiId:
+    Description: REST API ID
+    Value: !Ref PrivateApi
+
+  PrivateApiEndpoint:
+    Description: Private API endpoint (reachable only from within the VPC)
+    Value: !Sub https://${PrivateApi}.execute-api.${AWS::Region}.amazonaws.com/v1
+
+  VpcEndpointId:
+    Description: VPC Endpoint ID for execute-api
+    Value: !Ref ExecuteApiVpcEndpoint
+
+  SecurityGroupId:
+    Description: Security Group controlling access to the VPC Endpoint
+    Value: !Ref VpceSecurityGroup
