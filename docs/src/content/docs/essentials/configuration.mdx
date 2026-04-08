@@ -44,10 +44,10 @@ The current local runtime supports these configuration sources, from highest to 
 
 ## Local `.env` example
 
-The repo ships this minimal example:
+Start with a minimal local `.env` like this:
 
 ```bash
-METASTORE_CONFIG=config/metastore.yaml
+METASTORE_CONFIG=./metastore.yaml
 JWT_SECRET=secret
 TRACING_LEVEL=debug
 RUST_LOG=info
@@ -57,7 +57,15 @@ Use stronger secrets than the example when you share an environment with anyone 
 
 ## Metastore configuration
 
-Embucket currently expects metastore configuration through `METASTORE_CONFIG` or `--metastore-config`. The checked-in starter file is `config/metastore.yaml`.
+Embucket currently expects metastore configuration through `METASTORE_CONFIG` or `--metastore-config`.
+
+For a minimal local file, start with:
+
+```yaml
+volumes: []
+```
+
+That keeps the local runtime bootable for evaluation and testing while you build out a richer metastore definition.
 
 ### AWS S3 Tables volume settings
 
