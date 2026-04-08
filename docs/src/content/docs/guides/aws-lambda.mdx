@@ -1,0 +1,235 @@
+---
+title: AWS Lambda
+description: Build, deploy, verify, and operate the current Embucket Lambda runtime.
+sidebar:
+  order: 0
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+Use this guide when you want the current serverless runtime. The runtime artifact is `embucket-lambda`, and the repo includes both build metadata and deployment helpers for it.
+
+<Aside type="tip">
+  The recommended client path on Lambda is [dbt](/guides/dbt/). Snowflake CLI over a Function URL is
+  useful for validation, but it is not the recommended production-facing path.
+</Aside>
+
+## Prerequisites
+
+- Rust toolchain
+- `cargo-lambda`
+- AWS credentials with permission to deploy and invoke Lambda
+- a metastore config under `config/`
+- optional env file such as `config/.env.lambda`
+
+## Deployment modes
+
+The current repo supports two distinct Lambda access patterns:
+
+- **Function URL + Snowflake CLI** for validation and manual testing
+- **direct Lambda invoke via `dbt-embucket`** for the recommended client path
+
+Treat them differently:
+
+- Function URL is convenient for quick validation
+- direct Lambda invoke avoids exposing a public endpoint
+- private API Gateway is the safer production-facing ingress shape
+
+## Runtime defaults and config surface
+
+Current deploy metadata in the repo sets:
+
+| Setting       | Current default         |
+| ------------- | ----------------------- |
+| binary name   | `bootstrap`             |
+| memory        | `3008`                  |
+| timeout       | `30`                    |
+| tracing       | `Active`                |
+| included file | `config/metastore.yaml` |
+
+Current deploy-time environment defaults in `Cargo.toml` are:
+
+| Variable           | Default                 |
+| ------------------ | ----------------------- |
+| `LOG_FORMAT`       | `json`                  |
+| `METASTORE_CONFIG` | `config/metastore.yaml` |
+| `TRACING_LEVEL`    | `debug`                 |
+| `RUST_LOG`         | `info`                  |
+
+Optional deploy-time inputs exposed by the Makefile include:
+
+| Variable              | Purpose                                                  |
+| --------------------- | -------------------------------------------------------- |
+| `FUNCTION_NAME`       | override the Lambda function name                        |
+| `ENV_FILE`            | inject env vars from a file such as `config/.env.lambda` |
+| `AWS_LAMBDA_ROLE_ARN` | supply an execution role when creating a new function    |
+| `WITH_OTEL_CONFIG`    | include an OpenTelemetry collector config file           |
+| `FEATURES`            | enable optional cargo features such as `streaming`       |
+| `LAYERS`              | attach additional Lambda layers                          |
+
+## Step 1: Build and deploy
+
+From the repository root:
+
+```bash
+make -C crates/embucket-lambda deploy
+```
+
+This path builds `embucket-lambda`, deploys the `bootstrap` binary, and creates a Function URL for the test path.
+
+If you want to supply an env file explicitly:
+
+```bash
+ENV_FILE=config/.env.lambda make -C crates/embucket-lambda deploy
+```
+
+If you need to deploy a new function with an explicit execution role:
+
+```bash
+AWS_LAMBDA_ROLE_ARN=arn:aws:iam::123456789012:role/embucket-lambda-role make -C crates/embucket-lambda deploy
+```
+
+## IAM and access model
+
+There are two IAM concerns in the current deployment story:
+
+1. **deployer permissions** for the human or CI identity running `cargo lambda deploy`
+2. **execution role permissions** for the Lambda function itself
+
+The repo shows this explicitly:
+
+- the Makefile accepts `AWS_LAMBDA_ROLE_ARN` when creating a new function
+- `dbt-embucket` uses AWS credentials to invoke the Lambda directly by ARN
+- the private API template creates API Gateway permission to invoke the function
+
+At minimum, plan for:
+
+- permission to deploy or update the Lambda
+- permission to read logs for verification
+- permission for dbt clients to invoke the target function when using the recommended adapter path
+
+## Step 2: Verify the deployment
+
+The crate Makefile includes a built-in check:
+
+```bash
+make -C crates/embucket-lambda verify
+```
+
+That runs:
+
+```bash
+snow sql -c lambda -q "SELECT 1 as test_column"
+```
+
+You can also tail logs:
+
+```bash
+make -C crates/embucket-lambda logs
+```
+
+For HTTP-level validation, the crate README also shows a direct login request:
+
+```bash
+curl -X POST https://<function-url>.lambda-url.us-east-2.on.aws/session/v1/login-request \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"ACCOUNT_NAME": "account", "LOGIN_NAME": "embucket", "PASSWORD": "embucket", "CLIENT_APP_ID": "test"}}'
+```
+
+## What to verify before calling the deployment healthy
+
+- the function deploys successfully
+- logs are readable in CloudWatch
+- `snow sql -c lambda -q "SELECT 1 as test_column"` succeeds if you are validating the Function URL path
+- `dbt debug` succeeds if you are validating the recommended adapter path
+- the deployed config points at the intended metastore file
+
+## Step 3: Validate with Snowflake CLI over Function URL
+
+The current repo supports this as a test path.
+
+1. deploy the Lambda
+2. capture the Function URL
+3. create a `snow` connection that points to that URL
+4. run a simple query such as `SELECT 1`
+
+<Aside type="caution">
+  A public Function URL is convenient for validation, but the current docs should not call it
+  production-ready because it is publicly accessible.
+</Aside>
+
+## Step 4: Recommended production-facing ingress
+
+For production-facing traffic, keep the Lambda private and put an API gateway layer in front of it.
+
+The repo already includes a private REST API Gateway template at:
+
+```text
+crates/embucket-lambda/private-api.cfn.yaml
+```
+
+That template provisions:
+
+- a private API Gateway
+- a VPC endpoint for `execute-api`
+- a Lambda proxy integration
+- a stage named `v1`
+
+If your platform standard uses a custom domain, place it on top of the gateway layer rather than exposing a raw public Function URL.
+
+## Check limits and observability before rollout
+
+Before you treat a Lambda deployment as rollout-ready, check:
+
+- CloudWatch logs for runtime verification
+- optional OpenTelemetry collector configuration via `WITH_OTEL_CONFIG`
+- a state-store-backed pattern in production-style demos
+- timeout and memory settings that match your expected workload
+- whether your chosen ingress path matches your client path
+
+## Rollback and redeploy guidance
+
+The repo does not ship a one-command rollback wrapper, so the safest current guidance is operationally simple:
+
+1. keep the previous env file and metastore config under version control
+2. keep the previously known-good deployment inputs
+3. redeploy the function with the previous config if a change regresses behavior
+4. re-run the same verification command you used before the change
+
+If you introduce API Gateway or other surrounding infrastructure, roll it back through the same IaC path that created it.
+
+## Step 5: Recommended client path
+
+After the Lambda is live, use the [dbt adapter](/guides/dbt/) for the primary documented workflow.
+
+If you want the shortest full walkthrough, follow [End-to-end dbt workflow](/guides/end-to-end-dbt/).
+
+If you want a fuller project example on the same runtime path, follow [Snowplow web analytics](/guides/snowplow/).
+
+## Cleanup
+
+If you used the Function URL test path and want to remove it:
+
+```bash
+aws lambda delete-function-url-config --function-name embucket-lambda
+```
+
+Also clean up any surrounding resources you created for the deployment path you chose:
+
+- Lambda function
+- CloudWatch log group
+- API Gateway and VPC endpoint if you used the private ingress path
+- extra telemetry layers or config files if you attached them
+
+Remove infrastructure with the same tool that created it so the Lambda, API, and network state do not drift apart.
+
+## Common failure modes
+
+- **deploy succeeds but queries fail**: check that `METASTORE_CONFIG` points to a real packaged file
+- **dbt cannot connect**: check AWS credentials and `EMBUCKET_FUNCTION_ARN`
+- **Snowflake CLI works but should not be public**: move to the private API Gateway path
+- **timeouts or truncated responses**: review timeout, memory, and whether you need `streaming`
+- **no useful traces**: verify `RUST_LOG`, `TRACING_LEVEL`, and any OTEL config you attached

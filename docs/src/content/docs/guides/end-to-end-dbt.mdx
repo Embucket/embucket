@@ -1,0 +1,170 @@
+---
+title: End-to-end dbt workflow
+description: Deploy Embucket on AWS Lambda, connect dbt-embucket, run a minimal model, and verify the result end to end.
+sidebar:
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+> Owner: Embucket maintainers  
+> Last reviewed: 2026-04-07
+
+This guide is the shortest full workflow on the docs site. It takes you from a deployed Embucket Lambda to a successful dbt run and a verified query result.
+
+<Aside type="tip">
+  This path uses the recommended client flow: `dbt-embucket` talking directly to a deployed Lambda
+  by ARN.
+</Aside>
+
+## What you need
+
+- AWS credentials
+- a deployable Embucket checkout
+- `cargo-lambda`
+- Python with dbt and `dbt-embucket`
+- a metastore config at `config/metastore.yaml`
+
+## Step 1: Deploy Embucket Lambda
+
+From the repo root:
+
+```bash
+make -C crates/embucket-lambda deploy-only
+```
+
+If you want to inject an env file during deploy:
+
+```bash
+ENV_FILE=config/.env.lambda make -C crates/embucket-lambda deploy-only
+```
+
+Record the function ARN for the next step.
+
+## Step 2: Install dbt-embucket
+
+```bash
+python -m pip install dbt-embucket
+```
+
+## Step 3: Create a minimal dbt project
+
+```bash
+mkdir embucket-dbt-demo
+cd embucket-dbt-demo
+mkdir -p models
+```
+
+Create `dbt_project.yml`:
+
+```yaml
+name: embucket_demo
+version: 1.0.0
+config-version: 2
+
+profile: embucket
+
+model-paths: ['models']
+
+models:
+  embucket_demo:
+    +materialized: view
+```
+
+Create `models/hello_embucket.sql`:
+
+```sql
+select 1 as id, 'hello embucket' as message
+```
+
+## Step 4: Configure dbt
+
+Export the runtime values:
+
+```bash
+export EMBUCKET_FUNCTION_ARN=arn:aws:lambda:us-east-2:123456789012:function:embucket-lambda
+export EMBUCKET_ACCOUNT=embucket
+export EMBUCKET_USER=embucket
+export EMBUCKET_PASSWORD=embucket
+export EMBUCKET_DATABASE=demo
+```
+
+Create `~/.dbt/profiles.yml`:
+
+```yaml
+embucket:
+  target: dev
+  outputs:
+    dev:
+      type: embucket
+      function_arn: "{{ env_var('EMBUCKET_FUNCTION_ARN') }}"
+      account: "{{ env_var('EMBUCKET_ACCOUNT', 'embucket') }}"
+      user: "{{ env_var('EMBUCKET_USER', 'embucket') }}"
+      password: "{{ env_var('EMBUCKET_PASSWORD', 'embucket') }}"
+      database: "{{ env_var('EMBUCKET_DATABASE', 'demo') }}"
+      schema: public
+      threads: 1
+```
+
+## Step 5: Validate the connection
+
+```bash
+dbt debug
+```
+
+Look for:
+
+```text
+Connection test: [OK connection ok]
+All checks passed!
+```
+
+## Step 6: Run the model
+
+```bash
+dbt run
+```
+
+The run should create a `hello_embucket` object in the configured target schema.
+
+## Step 7: Verify the result
+
+If you have a `snow` connection for the same deployed runtime, verify with:
+
+```bash
+snow sql -c lambda -q "select * from demo.public.hello_embucket"
+```
+
+Expected result shape:
+
+```text
++----+-----------------+
+| id | message         |
+|----+-----------------|
+| 1  | hello embucket  |
++----+-----------------+
+```
+
+## Step 8: Clean up
+
+When you are done, remove:
+
+- the demo dbt project directory
+- any local exported env vars or shell profile changes
+- the deployed Lambda if it was only for evaluation
+
+Use the same deployment path that created the Lambda to tear it down cleanly.
+
+## Common failure points
+
+- `dbt debug` fails because `EMBUCKET_FUNCTION_ARN` is missing
+- AWS credentials exist locally but do not have permission to invoke the Lambda
+- the Lambda points at the wrong metastore config
+- the database or schema in the dbt profile does not match the target you expect
+
+## Where to go next
+
+- For deeper Lambda operations, read [AWS Lambda](/guides/aws-lambda/)
+- For adapter details, read [dbt](/guides/dbt/)
+- For a fuller analytics example on the same path, read [Snowplow web analytics](/guides/snowplow/)
+- For known failure modes, read [Troubleshooting](/guides/troubleshooting/)
