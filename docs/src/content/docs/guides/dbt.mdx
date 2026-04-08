@@ -27,7 +27,7 @@ The official adapter repository includes live integration tests that run `dbt de
 
 ## What this guide gives you
 
-This page is meant to be enough for a first successful setup:
+This page gives you enough material for a first successful setup:
 
 - install the adapter
 - create a minimal project
@@ -109,18 +109,18 @@ export EMBUCKET_DATABASE=demo
 
 ### Profile field reference
 
-| Field          | Required | Meaning                                    |
-| -------------- | -------- | ------------------------------------------ |
-| `type`         | yes      | must be `embucket`                         |
-| `function_arn` | yes      | target Lambda ARN                          |
-| `account`      | yes      | logical account name sent in login payload |
-| `user`         | yes      | Embucket login name                        |
-| `password`     | yes      | Embucket login password                    |
-| `database`     | yes      | default database                           |
-| `schema`       | yes      | default schema                             |
-| `threads`      | yes      | dbt concurrency setting                    |
+| Field          | Required | Meaning                                          |
+| -------------- | -------- | ------------------------------------------------ |
+| `type`         | yes      | must be `embucket`                               |
+| `function_arn` | yes      | target Lambda ARN                                |
+| `account`      | yes      | logical account identifier sent in login payload |
+| `user`         | yes      | Embucket login name                              |
+| `password`     | yes      | Embucket login password                          |
+| `database`     | yes      | default database                                 |
+| `schema`       | yes      | default schema                                   |
+| `threads`      | yes      | dbt concurrency setting                          |
 
-## Step 4: Validate the connection
+## Step 4: Check the connection
 
 ```bash
 dbt debug
@@ -147,7 +147,7 @@ Expected result:
 
 ## Step 6: Verify the result from a client
 
-If you also have Snowflake CLI configured for the same environment, run:
+If you also have the Snowflake command-line tool configured for the same environment, run:
 
 ```bash
 snow sql -c lambda -q "select * from demo.public.hello_embucket"

@@ -14,21 +14,21 @@ Embucket currently has two runtime artifacts: `embucketd` and `embucket-lambda`.
 
 If you already know what you want to do, use this page as a chooser:
 
-- I want to evaluate Embucket locally → [Quick Start](/essentials/quick-start/)
-- I want to build and run the local binary from source → [Self-hosted local binary](/guides/self-hosted/)
-- I want to validate the API over Lambda → [AWS Lambda](/guides/aws-lambda/)
-- I want the recommended client workflow → [dbt](/guides/dbt/)
-- I want the shortest complete walkthrough → [End-to-end dbt workflow](/guides/end-to-end-dbt/)
-- I want a fuller analytics example on the recommended path → [Snowplow web analytics](/guides/snowplow/)
+- Local evaluation → [Quick Start](/essentials/quick-start/)
+- Source-built local binary → [Self-hosted local binary](/guides/self-hosted/)
+- Lambda API validation → [AWS Lambda](/guides/aws-lambda/)
+- Recommended client workflow → [dbt](/guides/dbt/)
+- Shortest complete walkthrough → [End-to-end dbt workflow](/guides/end-to-end-dbt/)
+- Fuller analytics example → [Snowplow web analytics](/guides/snowplow/)
 
 ## Choose your path
 
-| Path                                         | Best for                              | Current status                                             | Start here                              |
-| -------------------------------------------- | ------------------------------------- | ---------------------------------------------------------- | --------------------------------------- |
-| local `embucketd` via Docker or source build | tests, evaluation, local debugging    | current local path                                         | [Quick Start](/essentials/quick-start/) |
-| AWS Lambda + Function URL + Snowflake CLI    | validating the API with Snowflake CLI | tested, but not production-ready because the URL is public | [AWS Lambda](/guides/aws-lambda/)       |
-| AWS Lambda + `dbt-embucket` adapter          | dbt projects and repeatable workflows | verified and recommended                                   | [dbt](/guides/dbt/)                     |
-| AWS Lambda + private API gateway             | production-facing ingress pattern     | recommended deployment shape                               | [AWS Lambda](/guides/aws-lambda/)       |
+| Path                                                    | Best for                                                | Current status                                             | Start here                              |
+| ------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- |
+| local `embucketd` via Docker or source build            | tests, evaluation, local debugging                      | current local path                                         | [Quick Start](/essentials/quick-start/) |
+| AWS Lambda + Function URL + Snowflake command-line tool | validating the API with the Snowflake command-line tool | tested, but not production-ready because the URL is public | [AWS Lambda](/guides/aws-lambda/)       |
+| AWS Lambda + `dbt-embucket` adapter                     | dbt projects and repeatable workflows                   | verified and recommended                                   | [dbt](/guides/dbt/)                     |
+| AWS Lambda + private API gateway                        | production-facing ingress pattern                       | recommended deployment shape                               | [AWS Lambda](/guides/aws-lambda/)       |
 
 ## If you want local evaluation
 
@@ -51,7 +51,7 @@ Use Lambda when you want the current serverless runtime.
 
 - runtime artifact: `embucket-lambda`
 - deployment toolchain: `cargo lambda` plus the repo Makefile
-- current test path: Function URL plus Snowflake CLI
+- current test path: Function URL plus the Snowflake command-line tool
 - current recommended client path: `dbt-embucket`
 
 <Aside type="caution">

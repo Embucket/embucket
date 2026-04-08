@@ -64,7 +64,7 @@ That means:
 
 - each node handles complete queries independently
 - there is no documented distributed query plan across many nodes
-- scaling is mostly a throughput and placement question, not a distributed execution story
+- scaling is primarily a throughput and placement question, not a distributed execution story
 
 This is why the docs distinguish local evaluation from the current Lambda deployment path instead of treating them as interchangeable production footprints.
 
@@ -94,7 +94,7 @@ Current implementation details worth knowing:
 
 If you are debugging auth problems, continue to [Troubleshooting](/guides/troubleshooting/).
 
-## Choose local vs Lambda
+## Choose local or Lambda
 
 The API shape stays aligned, but the operational envelope changes:
 

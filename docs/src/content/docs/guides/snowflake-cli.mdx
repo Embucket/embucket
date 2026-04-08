@@ -1,6 +1,6 @@
 ---
-title: Snowflake CLI
-description: Connect Snowflake CLI to Embucket for the current local test and evaluation workflow.
+title: Snowflake command-line tool
+description: Connect the Snowflake command-line tool to Embucket for the current local test and evaluation workflow.
 sidebar:
   order: 3
 ---
@@ -10,7 +10,7 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 > Owner: Embucket maintainers  
 > Last reviewed: 2026-04-07
 
-Use this guide when you want to run Snowflake CLI against a local Embucket instance. This is the current **local test and evaluation** client flow.
+Use this guide when you want to run the Snowflake command-line tool against a local Embucket instance. This is the current **local test and evaluation** client flow.
 
 <Aside type="tip">
   If you are choosing a long-lived client workflow, prefer [dbt](/guides/dbt/) with the AWS Lambda
@@ -20,7 +20,7 @@ Use this guide when you want to run Snowflake CLI against a local Embucket insta
 ## Prerequisites
 
 - Python 3.8 or newer
-- Snowflake CLI
+- Snowflake command-line tool
 - Docker or a source-built local Embucket binary
 - a running local Embucket instance
 
@@ -37,7 +37,7 @@ For the Docker path, run:
 docker run --name embucket --rm -p 3000:3000 embucket/embucket
 ```
 
-## Step 2: Configure Snowflake CLI
+## Step 2: Configure the Snowflake command-line tool
 
 Find your config file:
 
@@ -61,7 +61,7 @@ user = "embucket"
 password = "embucket"
 ```
 
-Validate the connection:
+Check the connection:
 
 ```bash
 snow connection test -c embucket

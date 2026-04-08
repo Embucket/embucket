@@ -20,16 +20,16 @@ Embucket currently presents:
 
 - a Snowflake v1 REST API surface
 - Snowflake-flavored SQL on top of Apache DataFusion
-- client workflows for Snowflake CLI and dbt
+- client workflows for the Snowflake command-line tool and dbt
 - a verified dbt adapter path through AWS Lambda
 
 ## Before you rely on a workflow
 
-| Workflow shape                                    | What to do                                                                              |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| You want a verified path                          | use [Support matrix](/essentials/support-matrix/) and prefer the dbt adapter path       |
-| You want local evaluation                         | use [Quick Start](/essentials/quick-start/) and [Snowflake CLI](/guides/snowflake-cli/) |
-| You want to understand differences from Snowflake | use the limitation sections below before rollout                                        |
+| Workflow shape                                    | What to do                                                                                            |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| You want a verified path                          | use [Support matrix](/essentials/support-matrix/) and prefer the dbt adapter path                     |
+| You want local evaluation                         | use [Quick Start](/essentials/quick-start/) and [Snowflake command-line tool](/guides/snowflake-cli/) |
+| You want to understand differences from Snowflake | use the limitation sections below before release                                                      |
 
 ## API compatibility
 
@@ -37,13 +37,13 @@ Embucket provides a Snowflake v1 REST API that works with Snowflake-style login,
 
 The current docs explicitly cover:
 
-- local Snowflake CLI against `embucketd`
+- local Snowflake command-line tool against `embucketd`
 - dbt via the `dbt-embucket` adapter on AWS Lambda
-- Snowflake CLI against a Lambda Function URL for testing
+- Snowflake command-line tool against a Lambda Function URL for testing
 
 Choose one of those paths first instead of assuming all Snowflake-compatible tools behave the same way.
 
-## SQL engine compatibility
+## SQL engine behavior
 
 Embucket uses [Apache DataFusion](https://datafusion.apache.org/) for query execution. The goal is Snowflake-friendly behavior, but the current implementation still differs from Snowflake in important places.
 
@@ -59,7 +59,7 @@ Embucket uses [Apache DataFusion](https://datafusion.apache.org/) for query exec
 - **VARIANT** is stored as JSON-serialized `TEXT`
 - **Numeric coercion** can differ from Snowflake
 - **Timestamp behavior** differs from Snowflake's precision and timezone semantics
-- **Collation and charset support** remains limited
+- **Collation and character set support** remains limited
 
 ### Error handling
 

@@ -1,6 +1,6 @@
 ---
 title: Docs maintenance
-description: How the docs are validated, reviewed, and kept current.
+description: How to validate docs, review docs, and keep them current.
 sidebar:
   order: 1
 ---
@@ -10,9 +10,9 @@ sidebar:
 
 This page documents the current release-gate process for docs changes.
 
-## What is validated automatically
+## What the automated checks validate
 
-The repo already includes a docs CI workflow at `.github/workflows/docs-ci.yml`.
+The repository already includes a docs CI workflow at `.github/workflows/docs-ci.yml`.
 
 On docs changes, it currently runs:
 
@@ -37,16 +37,16 @@ Before release, manually validate the commands in the highest-traffic guides:
 - `Snowplow web analytics`
 - `Troubleshooting`
 
-At minimum, confirm:
+Confirm at least these points:
 
 - the local quick start still starts `embucket/embucket`
 - the self-hosted guide still uses `cargo build` and can start `target/debug/embucketd`
-- Snowflake CLI can still run a simple query against the documented path
+- the Snowflake command-line tool can still run a simple query against the documented path
 - the Lambda guide still reflects the current deploy flow
 - the dbt guide still matches the current `dbt-embucket` adapter contract
 - the Snowplow guide still matches the current `embucket-snowplow` flow and uses `dbt run` plus `dbt show` as the success state
 
-The automated smoke checks are intentionally static. They do not call AWS, run dbt against a live Lambda, or execute Snowflake CLI against live infrastructure.
+The automated smoke checks stay intentionally static. They do not call AWS, run dbt against a live Lambda, or execute the Snowflake command-line tool against live infrastructure.
 
 ## Owner and freshness convention
 
@@ -55,7 +55,7 @@ Major guides should include a short block near the top with:
 - owner
 - last reviewed date
 
-This repo now uses that pattern in the highest-traffic guides so readers can see which pages were reviewed recently.
+This repository now uses that pattern in the highest-traffic guides so readers can see which pages the team reviewed recently.
 
 ## Release checklist
 
@@ -66,4 +66,4 @@ Before a release or launch push, confirm:
 3. support claims still match verified workflows
 4. docs CI is green
 5. the top guides have a recent review date
-6. self-hosted and Snowplow guides still match the current source repos and local commands
+6. self-hosted and Snowplow guides still match the current source repositories and local commands

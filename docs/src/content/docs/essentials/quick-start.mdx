@@ -1,6 +1,6 @@
 ---
 title: Quick Start
-description: Start Embucket locally, connect Snowflake CLI, and run a first query in the current test and evaluation path.
+description: Start Embucket locally, connect the Snowflake command-line tool, and run a first query in the current test and evaluation path.
 sidebar:
   order: 0
 ---
@@ -10,12 +10,12 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 > Owner: Embucket maintainers  
 > Last reviewed: 2026-04-07
 
-This quick start is the fastest way to evaluate Embucket locally. It is the current **test and evaluation** path, not the recommended production deployment path.
+This quick start is the fastest way to try Embucket locally. It is the current **test and evaluation** path, not the recommended production deployment path.
 
-By the end of this guide, you will:
+By the end of this guide, you can:
 
 - start the current `embucket/embucket` container
-- connect Snowflake CLI to the local endpoint
+- connect the Snowflake command-line tool to the local endpoint
 - run a query successfully
 
 ## Step 1: Start Embucket
@@ -37,15 +37,15 @@ Expected startup output includes a line like:
   at `http://127.0.0.1:3000/`.
 </Aside>
 
-## Step 2: Configure Snowflake CLI
+## Step 2: Configure the Snowflake command-line tool
 
-Install Snowflake CLI if you do not have it already:
+Install the Snowflake command-line tool if you do not have it already:
 
 ```bash
 python -m pip install snowflake-cli
 ```
 
-Find your Snowflake CLI config file:
+Find your Snowflake command-line tool config file:
 
 ```bash
 snow --info
@@ -67,7 +67,7 @@ user = "embucket"
 password = "embucket"
 ```
 
-Validate the connection:
+Check the connection:
 
 ```bash
 snow connection test -c local

@@ -13,8 +13,8 @@ import { Aside } from '@astrojs/starlight/components';
 Use this guide when you want the current serverless runtime. The runtime artifact is `embucket-lambda`, and the repo includes both build metadata and deployment helpers for it.
 
 <Aside type="tip">
-  The recommended client path on Lambda is [dbt](/guides/dbt/). Snowflake CLI over a Function URL is
-  useful for validation, but it is not the recommended production-facing path.
+  The recommended client path on Lambda is [dbt](/guides/dbt/). The Snowflake command-line tool over
+  a Function URL is useful for validation, but it is not the recommended production-facing path.
 </Aside>
 
 ## Prerequisites
@@ -29,7 +29,7 @@ Use this guide when you want the current serverless runtime. The runtime artifac
 
 The current repo supports two distinct Lambda access patterns:
 
-- **Function URL + Snowflake CLI** for validation and manual testing
+- **Function URL + Snowflake command-line tool** for validation and manual testing
 - **direct Lambda invoke via `dbt-embucket`** for the recommended client path
 
 Treat them differently:
@@ -68,7 +68,7 @@ Optional deploy-time inputs exposed by the Makefile include:
 | `AWS_LAMBDA_ROLE_ARN` | supply an execution role when creating a new function    |
 | `WITH_OTEL_CONFIG`    | include an OpenTelemetry collector config file           |
 | `FEATURES`            | enable optional cargo features such as `streaming`       |
-| `LAYERS`              | attach additional Lambda layers                          |
+| `LAYERS`              | attach extra Lambda layers                               |
 
 ## Step 1: Build and deploy
 
@@ -105,7 +105,7 @@ The repo shows this explicitly:
 - `dbt-embucket` uses AWS credentials to invoke the Lambda directly by ARN
 - the private API template creates API Gateway permission to invoke the function
 
-At minimum, plan for:
+Plan for at least:
 
 - permission to deploy or update the Lambda
 - permission to read logs for verification
@@ -147,7 +147,7 @@ curl -X POST https://<function-url>.lambda-url.us-east-2.on.aws/session/v1/login
 - `dbt debug` succeeds if you are validating the recommended adapter path
 - the deployed config points at the intended metastore file
 
-## Step 3: Validate with Snowflake CLI over Function URL
+## Step 3: Check the Snowflake command-line tool path over Function URL
 
 The current repo supports this as a test path.
 
@@ -230,6 +230,6 @@ Remove infrastructure with the same tool that created it so the Lambda, API, and
 
 - **deploy succeeds but queries fail**: check that `METASTORE_CONFIG` points to a real packaged file
 - **dbt cannot connect**: check AWS credentials and `EMBUCKET_FUNCTION_ARN`
-- **Snowflake CLI works but should not be public**: move to the private API Gateway path
+- **Snowflake command-line tool works but should not be public**: move to the private API Gateway path
 - **timeouts or truncated responses**: review timeout, memory, and whether you need `streaming`
 - **no useful traces**: verify `RUST_LOG`, `TRACING_LEVEL`, and any OTEL config you attached

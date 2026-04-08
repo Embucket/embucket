@@ -12,7 +12,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 Use this page when the documented path does not behave as expected.
 
-## I started Embucket locally, but the browser step does not work
+## Local startup succeeds, but the browser step does not work
 
 Use port `3000` for the current local runtime.
 
@@ -23,7 +23,7 @@ If you were expecting a separate default UI on port `8080`, treat that as stale 
 
 If you started the local runtime from source instead of Docker, follow [Self-hosted local binary](/guides/self-hosted/) to confirm the build, env file, and startup command.
 
-## Snowflake CLI fails with protocol or SSL errors
+## Snowflake command-line tool fails with protocol or SSL errors
 
 Set the connection protocol explicitly:
 
@@ -31,7 +31,7 @@ Set the connection protocol explicitly:
 protocol = "http"
 ```
 
-The local quick start and current Snowflake CLI guide both assume the local endpoint is plain HTTP on port `3000`.
+The local quick start and current Snowflake command-line tool guide both assume the local endpoint is plain HTTP on port `3000`.
 
 ## Authentication fails locally
 
@@ -42,7 +42,7 @@ The default demo credentials are:
 
 If you overrode `AUTH_DEMO_USER` or `AUTH_DEMO_PASSWORD`, update your client config to match.
 
-## Snowflake CLI connects, but I cannot see data
+## Snowflake command-line tool connects, but I cannot see data
 
 The runtime only exposes what you configure.
 
@@ -53,7 +53,7 @@ Check that you have supplied:
 
 If you want the documented external catalog path, follow [AWS S3 table bucket](/guides/s3-tables/).
 
-## My docs or scripts still say `embucket-labs`
+## Docs or scripts still say `embucket-labs`
 
 For current public docs, use:
 
@@ -62,7 +62,7 @@ For current public docs, use:
 
 Treat `embucket-labs` references in current docs as legacy drift unless a page explicitly calls out migration or historical context.
 
-## Lambda works with Snowflake CLI, but I do not want a public endpoint
+## Lambda works with the Snowflake command-line tool, but I do not want a public endpoint
 
 That concern is valid. The current docs treat Function URLs as a test path, not the production-ready ingress path.
 
@@ -79,13 +79,13 @@ Check these in order:
 - the packaged config file exists at the path referenced by `METASTORE_CONFIG`
 - the function has the intended memory and timeout settings
 - the log group contains the startup and query errors you expect to see
-- your ingress path matches your client path: Function URL for Snowflake CLI testing, direct invoke for dbt
+- your ingress path matches your client path: Function URL for Snowflake command-line tool testing, direct invoke for dbt
 
-If you recently changed env vars or metastore config, redeploy with the last known-good inputs and verify again.
+If you recently changed env vars or metastore config, redeploy with the last known-good inputs and check again.
 
 ## dbt cannot connect
 
-Check these first:
+Start with these checks:
 
 - `dbt-embucket` is installed
 - `EMBUCKET_FUNCTION_ARN` is set
@@ -139,5 +139,5 @@ If a long-running interactive workflow feels fragile, prefer an automated client
 Work from the support matrix outward:
 
 1. confirm you are on a documented runtime/client pair in [Support matrix](/essentials/support-matrix/)
-2. validate the runtime with [Quick Start](/essentials/quick-start/) or [AWS Lambda](/guides/aws-lambda/)
+2. check the runtime with [Quick Start](/essentials/quick-start/) or [AWS Lambda](/guides/aws-lambda/)
 3. switch to the recommended client path in [dbt](/guides/dbt/) if you need a verified workflow

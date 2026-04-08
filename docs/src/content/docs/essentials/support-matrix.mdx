@@ -8,23 +8,23 @@ sidebar:
 > Owner: Embucket maintainers  
 > Last reviewed: 2026-04-07
 
-Use this matrix to choose a supported runtime and client combination before you deploy, validate, or troubleshoot.
+Use this matrix to choose a supported runtime and client combination before you deploy, check, or troubleshoot.
 
 ## Runtime and client matrix
 
-| Runtime + client path                       | Status                         | Recommended use                                       | Evidence                                                                            |
-| ------------------------------------------- | ------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| local `embucketd` + Snowflake CLI           | documented                     | tests, evaluation, and local debugging                | current quick start, self-hosted guide, and Snowflake CLI guide                     |
-| AWS Lambda + `dbt-embucket` adapter         | verified                       | recommended client path                               | official adapter tests run `dbt debug` and `dbt run` against a real Embucket Lambda |
-| AWS Lambda + Snowflake CLI via Function URL | tested                         | API validation, but not production-facing traffic     | current Lambda README and user guidance                                             |
-| AWS Lambda + private REST API gateway       | recommended deployment pattern | production-facing ingress in front of the Lambda      | `crates/embucket-lambda/private-api.cfn.yaml`                                       |
-| AWS S3 Tables external catalog              | documented and supported       | current external catalog path described in these docs | current S3 Tables guide and README                                                  |
+| Runtime + client path                                     | Status                         | Recommended use                                       | Evidence                                                                            |
+| --------------------------------------------------------- | ------------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| local `embucketd` + Snowflake command-line tool           | documented                     | tests, evaluation, and local debugging                | current quick start, self-hosted guide, and Snowflake command-line tool guide       |
+| AWS Lambda + `dbt-embucket` adapter                       | verified                       | recommended client path                               | official adapter tests run `dbt debug` and `dbt run` against a real Embucket Lambda |
+| AWS Lambda + Snowflake command-line tool via Function URL | tested                         | API validation, but not production-facing traffic     | current Lambda README and user guidance                                             |
+| AWS Lambda + private REST API gateway                     | recommended deployment pattern | production-facing ingress in front of the Lambda      | `crates/embucket-lambda/private-api.cfn.yaml`                                       |
+| AWS S3 Tables external catalog                            | documented and supported       | current external catalog path described in these docs | current S3 Tables guide and README                                                  |
 
 ## Not currently covered in this docs set
 
-The current docs should **not** claim the following as verified unless new evidence is added:
+The current docs should **not** claim the following as verified unless new evidence supports them:
 
-- Google Cloud Functions or Azure Functions deployments
+- Google Cloud Platform Functions or Azure Functions deployments
 - a non-Lambda dbt transport for `dbt-embucket`
 - broad benchmark conclusions not stated in official benchmark materials
 - a full migration path from `embucket-labs` unless a dedicated migration guide is added
