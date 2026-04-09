@@ -9,48 +9,57 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-release:
-    runs-on: ubuntu-24.04-arm
-    permissions:
-      contents: write
+  build-lambda-artifacts:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            lambda_arch: x86_64
+            rust_target: x86_64-unknown-linux-gnu
+            cargo_lambda_arch_arg: ''
+          - runner: ubuntu-24.04-arm
+            lambda_arch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            cargo_lambda_arch_arg: '--arm64'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-gnu
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-lambda
         run: pip install cargo-lambda
 
-      - name: Cache cargo registry and build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: lambda-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Compute artifact version
+        id: artifact_version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build Lambda zip
-        run: cargo lambda build --release -F state-store-query -p embucket-lambda --arm64 -o zip
-
-      - name: Upload to S3
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: us-east-2
         run: |
-          VERSION=${GITHUB_REF_NAME:-latest}
-          aws s3 cp target/lambda/embucket-lambda/bootstrap.zip \
-            s3://embucket-releases/lambda/embucket-lambda-${VERSION}.zip
-          aws s3 cp target/lambda/embucket-lambda/bootstrap.zip \
-            s3://embucket-releases/lambda/embucket-lambda-latest.zip
+          cargo lambda build --release -F state-store-query -p embucket-lambda ${{ matrix.cargo_lambda_arch_arg }} --output-format zip --lambda-dir dist/${{ matrix.lambda_arch }} --flatten bootstrap
+          cp dist/${{ matrix.lambda_arch }}/bootstrap.zip dist/embucket-lambda-${{ steps.artifact_version.outputs.value }}-${{ matrix.lambda_arch }}.zip
 
-      - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Upload Lambda artifact
+        uses: actions/upload-artifact@v5
         with:
-          files: target/lambda/embucket-lambda/bootstrap.zip
+          name: lambda-${{ steps.artifact_version.outputs.value }}-${{ matrix.lambda_arch }}
+          path: dist/embucket-lambda-${{ steps.artifact_version.outputs.value }}-${{ matrix.lambda_arch }}.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
