@@ -30,45 +30,42 @@ impl VariantArrayElementUDF {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::OneOf(vec![
-                    TypeSignature::Coercible(vec![
-                        Coercion::new_implicit(
-                            TypeSignatureClass::Native(logical_string()),
-                            vec![TypeSignatureClass::Native(logical_binary())],
-                            NativeType::String,
-                        ),
-                        Coercion::new_implicit(
-                            TypeSignatureClass::Native(logical_string()),
-                            vec![TypeSignatureClass::Native(logical_binary())],
-                            NativeType::String,
-                        ),
-                        Coercion::new_exact(TypeSignatureClass::Native(logical_boolean())),
-                    ]),
-                    TypeSignature::Coercible(vec![
-                        Coercion::new_implicit(
-                            TypeSignatureClass::Native(logical_string()),
-                            vec![TypeSignatureClass::Native(logical_binary())],
-                            NativeType::String,
-                        ),
-                        Coercion::new_implicit(
-                            TypeSignatureClass::Native(logical_string()),
-                            vec![
-                                TypeSignatureClass::Native(logical_binary()),
-                                TypeSignatureClass::Native(logical_int8()),
-                                TypeSignatureClass::Native(logical_int16()),
-                                TypeSignatureClass::Native(logical_int32()),
-                                TypeSignatureClass::Native(logical_int64()),
-                                TypeSignatureClass::Native(logical_uint8()),
-                                TypeSignatureClass::Native(logical_uint16()),
-                                TypeSignatureClass::Native(logical_uint32()),
-                            ],
-                            NativeType::String,
-                        ),
-                    ]),
+            signature: Signature::new(TypeSignature::OneOf(vec![
+                TypeSignature::Coercible(vec![
+                    Coercion::new_implicit(
+                        TypeSignatureClass::Native(logical_string()),
+                        vec![TypeSignatureClass::Native(logical_binary())],
+                        NativeType::String,
+                    ),
+                    Coercion::new_implicit(
+                        TypeSignatureClass::Native(logical_string()),
+                        vec![TypeSignatureClass::Native(logical_binary())],
+                        NativeType::String,
+                    ),
+                    Coercion::new_exact(TypeSignatureClass::Native(logical_boolean())),
                 ]),
-                volatility: Volatility::Immutable,
-            },
+                TypeSignature::Coercible(vec![
+                    Coercion::new_implicit(
+                        TypeSignatureClass::Native(logical_string()),
+                        vec![TypeSignatureClass::Native(logical_binary())],
+                        NativeType::String,
+                    ),
+                    Coercion::new_implicit(
+                        TypeSignatureClass::Native(logical_string()),
+                        vec![
+                            TypeSignatureClass::Native(logical_binary()),
+                            TypeSignatureClass::Native(logical_int8()),
+                            TypeSignatureClass::Native(logical_int16()),
+                            TypeSignatureClass::Native(logical_int32()),
+                            TypeSignatureClass::Native(logical_int64()),
+                            TypeSignatureClass::Native(logical_uint8()),
+                            TypeSignatureClass::Native(logical_uint16()),
+                            TypeSignatureClass::Native(logical_uint32()),
+                        ],
+                        NativeType::String,
+                    ),
+                ]),
+            ]), Volatility::Immutable),
             aliases: vec!["array_element".to_string()],
         }
     }
@@ -203,7 +200,7 @@ mod tests {
         let sql =
             "SELECT arrvar[0] as first, arrvar[1] as second, arrvar[2] as third FROM test_table";
 
-        let mut statement = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut statement = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let Statement::Statement(ref mut stmt) = statement {
             variant_element::visit(stmt);
         }
@@ -224,7 +221,7 @@ mod tests {
 
         // Test out of bounds indexing
         let sql = "SELECT arrvar[5] as out_of_bounds FROM test_table WHERE id = 1";
-        let mut statement = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut statement = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let Statement::Statement(ref mut stmt) = statement {
             variant_element::visit(stmt);
         }
@@ -244,7 +241,7 @@ mod tests {
 
         // Test empty array
         let sql = "SELECT array_construct()[0] as empty_array";
-        let mut statement = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut statement = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let Statement::Statement(ref mut stmt) = statement {
             variant_element::visit(stmt);
         }
@@ -284,7 +281,7 @@ mod tests {
 
         // Test JSON path access
         let sql = "SELECT json_col:a.b[0] as first_elem FROM json_table";
-        let mut statement = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut statement = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let Statement::Statement(ref mut stmt) = statement {
             variant_element::visit(stmt);
         }
@@ -305,7 +302,7 @@ mod tests {
 
         // Test nested JSON path access with array flattening
         let sql = "SELECT json_col:a.b as array_elem FROM json_table";
-        let mut statement = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut statement = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let Statement::Statement(ref mut stmt) = statement {
             variant_element::visit(stmt);
         }

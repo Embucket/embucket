@@ -120,6 +120,7 @@ impl VisitorMut for CteInliner<'_> {
                     lateral: false,
                     subquery: Box::new(subq),
                     alias: alias.clone(),
+                    sample: None,
                 };
             }
         }
@@ -149,7 +150,8 @@ impl TableFuncInlineCte {
 
     pub fn replace_flatten_args(&mut self, args: &mut [FunctionArg]) -> Vec<FunctionArg> {
         args.iter()
-            .map(|arg| match arg {
+            .enumerate()
+            .map(|(idx, arg)| match arg {
                 FunctionArg::Named {
                     name,
                     arg: FunctionArgExpr::Expr(expr),
@@ -161,6 +163,9 @@ impl TableFuncInlineCte {
                         arg: FunctionArgExpr::Expr(new_expr),
                         operator: operator.clone(),
                     }
+                }
+                FunctionArg::Unnamed(FunctionArgExpr::Expr(expr)) if idx == 0 => {
+                    FunctionArg::Unnamed(FunctionArgExpr::Expr(self.replace_expr(expr.clone())))
                 }
                 other => other.clone(), // Unnamed or non-Expr args
             })
@@ -215,9 +220,11 @@ impl TableFuncInlineCte {
                         lateral: false,
                         subquery: Box::new(inlined_query),
                         alias: Some(TableAlias {
+                            explicit: false,
                             name: Ident::new(alias),
                             columns: vec![],
                         }),
+                        sample: None,
                     };
                     let projection = vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident::new(
                         column.clone(),

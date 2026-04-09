@@ -19,14 +19,9 @@ pub struct ObjectInsertUDF {
 
 impl ObjectInsertUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::VariadicAny,
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::VariadicAny, Volatility::Immutable),
+    } }
 
     fn insert_key_value(
         object_value: Value,

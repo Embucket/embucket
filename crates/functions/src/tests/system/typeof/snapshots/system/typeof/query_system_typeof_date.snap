@@ -1,13 +1,14 @@
 ---
 source: crates/functions/src/tests/system/typeof/mod.rs
-description: "\"SELECT \\\n        SYSTEM$TYPEOF(DATE '2024-05-09') AS t1, \\\n        SYSTEM$TYPEOF(TIMESTAMP '2024-05-09 14:32:29.135') AS t2\""
+assertion_line: 27
+description: "\"SELECT \\\n+        SYSTEM$TYPEOF(DATE '2024-05-09') AS t1, \\\n+        SYSTEM$TYPEOF(TIMESTAMP '2024-05-09 14:32:29.135') AS t2\""
 ---
 Ok(
     [
-        "+--------+-----------------------------+",
-        "| t1     | t2                          |",
-        "+--------+-----------------------------+",
-        "| Date32 | Timestamp(Nanosecond, None) |",
-        "+--------+-----------------------------+",
+        "+--------+---------------+",
+        "| t1     | t2            |",
+        "+--------+---------------+",
+        "| Date32 | Timestamp(ns) |",
+        "+--------+---------------+",
     ],
 )

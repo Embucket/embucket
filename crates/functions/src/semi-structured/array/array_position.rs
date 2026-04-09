@@ -20,14 +20,9 @@ pub struct ArrayPositionUDF {
 #[allow(clippy::cast_possible_wrap, clippy::as_conversions)]
 impl ArrayPositionUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn array_position(element: &Value, array: &Value) -> Option<i64> {
         if let Value::Array(arr) = array {

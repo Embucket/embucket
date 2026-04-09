@@ -2,9 +2,12 @@ use crate::expr_planner::CustomExprPlanner;
 use crate::session::register_session_context_udfs;
 use crate::session_params::SessionParams;
 use crate::table::register_udtfs;
+use crate::visitors::{table_functions, table_functions_cte_relation};
 use crate::{register_udafs, register_udfs};
+use datafusion::config::Dialect;
 use datafusion::execution::SessionStateBuilder;
 use datafusion::prelude::{SessionConfig, SessionContext};
+use datafusion::sql::parser::Statement as DFStatement;
 use std::sync::Arc;
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -27,6 +30,25 @@ pub fn create_session() -> Arc<SessionContext> {
     register_udafs(&mut ctx).expect("Cannot register UDAFs");
     register_udtfs(&ctx);
     Arc::new(ctx)
+}
+
+pub async fn run_query(
+    ctx: &SessionContext,
+    query: &str,
+) -> datafusion_common::Result<Vec<datafusion::arrow::record_batch::RecordBatch>> {
+    let upper = query.to_ascii_uppercase();
+    let sql = if upper.contains("FLATTEN") || upper.contains("TABLE(") {
+        let mut statement = ctx.state().sql_to_statement(query, &Dialect::Snowflake)?;
+        if let DFStatement::Statement(ref mut stmt) = statement {
+            table_functions::visit(stmt);
+            table_functions_cte_relation::visit(stmt);
+        }
+        statement.to_string()
+    } else {
+        query.to_string()
+    };
+
+    ctx.sql(&sql).await?.collect().await
 }
 
 #[macro_export]
@@ -62,7 +84,7 @@ macro_rules! test_query {
                 }
 
                 // Some queries may fail during Dataframe preparing, so we need to check for errors
-                let res = ctx.sql($query).await;
+                let res = $crate::tests::utils::run_query(&ctx, $query).await;
                 if let Err(ref e) = res {
                     let err = format!("Error: {}", e);
                     settings.bind(|| {
@@ -70,15 +92,11 @@ macro_rules! test_query {
                     });
                     return
                 }
-                let res = res.unwrap().collect().await;
 
                 settings.bind(|| {
-                    let df = match res {
-                        Ok(record_batches) => {
-                            Ok(datafusion::arrow::util::pretty::pretty_format_batches(&record_batches).unwrap().to_string())
-                        },
-                        Err(e) => Err(format!("Error: {e}"))
-                    };
+                    let df = res.map(|record_batches| {
+                        datafusion::arrow::util::pretty::pretty_format_batches(&record_batches).unwrap().to_string()
+                    }).map_err(|e| format!("Error: {e}"));
 
                     let df = df.map(|df| df.split('\n').map(|s| s.to_string()).collect::<Vec<String>>());
                     insta::assert_debug_snapshot!((df));

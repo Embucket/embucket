@@ -19,14 +19,9 @@ pub struct ArraySizeUDF {
 #[allow(clippy::as_conversions, clippy::cast_possible_wrap)]
 impl ArraySizeUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(1),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(1), Volatility::Immutable),
+    } }
 
     fn get_array_size(value: Value) -> Option<i64> {
         match value {

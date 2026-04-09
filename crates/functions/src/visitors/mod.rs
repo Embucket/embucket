@@ -43,7 +43,9 @@ pub fn select_with_body(
 ) -> Select {
     Select {
         select_token: AttachedToken::empty(),
+        optimizer_hint: None,
         distinct: None,
+        select_modifiers: None,
         top: None,
         top_before_distinct: false,
         projection,
@@ -56,6 +58,7 @@ pub fn select_with_body(
         lateral_views: vec![],
         prewhere: None,
         selection,
+        connect_by: vec![],
         group_by: GroupByExpr::Expressions(vec![], vec![]),
         cluster_by: vec![],
         distribute_by: vec![],
@@ -65,7 +68,6 @@ pub fn select_with_body(
         qualify: None,
         window_before_qualify: false,
         value_table_mode: None,
-        connect_by: None,
         flavor: sqlparser::ast::SelectFlavor::Standard,
     }
 }

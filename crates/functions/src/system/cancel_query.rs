@@ -43,13 +43,10 @@ impl SystemCancelQuery {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::OneOf(vec![
-                    TypeSignature::VariadicAny,
-                    TypeSignature::Nullary,
-                ]),
-                volatility: Volatility::Volatile,
-            },
+            signature: Signature::new(TypeSignature::OneOf(vec![
+                TypeSignature::VariadicAny,
+                TypeSignature::Nullary,
+            ]), Volatility::Volatile),
         }
     }
 }

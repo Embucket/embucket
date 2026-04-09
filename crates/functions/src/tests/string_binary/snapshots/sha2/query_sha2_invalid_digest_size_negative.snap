@@ -1,7 +1,6 @@
 ---
 source: crates/functions/src/tests/string_binary/sha2.rs
+assertion_line: 179
 description: "\"SELECT sha2('test', -256)\""
 ---
-Err(
-    "Error: Execution error: Invalid digest size: -256. Must be 224, 256, 384, or 512",
-)
+"Error: Execution error: Invalid digest size: -256. Must be 224, 256, 384, or 512"

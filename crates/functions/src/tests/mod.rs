@@ -12,6 +12,6 @@ mod semi_structured;
 mod string_binary;
 mod system;
 mod table;
-mod utils;
+pub mod utils;
 mod visitors;
 mod window;

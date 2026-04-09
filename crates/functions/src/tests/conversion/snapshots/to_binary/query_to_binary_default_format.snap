@@ -1,7 +1,6 @@
 ---
 source: crates/functions/src/tests/conversion/to_binary.rs
+assertion_line: 21
 description: "\"SELECT TO_BINARY('SNOW') AS binary_value\""
 ---
-Err(
-    "Error: External error: Failed to decode hex string: Invalid character 'S' at position 0",
-)
+"Error: External error: Failed to decode hex string: Invalid character 'S' at position 0"

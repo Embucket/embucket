@@ -18,13 +18,10 @@ impl ArrayGenerateRangeUDF {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::OneOf(vec![
-                    TypeSignature::Exact(vec![DataType::Int64, DataType::Int64]),
-                    TypeSignature::Exact(vec![DataType::Int64, DataType::Int64, DataType::Int64]),
-                ]),
-                volatility: Volatility::Immutable,
-            },
+            signature: Signature::new(TypeSignature::OneOf(vec![
+                TypeSignature::Exact(vec![DataType::Int64, DataType::Int64]),
+                TypeSignature::Exact(vec![DataType::Int64, DataType::Int64, DataType::Int64]),
+            ]), Volatility::Immutable),
             aliases: vec!["generate_range".to_string()],
         }
     }

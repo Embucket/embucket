@@ -18,14 +18,9 @@ pub struct ArraysZipUDF {
 
 impl ArraysZipUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::VariadicAny,
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::VariadicAny, Volatility::Immutable),
+    } }
 
     fn zip_arrays(arrays: Vec<Value>) -> DFResult<Option<String>> {
         // If any array is null, return null

@@ -20,14 +20,9 @@ pub struct ArrayPrependUDF {
 
 impl ArrayPrependUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn prepend_element(array_value: &Value, element_value: &Value) -> DFResult<String> {
         // Ensure the first argument is an array

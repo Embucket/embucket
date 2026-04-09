@@ -7,7 +7,7 @@ use datafusion::logical_expr::{
 use datafusion_common::ScalarValue;
 use datafusion_common::cast::as_int64_array;
 use datafusion_expr::Expr;
-use datafusion_expr::simplify::{ExprSimplifyResult, SimplifyInfo};
+use datafusion_expr::simplify::{ExprSimplifyResult, SimplifyContext};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -160,7 +160,7 @@ impl ScalarUDFImpl for SubstrFunc {
         &self.aliases
     }
 
-    fn simplify(&self, args: Vec<Expr>, _info: &dyn SimplifyInfo) -> DFResult<ExprSimplifyResult> {
+    fn simplify(&self, args: Vec<Expr>, _info: &SimplifyContext) -> DFResult<ExprSimplifyResult> {
         if args.len() >= 2
             && args.len() <= 3
             && let (Expr::Literal(string_scalar, _), Expr::Literal(start_scalar, _)) =

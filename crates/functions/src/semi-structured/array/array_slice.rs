@@ -24,12 +24,9 @@ pub struct ArraySliceUDF {
 )]
 impl ArraySliceUDF {
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(3), // array, from, to
-                volatility: Volatility::Immutable,
-            },
+            signature: Signature::new(TypeSignature::Any(3), Volatility::Immutable),
         }
     }
 

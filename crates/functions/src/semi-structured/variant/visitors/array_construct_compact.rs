@@ -87,7 +87,7 @@ mod tests {
 
         // Test array_construct_compact rewrite
         let sql = "SELECT array_construct_compact(1, NULL, 2, NULL, 3) as compact_arr";
-        let mut stmt = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut stmt = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let DFStatement::Statement(ref mut s) = stmt {
             visit(s);
         }

@@ -1,5 +1,6 @@
 ---
 source: crates/functions/src/tests/table/flatten.rs
+assertion_line: 59
 description: "r#\"SELECT * FROM FLATTEN(INPUT => PARSE_JSON('{\"a\":1, \"b\":[77,88], \"c\": {\"d\":\"X\"}}'), RECURSIVE => TRUE, MODE => 'OBJECT' ) f;\"#"
 ---
 Ok(
@@ -36,6 +37,9 @@ Ok(
         "|     |     |      |       |            |   \"c\": {     |",
         "|     |     |      |       |            |     \"d\": \"X\" |",
         "|     |     |      |       |            |   }          |",
+        "|     |     |      |       |            | }            |",
+        "| 1   | d   | c.d  |       | \"X\"        | {            |",
+        "|     |     |      |       |            |   \"d\": \"X\"   |",
         "|     |     |      |       |            | }            |",
         "+-----+-----+------+-------+------------+--------------+",
     ],

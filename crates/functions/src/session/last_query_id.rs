@@ -21,13 +21,10 @@ impl Default for LastQueryId {
 impl LastQueryId {
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::OneOf(vec![
-                    TypeSignature::VariadicAny,
-                    TypeSignature::Nullary,
-                ]),
-                volatility: Volatility::Volatile,
-            },
+            signature: Signature::new(TypeSignature::OneOf(vec![
+                TypeSignature::VariadicAny,
+                TypeSignature::Nullary,
+            ]), Volatility::Volatile),
         }
     }
 }

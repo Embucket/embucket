@@ -18,14 +18,9 @@ pub struct ArraysToObjectUDF {
 
 impl ArraysToObjectUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn create_object(keys: &[Option<String>], values: &[Value]) -> Option<String> {
         if keys.len() != values.len() {

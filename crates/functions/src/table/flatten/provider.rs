@@ -132,17 +132,17 @@ impl TableProvider for FlattenTableProvider {
         let schema = match projection {
             // Use normalized schema for projections to avoid logical/physical schemas missmatch
             Some(projection) => Arc::new(self.schema().project(projection)?),
-            None => self.schema.inner().clone(),
+            None => Arc::new(self.schema.as_arrow().clone()),
         };
-        let properties = PlanProperties::new(
+        let properties = Arc::new(PlanProperties::new(
             EquivalenceProperties::new(schema),
             Partitioning::UnknownPartitioning(1),
             EmissionType::Incremental,
             Boundedness::Bounded,
-        );
+        ));
         Ok(Arc::new(FlattenExec {
             args: self.args.clone(),
-            schema: self.schema.inner().clone(),
+            schema: Arc::new(self.schema.as_arrow().clone()),
             session_state: Arc::new(session_state.clone()),
             projection: projection.cloned(),
             filters: filters.to_vec(),
@@ -156,7 +156,7 @@ pub struct FlattenExec {
     args: FlattenArgs,
     schema: Arc<Schema>,
     session_state: Arc<SessionState>,
-    properties: PlanProperties,
+    properties: Arc<PlanProperties>,
     projection: Option<Vec<usize>>,
     filters: Vec<Expr>,
     limit: Option<usize>,
@@ -183,7 +183,7 @@ impl ExecutionPlan for FlattenExec {
         self
     }
 
-    fn properties(&self) -> &PlanProperties {
+    fn properties(&self) -> &Arc<PlanProperties> {
         &self.properties
     }
 

@@ -1,13 +1,14 @@
 ---
 source: crates/functions/src/tests/aggregate/listagg.rs
+assertion_line: 57
 description: "\"SELECT LISTAGG(DISTINCT name, ', ') WITHIN GROUP (ORDER BY name) FROM (VALUES ('cherry'), ('apple'), ('banana'), ('apple')) AS t(name)\""
 ---
 Ok(
     [
-        "+----------------------------------------------------------------------+",
-        "| listagg(DISTINCT t.name,Utf8(\", \")) ORDER BY [t.name ASC NULLS LAST] |",
-        "+----------------------------------------------------------------------+",
-        "| cherry, apple, banana                                                |",
-        "+----------------------------------------------------------------------+",
+        "+--------------------------------------------------------------------------+",
+        "| listagg(DISTINCT t.name,Utf8(\", \")) WITHIN GROUP [t.name ASC NULLS LAST] |",
+        "+--------------------------------------------------------------------------+",
+        "| apple, banana, cherry                                                    |",
+        "+--------------------------------------------------------------------------+",
     ],
 )

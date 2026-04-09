@@ -1,7 +1,6 @@
 ---
 source: crates/functions/src/tests/conversion/to_object.rs
+assertion_line: 15
 description: "\"SELECT to_object(1)\""
 ---
-Err(
-    "Error: External error: Unsupported input type: Int64 on position 1",
-)
+"Error: External error: Unsupported input type: Int64 on position 1"

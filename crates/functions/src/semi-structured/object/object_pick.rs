@@ -18,14 +18,9 @@ pub struct ObjectPickUDF {
 
 impl ObjectPickUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::VariadicAny,
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::VariadicAny, Volatility::Immutable),
+    } }
 
     fn pick_keys(object_value: Value, keys: Vec<String>) -> DFResult<Option<String>> {
         // Ensure the first argument is an object

@@ -21,13 +21,10 @@ impl ObjectConstructUDF {
     #[must_use]
     pub fn new(keep_null: bool) -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::OneOf(vec![
-                    TypeSignature::VariadicAny,
-                    TypeSignature::Nullary,
-                ]),
-                volatility: Volatility::Volatile,
-            },
+            signature: Signature::new(TypeSignature::OneOf(vec![
+                TypeSignature::VariadicAny,
+                TypeSignature::Nullary,
+            ]), Volatility::Volatile),
             aliases: vec!["make_object".to_string()],
             keep_null,
         }

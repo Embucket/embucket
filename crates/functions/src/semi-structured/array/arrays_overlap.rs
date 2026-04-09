@@ -18,14 +18,9 @@ pub struct ArraysOverlapUDF {
 
 impl ArraysOverlapUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn arrays_have_overlap(array1: Value, array2: Value) -> DFResult<Option<bool>> {
         // Ensure both arguments are arrays

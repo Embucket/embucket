@@ -1,14 +1,15 @@
-use datafusion::arrow::array::{Array, StringArray};
-use datafusion::arrow::compute::cast;
 use datafusion::arrow::datatypes::DataType;
+use datafusion::arrow::{
+    array::{Array, as_string_array},
+    compute,
+};
 use datafusion::common::Result;
-use datafusion::functions::crypto::basic::{DigestAlgorithm, digest_process};
-use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl, Signature, Volatility};
-use datafusion_common::cast::as_binary_array;
-use datafusion_common::utils::take_function_args;
+use datafusion::functions::crypto::md5::Md5Func as DataFusionMd5Func;
+use datafusion::logical_expr::{ColumnarValue, ScalarUDFImpl};
+use datafusion_common::ScalarValue;
 use datafusion_expr::ScalarFunctionArgs;
+use datafusion_expr::{Signature, TypeSignature, Volatility};
 use std::any::Any;
-use std::fmt::Write;
 use std::sync::Arc;
 
 /// `MD5` SQL function
@@ -23,6 +24,7 @@ use std::sync::Arc;
 /// Returns a 32-character hex-encoded string.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Md5Func {
+    inner: DataFusionMd5Func,
     signature: Signature,
     aliases: Vec<String>,
 }
@@ -36,7 +38,14 @@ impl Md5Func {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature::any(1, Volatility::Volatile),
+            inner: DataFusionMd5Func::new(),
+            signature: Signature::one_of(
+                vec![
+                    TypeSignature::Exact(vec![DataType::Utf8]),
+                    TypeSignature::Any(1),
+                ],
+                Volatility::Immutable,
+            ),
             aliases: vec!["md5_hex".to_string()],
         }
     }
@@ -55,46 +64,36 @@ impl ScalarUDFImpl for Md5Func {
     }
 
     fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType> {
-        Ok(DataType::Utf8)
+        self.inner.return_type(_arg_types)
     }
-    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
-        let ScalarFunctionArgs { number_rows, .. } = args;
-        let [data] = take_function_args("md5", args.args)?;
-        let mut arr = data.into_array(number_rows)?;
 
-        if !matches!(
-            arr.data_type(),
-            DataType::Utf8View
-                | DataType::Utf8
-                | DataType::LargeUtf8
-                | DataType::Binary
-                | DataType::LargeBinary
-                | DataType::BinaryView
-        ) {
-            arr = cast(&arr, &DataType::Utf8)?;
-        }
-        let data = ColumnarValue::Array(Arc::new(arr));
-        let value = digest_process(&data, DigestAlgorithm::Md5)?.into_array(number_rows)?;
+    fn invoke_with_args(&self, mut args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+        let coerced_arg = match args.args.remove(0) {
+            ColumnarValue::Scalar(value) => {
+                ColumnarValue::Scalar(match value.cast_to(&DataType::Utf8)? {
+                    ScalarValue::Utf8(v) => ScalarValue::Utf8(v),
+                    ScalarValue::Utf8View(v) => ScalarValue::Utf8(v.map(|s| s.to_string())),
+                    other => {
+                        let array = compute::cast(&other.to_array()?, &DataType::Utf8)?;
+                        let strings = as_string_array(&array);
+                        ScalarValue::Utf8(
+                            (!strings.is_null(0)).then(|| strings.value(0).to_string()),
+                        )
+                    }
+                })
+            }
+            ColumnarValue::Array(array) => {
+                ColumnarValue::Array(Arc::new(compute::cast(&array, &DataType::Utf8)?))
+            }
+        };
 
-        let binary_array = as_binary_array(&value)?;
-        let string_array: StringArray = binary_array
-            .iter()
-            .map(|opt| opt.map(hex_encode::<_>))
-            .collect();
-        Ok(ColumnarValue::Array(Arc::new(string_array)))
+        args.args = vec![coerced_arg];
+        self.inner.invoke_with_args(args)
     }
+
     fn aliases(&self) -> &[String] {
         &self.aliases
     }
-}
-
-fn hex_encode<T: AsRef<[u8]>>(data: T) -> String {
-    let mut s = String::with_capacity(data.as_ref().len() * 2);
-    for b in data.as_ref() {
-        // Writing to a string never errors, so we can unwrap here.
-        write!(&mut s, "{b:02x}").unwrap_or_default();
-    }
-    s
 }
 
 crate::macros::make_udf_function!(Md5Func);

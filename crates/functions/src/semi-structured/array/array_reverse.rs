@@ -18,14 +18,9 @@ pub struct ArrayReverseUDF {
 
 impl ArrayReverseUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(1),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(1), Volatility::Immutable),
+    } }
 
     fn reverse_array(array_value: Value) -> DFResult<Option<String>> {
         // Ensure the argument is an array

@@ -41,10 +41,7 @@ impl LengthFunc {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(1),
-                volatility: Volatility::Immutable,
-            },
+            signature: Signature::new(TypeSignature::Any(1), Volatility::Immutable),
             aliases: vec![String::from("len")],
         }
     }

@@ -18,14 +18,9 @@ pub struct ArraySortUDF {
 
 impl ArraySortUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::VariadicAny,
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::VariadicAny, Volatility::Immutable),
+    } }
 
     fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         match (a, b) {

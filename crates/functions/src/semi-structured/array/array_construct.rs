@@ -21,13 +21,10 @@ impl ArrayConstructUDF {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::OneOf(vec![
-                    TypeSignature::VariadicAny,
-                    TypeSignature::Nullary,
-                ]),
-                volatility: Volatility::Immutable,
-            },
+            signature: Signature::new(TypeSignature::OneOf(vec![
+                TypeSignature::VariadicAny,
+                TypeSignature::Nullary,
+            ]), Volatility::Immutable),
             aliases: vec!["make_array".to_string(), "make_list".to_string()],
         }
     }

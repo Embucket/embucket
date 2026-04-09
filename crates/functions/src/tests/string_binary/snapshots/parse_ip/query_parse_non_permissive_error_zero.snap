@@ -1,7 +1,6 @@
 ---
 source: crates/functions/src/tests/string_binary/parse_ip.rs
+assertion_line: 33
 description: "\"SELECT PARSE_IP('not_an_ip', 'INET', 0) AS err\""
 ---
-Err(
-    "Error: External error: failed to parse ip: invalid IP address syntax",
-)
+"Error: External error: failed to parse ip: invalid IP address syntax"

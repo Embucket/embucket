@@ -25,14 +25,9 @@ pub struct ArrayInsertUDF {
 )]
 impl ArrayInsertUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(3),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(3), Volatility::Immutable),
+    } }
 
     fn insert_element(
         array_str: impl AsRef<str>,

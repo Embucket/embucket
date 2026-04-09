@@ -1,7 +1,6 @@
 ---
 source: crates/functions/src/tests/string_binary/sha2.rs
+assertion_line: 85
 description: "\"SELECT sha2('test', NULL)\""
 ---
-Err(
-    "Error: Execution error: Digest size must be an integer",
-)
+"Error: Execution error: Digest size must be an integer"

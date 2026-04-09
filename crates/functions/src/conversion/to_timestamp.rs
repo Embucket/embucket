@@ -1323,7 +1323,7 @@ mod tests {
         1000000000::TIMESTAMP_TZ as c,
         1000000000::TIMESTAMP_LTZ as d,
          '2025-07-04 19:16:30+02:00'::TIMESTAMP_TZ as e";
-        let mut statement = ctx.state().sql_to_statement(sql, "snowflake")?;
+        let mut statement = ctx.state().sql_to_statement(sql, &datafusion::config::Dialect::Snowflake)?;
         if let Statement::Statement(ref mut stmt) = statement {
             timestamp::visit(stmt);
         }

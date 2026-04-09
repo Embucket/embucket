@@ -463,7 +463,10 @@ mod tests {
             match result {
                 Err(e) => {
                     assert!(
-                        matches!(e, DataFusionError::ArrowError(..)),
+                        matches!(
+                            e,
+                            DataFusionError::ArrowError(..) | DataFusionError::Context(_, _)
+                        ) || e.to_string().contains("Arrow error:"),
                         "Expected Arrow error, got: {e}",
                     );
                 }

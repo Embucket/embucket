@@ -18,14 +18,9 @@ pub struct ArrayContainsUDF {
 
 impl ArrayContainsUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn contains_value(search_value: &Value, array_str: Option<&str>) -> DFResult<Option<bool>> {
         if let Some(array_str) = array_str {

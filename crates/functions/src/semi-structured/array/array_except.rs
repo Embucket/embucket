@@ -17,14 +17,9 @@ pub struct ArrayExceptUDF {
 
 impl ArrayExceptUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn array_except(array1_str: Option<&str>, array2_str: Option<&str>) -> DFResult<Option<Value>> {
         if let (Some(arr1), Some(arr2)) = (array1_str, array2_str) {

@@ -22,14 +22,11 @@ impl ArrayMinUDF {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            signature: Signature {
-                type_signature: TypeSignature::Coercible(vec![Coercion::new_implicit(
-                    TypeSignatureClass::Native(logical_string()),
-                    vec![TypeSignatureClass::Native(logical_binary())],
-                    NativeType::String,
-                )]),
-                volatility: Volatility::Immutable,
-            },
+            signature: Signature::new(TypeSignature::Coercible(vec![Coercion::new_implicit(
+                TypeSignatureClass::Native(logical_string()),
+                vec![TypeSignatureClass::Native(logical_binary())],
+                NativeType::String,
+            )]), Volatility::Immutable),
         }
     }
 

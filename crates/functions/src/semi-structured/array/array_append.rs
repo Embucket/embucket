@@ -19,14 +19,9 @@ pub struct ArrayAppendUDF {
 
 impl ArrayAppendUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(2),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(2), Volatility::Immutable),
+    } }
 
     fn append_element(array_str: impl AsRef<str>, element: &ScalarValue) -> DFResult<String> {
         let array_str = array_str.as_ref();

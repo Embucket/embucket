@@ -12,9 +12,7 @@ pub struct VariantElementVisitor {}
 
 impl VariantElementVisitor {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {}
-    }
+    pub fn new() -> Self { Self {} }
 }
 
 impl VisitorMut for VariantElementVisitor {

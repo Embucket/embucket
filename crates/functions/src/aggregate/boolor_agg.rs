@@ -63,9 +63,7 @@ struct BoolOrAggAccumulator {
 }
 
 impl BoolOrAggAccumulator {
-    pub const fn new() -> Self {
-        Self { state: None }
-    }
+    pub fn new() -> Self { Self { state: None } }
 }
 
 impl Accumulator for BoolOrAggAccumulator {

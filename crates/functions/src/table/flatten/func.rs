@@ -176,22 +176,8 @@ impl std::hash::Hash for FlattenTableFunc {
 }
 
 impl TableFunctionImpl for FlattenTableFunc {
-    fn call(&self, args: &[(Expr, Option<String>)]) -> DFResult<Arc<dyn TableProvider>> {
-        let named_args_count = args.iter().filter(|(_, name)| name.is_some()).count();
-        if named_args_count > 0 && named_args_count != args.len() {
-            return exec_err!("flatten() supports either all named arguments or positional");
-        }
-
-        let flatten_args = if named_args_count > 0 {
-            get_named_args(args)?
-        } else {
-            get_args(
-                args.iter()
-                    .map(|(expr, _)| expr)
-                    .collect::<Vec<_>>()
-                    .as_ref(),
-            )?
-        };
+    fn call(&self, args: &[Expr]) -> DFResult<Arc<dyn TableProvider>> {
+        let flatten_args = get_args(args)?;
         Ok(Arc::new(FlattenTableProvider::new(flatten_args)?))
     }
 }
@@ -219,67 +205,7 @@ pub fn path_to_string(path: &[PathToken]) -> String {
     out
 }
 
-#[allow(clippy::unwrap_used)]
-fn get_arg(args: &[(Expr, Option<String>)], name: &str) -> Option<Expr> {
-    args.iter().find_map(|(expr, n)| {
-        if n.as_ref().unwrap().to_lowercase().as_str() == name {
-            Some(expr.to_owned())
-        } else {
-            None
-        }
-    })
-}
-
-fn get_named_args(args: &[(Expr, Option<String>)]) -> DFResult<FlattenArgs> {
-    let mut path: Vec<PathToken> = vec![];
-    let mut is_outer: bool = false;
-    let mut is_recursive: bool = false;
-    let mut mode = FlattenMode::Both;
-
-    // input
-    let Some(input_expr) = get_arg(args, "input") else {
-        return exec_err!("Missing required argument: INPUT");
-    };
-
-    // path
-    if let Some(Expr::Literal(ScalarValue::Utf8(Some(v)), _)) = get_arg(args, "path") {
-        path = if let Some(p) = tokenize_path(&v) {
-            p
-        } else {
-            return exec_err!("Invalid JSON path");
-        }
-    }
-
-    // is_outer
-    if let Some(Expr::Literal(ScalarValue::Boolean(Some(v)), _)) = get_arg(args, "is_outer") {
-        is_outer = v;
-    }
-
-    // is_recursive
-    if let Some(Expr::Literal(ScalarValue::Boolean(Some(v)), _)) = get_arg(args, "is_recursive") {
-        is_recursive = v;
-    }
-
-    // mode
-    if let Some(Expr::Literal(ScalarValue::Utf8(Some(v)), _)) = get_arg(args, "mode") {
-        mode = match v.to_lowercase().as_str() {
-            "object" => FlattenMode::Object,
-            "array" => FlattenMode::Array,
-            "both" => FlattenMode::Both,
-            _ => return exec_err!("MODE must be one of: object, array, both"),
-        }
-    }
-
-    Ok(FlattenArgs {
-        input_expr,
-        path,
-        is_outer,
-        is_recursive,
-        mode,
-    })
-}
-
-fn get_args(args: &[&Expr]) -> DFResult<FlattenArgs> {
+fn get_args(args: &[Expr]) -> DFResult<FlattenArgs> {
     if args.is_empty() {
         return exec_err!("flatten() expects at least 1 argument: INPUT");
     }
@@ -727,10 +653,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_named_arguments() -> DFResult<()> {
-        let ctx = SessionContext::new();
-        ctx.register_udtf("flatten", Arc::new(FlattenTableFunc::new()));
+        let ctx = crate::tests::utils::create_session();
         let sql = r#"SELECT * from flatten(INPUT => '{"a":1, "b":[77,88]}',PATH=>'b',IS_OUTER=>false,IS_RECURSIVE=>false,MODE=>'both')"#;
-        let result = ctx.sql(sql).await?.collect().await?;
+        let result = crate::tests::utils::run_query(&ctx, sql).await?;
 
         assert_batches_eq!(
             [

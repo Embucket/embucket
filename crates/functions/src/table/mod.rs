@@ -8,4 +8,5 @@ pub use errors::Error;
 
 pub fn register_udtfs(ctx: &SessionContext) {
     ctx.register_udtf("flatten", Arc::new(FlattenTableFunc::new()));
+    ctx.register_udtf("FLATTEN", Arc::new(FlattenTableFunc::new()));
 }

@@ -18,14 +18,9 @@ pub struct ArrayCompactUDF {
 
 impl ArrayCompactUDF {
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            signature: Signature {
-                type_signature: TypeSignature::Any(1),
-                volatility: Volatility::Immutable,
-            },
-        }
-    }
+    pub fn new() -> Self { Self {
+        signature: Signature::new(TypeSignature::Any(1), Volatility::Immutable),
+    } }
 
     fn compact_array(array_str: impl AsRef<str>) -> DFResult<String> {
         let array_str = array_str.as_ref();

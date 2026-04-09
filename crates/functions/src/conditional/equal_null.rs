@@ -1,11 +1,10 @@
 use datafusion::arrow::array::{BooleanArray, BooleanBuilder};
-use datafusion::arrow::compute::kernels::cmp::eq;
 use datafusion::arrow::datatypes::DataType;
 use datafusion::error::Result as DFResult;
 use datafusion::logical_expr::{ColumnarValue, Signature, Volatility};
 use datafusion::physical_expr_common::datum::apply_cmp;
 use datafusion_common::exec_err;
-use datafusion_expr::{ScalarFunctionArgs, ScalarUDFImpl};
+use datafusion_expr::{Operator, ScalarFunctionArgs, ScalarUDFImpl};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -80,7 +79,7 @@ impl ScalarUDFImpl for EqualNullFunc {
             return exec_err!("the first and second arguments must be of the same length");
         }
 
-        let cmp_res = match apply_cmp(&args[0], &args[1], eq)? {
+        let cmp_res = match apply_cmp(Operator::Eq, &args[0], &args[1])? {
             ColumnarValue::Array(arr) => arr,
             ColumnarValue::Scalar(v) => v.to_array()?,
         };

@@ -1,8 +1,71 @@
-use datafusion::logical_expr::sqlparser::ast::{Expr, TableFactor, VisitMut};
+use datafusion::logical_expr::sqlparser::ast::{
+    Expr, FunctionArg, FunctionArgExpr, TableFactor, Value, ValueWithSpan,
+    VisitMut,
+};
 use datafusion::sql::sqlparser::ast::{
     Function, FunctionArguments, Query, SetExpr, Statement, VisitorMut,
 };
+use datafusion::sql::sqlparser::tokenizer::{Location, Span};
 use std::ops::ControlFlow;
+
+fn flatten_default_string(value: &str) -> FunctionArg {
+    FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::Value(ValueWithSpan {
+        value: Value::SingleQuotedString(value.to_string()),
+        span: Span::new(Location::new(0, 0), Location::new(0, 0)),
+    })))
+}
+
+fn flatten_default_bool(value: bool) -> FunctionArg {
+    FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::Value(ValueWithSpan {
+        value: Value::Boolean(value),
+        span: Span::new(Location::new(0, 0), Location::new(0, 0)),
+    })))
+}
+
+fn rewrite_flatten_args(args: Vec<FunctionArg>) -> Vec<FunctionArg> {
+    if !args.iter().any(|arg| matches!(arg, FunctionArg::Named { .. })) {
+        return args;
+    }
+
+    let mut input = None;
+    let mut path = None;
+    let mut outer = None;
+    let mut recursive = None;
+    let mut mode = None;
+
+    for arg in args {
+        match arg {
+            FunctionArg::Named {
+                name,
+                arg,
+                operator: _,
+            } => match name.to_string().to_ascii_lowercase().as_str() {
+                "input" => input = Some(FunctionArg::Unnamed(arg)),
+                "path" => path = Some(FunctionArg::Unnamed(arg)),
+                "outer" | "is_outer" => outer = Some(FunctionArg::Unnamed(arg)),
+                "recursive" | "is_recursive" => recursive = Some(FunctionArg::Unnamed(arg)),
+                "mode" => mode = Some(FunctionArg::Unnamed(arg)),
+                _ => {}
+            },
+            FunctionArg::Unnamed(arg) => {
+                if input.is_none() {
+                    input = Some(FunctionArg::Unnamed(arg));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    input.map_or_else(Vec::new, |input| {
+        vec![
+            input,
+            path.unwrap_or_else(|| flatten_default_string("")),
+            outer.unwrap_or_else(|| flatten_default_bool(false)),
+            recursive.unwrap_or_else(|| flatten_default_bool(false)),
+            mode.unwrap_or_else(|| flatten_default_string("both")),
+        ]
+    })
+}
 
 /// A SQL AST visitor that rewrites `TABLE(<FUNCTION>(...))` table functions
 /// into `<FUNCTION>(...)` by removing the unnecessary `TABLE(...)` wrapper.
@@ -58,11 +121,27 @@ impl VisitorMut for TableFunctionVisitor {
                     if matches!(func_name.to_lowercase().as_str(), "result_scan" | "flatten") {
                         item.relation = TableFactor::Function {
                             name: name.clone(),
-                            args: args.args.clone(),
+                            args: if func_name.eq_ignore_ascii_case("flatten") {
+                                rewrite_flatten_args(args.args.clone())
+                            } else {
+                                args.args.clone()
+                            },
                             alias: alias.clone(),
                             lateral: false,
                         };
                     }
+                } else if let TableFactor::Function { name, args, .. } = &mut item.relation
+                    && name.to_string().eq_ignore_ascii_case("flatten")
+                {
+                    *args = rewrite_flatten_args(std::mem::take(args));
+                } else if let TableFactor::Table {
+                    name,
+                    args: Some(table_args),
+                    ..
+                } = &mut item.relation
+                    && name.to_string().eq_ignore_ascii_case("flatten")
+                {
+                    table_args.args = rewrite_flatten_args(std::mem::take(&mut table_args.args));
                 }
             }
         }

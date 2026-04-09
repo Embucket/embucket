@@ -3,9 +3,10 @@ use dashmap::DashMap;
 use datafusion::common::error::Result as DFResult;
 use datafusion::logical_expr::sqlparser::ast::Value;
 use datafusion::logical_expr::sqlparser::ast::helpers::key_value_options::{
-    KeyValueOption, KeyValueOptionType,
+    KeyValueOption, KeyValueOptionKind,
 };
 use datafusion_common::config::{ConfigEntry, ConfigExtension, ExtensionOptions};
+use datafusion_common::metadata::ScalarAndMetadata;
 use datafusion_common::{ParamValues, ScalarValue};
 use std::any::Any;
 use std::collections::{BTreeMap, HashMap};
@@ -62,12 +63,14 @@ impl Hash for SessionParams {
 
 impl From<SessionParams> for ParamValues {
     fn from(value: SessionParams) -> Self {
-        let map: HashMap<String, ScalarValue> = value
+        let map: HashMap<String, ScalarAndMetadata> = value
             .properties
             .iter()
             .filter_map(|entry| {
                 let (key, prop) = (entry.key().clone(), entry.value().clone());
-                prop.to_scalar_value().map(|scalar| (key, scalar))
+                prop.to_scalar_value()
+                    .map(ScalarAndMetadata::from)
+                    .map(|scalar| (key, scalar))
             })
             .collect();
         Self::Map(map)
@@ -89,16 +92,36 @@ impl SessionProperty {
     #[must_use]
     pub fn from_key_value(option: &KeyValueOption, session_id: String) -> Self {
         let now = Utc::now();
+        let (value, property_type) = match &option.option_value {
+            KeyValueOptionKind::Single(value) => match value {
+                Value::Number(_, _) => (value.to_string(), "fixed".to_string()),
+                Value::Boolean(_) => (value.to_string(), "boolean".to_string()),
+                _ => (
+                    value
+                        .clone()
+                        .into_string()
+                        .unwrap_or_else(|| value.to_string()),
+                    "text".to_string(),
+                ),
+            },
+            KeyValueOptionKind::Multi(values) => (
+                values
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+                "text".to_string(),
+            ),
+            KeyValueOptionKind::KeyValueOptions(options) => {
+                (options.to_string(), "text".to_string())
+            }
+        };
         Self {
             session_id: Some(session_id),
             created_on: now,
             updated_on: now,
-            value: option.value.clone(),
-            property_type: match option.option_type {
-                KeyValueOptionType::STRING | KeyValueOptionType::ENUM => "text".to_string(),
-                KeyValueOptionType::BOOLEAN => "boolean".to_string(),
-                KeyValueOptionType::NUMBER => "fixed".to_string(),
-            },
+            value,
+            property_type,
             comment: None,
             name: option.option_name.clone(),
         }

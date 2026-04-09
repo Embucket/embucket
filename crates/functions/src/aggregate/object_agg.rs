@@ -285,6 +285,10 @@ mod tests {
         fn build(&self) -> Result<Box<dyn Accumulator>> {
             let return_field: FieldRef =
                 Arc::new(Field::new("result", self.data_type.clone(), true));
+            let expr_fields: [FieldRef; 2] = [
+                Arc::new(Field::new("key", DataType::Utf8, false)),
+                Arc::new(Field::new("value", self.data_type.clone(), true)),
+            ];
             ObjectAggUDAF::default().accumulator(AccumulatorArgs {
                 return_field,
                 schema: &self.schema,
@@ -297,6 +301,7 @@ mod tests {
                     Arc::new(Column::new("key", 0)),
                     Arc::new(Column::new("value", 1)),
                 ],
+                expr_fields: &expr_fields,
             })
         }
 
