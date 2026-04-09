@@ -17,7 +17,7 @@ use iceberg_rust_spec::{
     table_metadata::{FormatVersion, TableMetadataBuilder},
     types::{StructField, Type},
 };
-use object_store::{ObjectStore, PutPayload, path::Path};
+use object_store::{ObjectStore, ObjectStoreExt, PutPayload, path::Path};
 use snafu::ResultExt;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;

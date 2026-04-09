@@ -42,32 +42,32 @@ bytes = { version = "1.8.0" }
 chrono = { version = "0.4.41", default-features = false, features = ["serde",  "clock"] }
 clap = { version = "4.5.27", features = ["env", "derive"] }
 dashmap = "6.1.0"
-datafusion = { version = "50.0.0" }
-datafusion-common = { version = "50.0.0" }
-datafusion-doc = { version = "50.0.0" }
-datafusion-expr = { version = "50.0.0" }
-datafusion-functions-json = { git = "https://github.com/Embucket/datafusion-functions-json.git", rev = "439cbd2282504c3ffaf262f1ffdb530a0fb1a151" }
-datafusion-macros = { version = "50.0.0" }
-datafusion-physical-plan = { version = "50.0.0" }
-datafusion_iceberg = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "af0532380770f55f23c783e555b4674cec743174" }
+datafusion = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-common = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-doc = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-expr = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-functions-json = { path = "/Users/ramp/vcs/datafusion-functions-json" }
+datafusion-macros = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-physical-plan = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion_iceberg = { path = "/Users/ramp/vcs/iceberg-rust/datafusion_iceberg" }
 futures = { version = "0.3" }
 http = "1.2"
 http-body-util = "0.1.0"
-iceberg = { git = "https://github.com/apache/iceberg-rust.git", rev="7a5ad1fcaf00d4638857812bab788105f6c60573"}
-iceberg-rest-catalog = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "af0532380770f55f23c783e555b4674cec743174" }
-iceberg-rust = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "af0532380770f55f23c783e555b4674cec743174" }
-iceberg-rust-spec = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "af0532380770f55f23c783e555b4674cec743174" }
-iceberg-s3tables-catalog = { git = "https://github.com/Embucket/iceberg-rust.git", rev = "af0532380770f55f23c783e555b4674cec743174" }
+iceberg-rest-catalog = { path = "/Users/ramp/vcs/iceberg-rust/catalogs/iceberg-rest-catalog" }
+iceberg-rust = { path = "/Users/ramp/vcs/iceberg-rust/iceberg-rust" }
+iceberg-rust-spec = { path = "/Users/ramp/vcs/iceberg-rust/iceberg-rust-spec" }
+iceberg-s3tables-catalog = { path = "/Users/ramp/vcs/iceberg-rust/catalogs/iceberg-s3tables-catalog" }
 indexmap = "2.7.1"
 jsonwebtoken = "9.3.1"
 lazy_static = { version = "1.5" }
 # Should be updated to 0.12.0 after slate db update
-object_store = { version = "0.12.0", features = ["aws", "gcp", "azure"] }
+object_store = { version = "0.13.1", features = ["aws", "gcp", "azure"] }
 regex = "1.11.1"
 serde = { version = "1.0.228", features = ["derive", "alloc"] }
 serde_json = { version = "1.0.145", features = ["raw_value"]}
 serde_yaml = "0.9"
 serde_dynamo = { version = "4.3.0", features = ["aws-sdk-dynamodb+1"] }
+sqlparser = { version = "0.61.0", features = ["visitor"] }
 snafu = { version = "0.8.5", features = ["futures"] }
 tikv-jemallocator = { version = "0.6.0" }
 strum = { version = "0.27.2", features = ["derive"] }
@@ -101,12 +101,13 @@ insta = { version = "1.44.1", features = ["json", "filters", "redactions"] }
 cfg-if = { version = "1.0.3" }
 
 [patch.crates-io]
-datafusion = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
-datafusion-common = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
-datafusion-expr = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
-datafusion-physical-plan = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
-datafusion-doc = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
-datafusion-macros = { git = "https://github.com/Embucket/datafusion.git", rev = "832c278922863064571c0a7c5716a3ff87ce5201" }
+datafusion = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-common = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-doc = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-expr = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-macros = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+datafusion-physical-plan = { git = "file:///Users/ramp/vcs/datafusion", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
+sqlparser = { git = "file:///Users/ramp/vcs/datafusion-sqlparser-rs", rev = "64f38f06b3878835076c760398691de3146e4fee" }
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
