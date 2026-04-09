@@ -4,13 +4,15 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-lambda-artifacts:
@@ -44,7 +46,9 @@ jobs:
         id: artifact_version
         shell: bash
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
             echo "value=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -63,3 +67,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+
+      - name: Attach Lambda asset to GitHub release
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.artifact_version.outputs.value }}
+          files: dist/embucket-lambda-${{ steps.artifact_version.outputs.value }}-${{ matrix.lambda_arch }}.zip
+          overwrite_files: true
