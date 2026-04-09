@@ -51,7 +51,7 @@ pub struct MergeIntoCOWSinkExec {
     schema: DFSchemaRef,
     input: Arc<dyn ExecutionPlan>,
     target: DataFusionTable,
-    properties: PlanProperties,
+    properties: Arc<PlanProperties>,
 }
 
 impl MergeIntoCOWSinkExec {
@@ -66,8 +66,12 @@ impl MergeIntoCOWSinkExec {
         let emission_type = EmissionType::Final; // Final emission after all processing is complete
         let boundedness = Boundedness::Bounded; // Bounded operation that completes
 
-        let properties =
-            PlanProperties::new(eq_properties, partitioning, emission_type, boundedness);
+        let properties = Arc::new(PlanProperties::new(
+            eq_properties,
+            partitioning,
+            emission_type,
+            boundedness,
+        ));
         Self {
             schema,
             input,
@@ -101,7 +105,7 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
         self
     }
 
-    fn properties(&self) -> &PlanProperties {
+    fn properties(&self) -> &Arc<PlanProperties> {
         &self.properties
     }
 
@@ -394,7 +398,7 @@ fn usize_to_i64_saturating(v: usize) -> i64 {
 #[derive(Debug)]
 struct MergeCOWFilterExec {
     input: Arc<dyn ExecutionPlan>,
-    properties: PlanProperties,
+    properties: Arc<PlanProperties>,
     matching_files: Arc<Mutex<Option<ManifestAndDataFiles>>>,
 }
 
@@ -433,7 +437,7 @@ impl ExecutionPlan for MergeCOWFilterExec {
         self
     }
 
-    fn properties(&self) -> &PlanProperties {
+    fn properties(&self) -> &Arc<PlanProperties> {
         &self.properties
     }
 

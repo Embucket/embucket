@@ -75,9 +75,9 @@ test_query!(
 test_query!(
     split_ordered_mixed_three_aggregates,
     "SELECT a, \
-        ARRAY_AGG(c) WITHIN GROUP (ORDER BY c DESC) AS arr_desc, \
-        ARRAY_AGG(c) WITHIN GROUP (ORDER BY d ASC)  AS arr_d, \
-        ARRAY_AGG(c) WITHIN GROUP (ORDER BY a ASC)  AS arr_a \
+        ARRAY_AGG(c ORDER BY c DESC) AS arr_desc, \
+        ARRAY_AGG(c ORDER BY d ASC)  AS arr_d, \
+        ARRAY_AGG(c ORDER BY a ASC)  AS arr_a \
      FROM (VALUES \
         (1, 10, 100), \
         (1, 20,  90), \

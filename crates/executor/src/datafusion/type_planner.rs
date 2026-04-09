@@ -1,10 +1,10 @@
-use datafusion::arrow::datatypes::{DECIMAL128_MAX_PRECISION, DataType, Field, Fields, TimeUnit};
+use datafusion::arrow::datatypes::{
+    DECIMAL128_MAX_PRECISION, DECIMAL256_MAX_PRECISION, DataType, Field, Fields, TimeUnit,
+};
 use datafusion::common::Result;
 use datafusion::logical_expr::planner::TypePlanner;
 use datafusion::logical_expr::sqlparser::ast;
-use datafusion::sql::planner::SqlToRel;
 use datafusion::sql::sqlparser::ast::DataType as SQLDataType;
-use datafusion::sql::utils::make_decimal_type;
 use datafusion_common::config::ConfigOptions;
 use datafusion_common::{DataFusionError, TableReference, not_impl_err, plan_err};
 use datafusion_expr::planner::ContextProvider;
@@ -37,14 +37,18 @@ impl TypePlanner for CustomTypePlanner {
                 Ok(Some(DataType::Binary))
             }
             // https://github.com/apache/datafusion/issues/12644 for JSON
-            SQLDataType::JSON | SQLDataType::Character(_) | SQLDataType::CharacterVarying(_) => {
-                Ok(Some(DataType::Utf8))
-            }
+            SQLDataType::JSON
+            | SQLDataType::Character(_)
+            | SQLDataType::CharacterVarying(_)
+            | SQLDataType::Char(_)
+            | SQLDataType::Varchar(_) => Ok(Some(DataType::Utf8)),
             SQLDataType::Datetime(precision) => {
                 let time_unit = parse_timestamp_precision(*precision)?;
                 Ok(Some(DataType::Timestamp(time_unit, None)))
             }
-            SQLDataType::TimestampNtz => Ok(Some(DataType::Timestamp(TimeUnit::Microsecond, None))),
+            SQLDataType::TimestampNtz(_) => {
+                Ok(Some(DataType::Timestamp(TimeUnit::Microsecond, None)))
+            }
             SQLDataType::Custom(a, b) => match a.to_string().to_ascii_uppercase().as_str() {
                 "VARIANT" => Ok(Some(DataType::Utf8)),
                 "TIMESTAMP_LTZ" | "TIMESTAMP_TZ" => {
@@ -75,8 +79,9 @@ impl TypePlanner for CustomTypePlanner {
                         let sql_type = parse_type_from_tokens(&type_str)?;
                         let data_type = match self.plan_type(&sql_type)? {
                             Some(dt) => dt,
-                            // Fallback to SqlToRel for unsupported types
-                            None => SqlToRel::new(self).convert_data_type(&sql_type)?,
+                            None => {
+                                return plan_err!("Unsupported OBJECT field type: {sql_type}");
+                            }
                         };
                         fields.push(Field::new(field_name, data_type, nullable));
                     }
@@ -112,6 +117,29 @@ impl TypePlanner for CustomTypePlanner {
             },
             _ => Ok(None),
         }
+    }
+}
+
+fn make_decimal_type(precision: Option<u64>, scale: Option<u64>) -> Result<DataType> {
+    const DECIMAL_DEFAULT_SCALE: i8 = 10;
+
+    let (precision, scale) = match (precision, scale) {
+        (Some(p), Some(s)) => (p as u8, s as i8),
+        (Some(p), None) => (p as u8, 0),
+        (None, Some(_)) => {
+            return plan_err!("Cannot specify only scale for decimal data type");
+        }
+        (None, None) => (DECIMAL128_MAX_PRECISION, DECIMAL_DEFAULT_SCALE),
+    };
+
+    if precision == 0 || precision > DECIMAL256_MAX_PRECISION || scale.unsigned_abs() > precision {
+        plan_err!(
+            "Decimal(precision = {precision}, scale = {scale}) should satisfy `0 < precision <= 76`, and `scale <= precision`."
+        )
+    } else if precision > DECIMAL128_MAX_PRECISION {
+        Ok(DataType::Decimal256(precision, scale))
+    } else {
+        Ok(DataType::Decimal128(precision, scale))
     }
 }
 

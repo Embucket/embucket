@@ -90,7 +90,6 @@ mod tests {
     use datafusion::physical_expr::expressions::col;
     use datafusion::physical_expr::{LexOrdering, PhysicalSortExpr};
     use datafusion_common::Result;
-    use datafusion_common::config::TableParquetOptions;
     use datafusion_physical_plan::sorts::sort::SortExec;
     use std::sync::Arc;
 
@@ -101,9 +100,9 @@ mod tests {
     #[tokio::test]
     async fn test_eliminate_empty_data_source_exec_transformation() -> Result<()> {
         let object_store_url = ObjectStoreUrl::parse("s3://bucket")?;
-        let file_source = Arc::new(ParquetSource::new(TableParquetOptions::default()));
+        let file_source = Arc::new(ParquetSource::new(schema()));
         let file_scan_config = Arc::new(
-            FileScanConfigBuilder::new(object_store_url, schema(), file_source)
+            FileScanConfigBuilder::new(object_store_url, file_source)
                 .with_file_groups(vec![])
                 .build(),
         );
@@ -121,9 +120,9 @@ mod tests {
     #[tokio::test]
     async fn test_no_transformation_for_non_empty_data_source_exec() -> Result<()> {
         let object_store_url = ObjectStoreUrl::parse("s3://bucket")?;
-        let file_source = Arc::new(ParquetSource::new(TableParquetOptions::default()));
+        let file_source = Arc::new(ParquetSource::new(schema()));
         let file_scan_config = Arc::new(
-            FileScanConfigBuilder::new(object_store_url, schema(), file_source)
+            FileScanConfigBuilder::new(object_store_url, file_source)
                 .with_file_groups(vec![FileGroup::new(vec![PartitionedFile::new("path", 1)])])
                 .build(),
         );
@@ -145,9 +144,9 @@ mod tests {
     #[tokio::test]
     async fn test_eliminate_sort_exec_above_empty_data_source_exec() -> Result<()> {
         let object_store_url = ObjectStoreUrl::parse("s3://bucket")?;
-        let file_source = Arc::new(ParquetSource::new(TableParquetOptions::default()));
+        let file_source = Arc::new(ParquetSource::new(schema()));
         let file_scan_config = Arc::new(
-            FileScanConfigBuilder::new(object_store_url, schema(), file_source)
+            FileScanConfigBuilder::new(object_store_url, file_source)
                 .with_file_groups(vec![])
                 .build(),
         );

@@ -15,6 +15,7 @@ use crate::datafusion::physical_plan::merge::{
     DATA_FILE_PATH_COLUMN, MANIFEST_FILE_PATH_COLUMN, MERGE_INSERTED_COLUMN, MERGE_UPDATED_COLUMN,
     SOURCE_EXISTS_COLUMN, TARGET_EXISTS_COLUMN,
 };
+use crate::datafusion::type_planner::CustomTypePlanner;
 use crate::datafusion::rewriters::session_context::SessionContextExprRewriter;
 use crate::error::{OperationOn, OperationType};
 use crate::models::{QueryContext, QueryMetric, QueryResult, metrics_set_to_json};
@@ -41,7 +42,7 @@ use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::{
     ListingOptions, ListingTable, ListingTableConfig, ListingTableUrl,
 };
-use datafusion::execution::session_state::{SessionContextProvider, SessionState};
+use datafusion::execution::session_state::SessionState;
 use datafusion::logical_expr::{self, col};
 use datafusion::logical_expr::{LogicalPlan, TableSource};
 use datafusion::physical_optimizer::PhysicalOptimizerRule;
@@ -53,19 +54,21 @@ use datafusion::sql::resolve::resolve_table_references;
 use datafusion::sql::sqlparser::ast::{
     DescribeAlias, Expr, Ident, ObjectName, Query, SchemaName, Statement, TableFactor,
 };
-use datafusion::sql::statement::object_name_to_string;
 use datafusion_common::config::ConfigOptions;
+use datafusion_common::metadata::ScalarAndMetadata;
 use datafusion_common::{
     Column, DFSchema, DataFusionError, ParamValues, ResolvedTableReference, SchemaReference,
     TableReference, plan_datafusion_err,
 };
 use datafusion_expr::conditional_expressions::CaseBuilder;
 use datafusion_expr::logical_plan::dml::{DmlStatement, InsertOp, WriteOp};
-use datafusion_expr::planner::ContextProvider;
+use datafusion_expr::planner::{ContextProvider, ExprPlanner, RelationPlanner, TypePlanner};
 use datafusion_expr::{
+    AggregateUDF,
     BinaryExpr, CreateMemoryTable, DdlStatement, Expr as DFExpr, ExprSchemable, Extension,
     JoinType, LogicalPlanBuilder, Operator, Projection, SubqueryAlias, TryCast, and,
     build_join_schema, is_null, lit, or, when,
+    ScalarUDF, WindowUDF,
 };
 use datafusion_iceberg::DataFusionTable;
 use datafusion_iceberg::table::DataFusionTableConfigBuilder;
@@ -90,15 +93,21 @@ use iceberg_rust::spec::values::Value as IcebergValue;
 use iceberg_rust::table::manifest_list::snapshot_partition_bounds;
 use object_store::aws::{AmazonS3Builder, resolve_bucket_region};
 use object_store::{ClientOptions, ObjectStore};
+use regex::Regex;
 use snafu::{OptionExt, ResultExt, location};
-use sqlparser::ast::helpers::key_value_options::KeyValueOptions;
+use sqlparser::ast::helpers::key_value_options::{
+    KeyValueOption, KeyValueOptionKind, KeyValueOptions, KeyValueOptionsDelimiter,
+};
 use sqlparser::ast::helpers::stmt_data_loading::StageParamsObject;
 use sqlparser::ast::{
-    AlterTableOperation, AssignmentTarget, CloudProviderParams, MergeAction, MergeClause,
+    AlterTableOperation, AssignmentTarget, ExprWithAlias, FunctionArg, FunctionArgExpr,
+    FunctionArguments, MergeAction, MergeClause,
     MergeClauseKind, MergeInsertKind, ObjectNamePart, ObjectType, PivotValueSource, ShowObjects,
-    ShowStatementFilter, ShowStatementIn, ShowStatementInParentType as ShowType,
-    ShowStatementInParentType, TruncateTableTarget, Use, Value, visit_relations_mut,
+    SetExpr, ShowStatementFilter, ShowStatementIn, ShowStatementInParentType as ShowType,
+    ShowStatementInParentType, TruncateTableTarget, Use, Value, With, visit_relations_mut,
 };
+use sqlparser::dialect::SnowflakeDialect;
+use sqlparser::parser::Parser;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -110,6 +119,92 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::Instrument;
 use tracing_attributes::instrument;
 use url::Url;
+
+#[derive(Debug, Clone)]
+pub struct CloudProviderParams {
+    pub provider: String,
+    pub credentials: KeyValueOptions,
+    pub base_url: Option<String>,
+    pub storage_endpoint: Option<String>,
+    pub aws_access_point_arn: Option<String>,
+}
+
+struct SessionContextProvider<'a> {
+    state: &'a SessionState,
+    tables: HashMap<ResolvedTableReference, Arc<dyn TableSource>>,
+}
+
+impl ContextProvider for SessionContextProvider<'_> {
+    fn get_expr_planners(&self) -> &[Arc<dyn ExprPlanner>] {
+        self.state.expr_planners()
+    }
+
+    fn get_relation_planners(&self) -> &[Arc<dyn RelationPlanner>] {
+        self.state.relation_planners()
+    }
+
+    fn get_type_planner(&self) -> Option<Arc<dyn TypePlanner>> {
+        Some(Arc::new(CustomTypePlanner::default()))
+    }
+
+    fn get_table_source(
+        &self,
+        name: TableReference,
+    ) -> datafusion_common::Result<Arc<dyn TableSource>> {
+        let name = self.state.resolve_table_ref(name);
+        self.tables
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| plan_datafusion_err!("table '{name}' not found"))
+    }
+
+    fn get_table_function_source(
+        &self,
+        name: &str,
+        args: Vec<DFExpr>,
+    ) -> datafusion_common::Result<Arc<dyn TableSource>> {
+        let tbl_func = self
+            .state
+            .table_functions()
+            .get(name)
+            .cloned()
+            .ok_or_else(|| plan_datafusion_err!("table function '{name}' not found"))?;
+        Ok(provider_as_source(tbl_func.create_table_provider(&args)?))
+    }
+
+    fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>> {
+        self.state.scalar_functions().get(name).cloned()
+    }
+
+    fn get_aggregate_meta(&self, name: &str) -> Option<Arc<AggregateUDF>> {
+        self.state.aggregate_functions().get(name).cloned()
+    }
+
+    fn get_window_meta(&self, name: &str) -> Option<Arc<WindowUDF>> {
+        self.state.window_functions().get(name).cloned()
+    }
+
+    fn get_variable_type(&self, variable_names: &[String]) -> Option<DataType> {
+        let _ = variable_names;
+        None
+    }
+
+    fn options(&self) -> &ConfigOptions {
+        self.state.config_options()
+    }
+
+    fn udf_names(&self) -> Vec<String> {
+        self.state.scalar_functions().keys().cloned().collect()
+    }
+
+    fn udaf_names(&self) -> Vec<String> {
+        self.state.aggregate_functions().keys().cloned().collect()
+    }
+
+    fn udwf_names(&self) -> Vec<String> {
+        self.state.window_functions().keys().cloned().collect()
+    }
+}
 
 pub struct UserQuery {
     pub metastore: Arc<dyn Metastore>,
@@ -268,18 +363,15 @@ impl UserQuery {
                 Statement::Delete { .. } => save(QueryType::Dml(DmlStType::Delete)),
                 Statement::Update { .. } => save(QueryType::Dml(DmlStType::Update)),
                 Statement::Insert { .. } => save(QueryType::Dml(DmlStType::Insert)),
-                Statement::Truncate { .. } => save(QueryType::Dml(DmlStType::Truncate)),
+                Statement::Truncate(..) => save(QueryType::Dml(DmlStType::Truncate)),
                 Statement::Query(..) => save(QueryType::Dml(DmlStType::Select)),
-                Statement::Merge { .. } => save(QueryType::Dml(DmlStType::Merge)),
+                Statement::Merge(..) => save(QueryType::Dml(DmlStType::Merge)),
                 // match DDL statements:
                 Statement::AlterSession { .. } => save(QueryType::Ddl(DdlStType::AlterSession)),
-                Statement::AlterTable { .. } => save(QueryType::Ddl(DdlStType::AlterTable)),
+                Statement::AlterTable(..) => save(QueryType::Ddl(DdlStType::AlterTable)),
                 Statement::CreateTable { .. } => save(QueryType::Ddl(DdlStType::CreateTable)),
                 Statement::CreateView { .. } => save(QueryType::Ddl(DdlStType::CreateView)),
                 Statement::CreateDatabase { .. } => save(QueryType::Ddl(DdlStType::CreateDatabase)),
-                Statement::CreateExternalVolume { .. } => {
-                    save(QueryType::Ddl(DdlStType::CreateVolume));
-                }
                 Statement::CreateSchema { .. } => save(QueryType::Ddl(DdlStType::CreateSchema)),
                 Statement::CreateStage { .. } => save(QueryType::Ddl(DdlStType::CreateStage)),
                 Statement::CopyIntoSnowflake { .. } => {
@@ -337,6 +429,10 @@ impl UserQuery {
         err
     )]
     pub async fn execute(&mut self) -> Result<QueryResult> {
+        if let Some(result) = self.try_execute_special_ddl().await? {
+            return Ok(result);
+        }
+
         let statement = self.parse_query().context(ex_error::DataFusionSnafu)?;
         self.query = statement.to_string();
         self.raw_statement = Some(statement.clone());
@@ -403,16 +499,6 @@ impl UserQuery {
                         .create_database(db_name, if_not_exists, external_volume)
                         .await;
                 }
-                Statement::CreateExternalVolume {
-                    name,
-                    storage_locations,
-                    if_not_exists,
-                    ..
-                } => {
-                    return self
-                        .create_volume(name, storage_locations, if_not_exists)
-                        .await;
-                }
                 Statement::CreateSchema { .. } => return Box::pin(self.create_schema(*s)).await,
                 Statement::CreateStage { .. } => {
                     // We support only CSV uploads for now
@@ -421,13 +507,15 @@ impl UserQuery {
                 Statement::CopyIntoSnowflake { .. } => {
                     return Box::pin(self.copy_into_snowflake_query(*s)).await;
                 }
-                Statement::AlterTable {
-                    name,
-                    operations,
-                    if_exists,
-                    ..
-                } => {
-                    return Box::pin(self.alter_table(name, operations, if_exists)).await;
+                Statement::AlterTable(alter_table) => {
+                    return Box::pin(
+                        self.alter_table(
+                            alter_table.name,
+                            alter_table.operations,
+                            alter_table.if_exists,
+                        ),
+                    )
+                    .await;
                 }
                 Statement::StartTransaction { .. }
                 | Statement::Commit { .. }
@@ -445,14 +533,14 @@ impl UserQuery {
                 | Statement::ShowObjects { .. }
                 | Statement::ShowVariables { .. }
                 | Statement::ShowVariable { .. } => return Box::pin(self.show_query(*s)).await,
-                Statement::Truncate { table_names, .. } => {
-                    return Box::pin(self.truncate_table(table_names)).await;
+                Statement::Truncate(truncate) => {
+                    return Box::pin(self.truncate_table(truncate.table_names)).await;
                 }
                 Statement::Query(subquery) => {
                     return self.execute_query_statement(subquery).await;
                 }
                 Statement::Drop { .. } => return Box::pin(self.drop_query(*s)).await,
-                Statement::Merge { .. } => return Box::pin(self.merge_query(*s)).await,
+                Statement::Merge(..) => return Box::pin(self.merge_query(*s)).await,
                 Statement::ExplainTable {
                     describe_alias: DescribeAlias::Describe | DescribeAlias::Desc,
                     table_name,
@@ -482,7 +570,7 @@ impl UserQuery {
         &mut self,
         mut subquery: Box<Query>,
     ) -> Result<QueryResult> {
-        self.traverse_and_update_query(subquery.as_mut()).await;
+        self.traverse_and_update_query(subquery.as_mut()).await?;
         Box::pin(self.execute_with_custom_plan(&subquery.to_string())).await
     }
 
@@ -1109,7 +1197,7 @@ impl UserQuery {
 
         let skip_header = file_format.options.iter().any(|option| {
             option.option_name.eq_ignore_ascii_case("skip_header")
-                && option.value.eq_ignore_ascii_case("1")
+                && key_value_option_value(option).is_some_and(|value| value.eq_ignore_ascii_case("1"))
         });
 
         let field_optionally_enclosed_by = file_format
@@ -1120,7 +1208,7 @@ impl UserQuery {
                     .option_name
                     .eq_ignore_ascii_case("field_optionally_enclosed_by")
                 {
-                    Some(option.value.as_bytes()[0])
+                    key_value_option_value(option).map(|value| value.as_bytes()[0])
                 } else {
                     None
                 }
@@ -1283,19 +1371,63 @@ impl UserQuery {
         }
     }
 
+    async fn try_execute_special_ddl(&mut self) -> Result<Option<QueryResult>> {
+        let query = self.raw_query.trim().trim_end_matches(';').trim();
+
+        if query.to_ascii_uppercase().starts_with("CREATE EXTERNAL VOLUME") {
+            let (name, storage_locations, if_not_exists) = parse_create_external_volume(query)?;
+            self.query = query.to_string();
+            self.raw_statement = None;
+            self.running_queries.update_stats(
+                self.query_context.query_id,
+                &QueryStats::default().with_query_type(QueryType::Ddl(DdlStType::CreateVolume)),
+            );
+            return self
+                .create_volume(name, storage_locations, if_not_exists)
+                .await
+                .map(Some);
+        }
+
+        if query.to_ascii_uppercase().starts_with("CREATE DATABASE")
+            && query.to_ascii_uppercase().contains("EXTERNAL_VOLUME")
+        {
+            let mut statements = Parser::parse_sql(&SnowflakeDialect {}, query)
+                .context(ex_error::SqlParserSnafu)?;
+            let Some(statement) = statements.pop() else {
+                return Ok(None);
+            };
+            let df_statement = DFStatement::Statement(Box::new(statement.clone()));
+            self.query = statement.to_string();
+            self.raw_statement = Some(df_statement.clone());
+            self.update_stats_query_type(&df_statement);
+            if let Statement::CreateDatabase {
+                db_name,
+                if_not_exists,
+                external_volume,
+                ..
+            } = statement
+            {
+                return self
+                    .create_database(db_name, if_not_exists, external_volume)
+                    .await
+                    .map(Some);
+            }
+        }
+
+        Ok(None)
+    }
+
     #[allow(clippy::too_many_lines)]
     #[instrument(name = "UserQuery::merge_query", level = "trace", skip(self), err)]
     pub async fn merge_query(&self, statement: Statement) -> Result<QueryResult> {
-        let Statement::Merge {
-            table: target,
-            source,
-            on,
-            clauses,
-            ..
-        } = statement
+        let Statement::Merge(merge) = statement
         else {
             return ex_error::OnlyMergeStatementsSnafu.fail();
         };
+        let target = merge.table;
+        let source = merge.source;
+        let on = merge.on;
+        let clauses = merge.clauses;
         let df_session_state = self.session.ctx.state();
 
         let mut session_context_provider = SessionContextProvider {
@@ -1335,7 +1467,7 @@ impl UserQuery {
                 let plan = LogicalPlanBuilder::scan(&source_ident, source_table_source, None)
                     .context(ex_error::DataFusionLogicalPlanMergeSourceSnafu)?;
                 let plan = if let Some(source_alias) = source_alias {
-                    plan.alias(source_alias.name.to_string())
+                    plan.alias(source_alias.name.value.clone())
                         .context(ex_error::DataFusionLogicalPlanMergeSourceSnafu)?
                 } else {
                     plan
@@ -1350,11 +1482,7 @@ impl UserQuery {
                 .into_unoptimized_plan();
                 Ok((source_plan, target_filter))
             }
-            TableFactor::Derived {
-                lateral: _,
-                subquery,
-                alias,
-            } => {
+            TableFactor::Derived { subquery, alias, .. } => {
                 let query = Statement::Query(subquery.clone());
 
                 let tables = self
@@ -1374,7 +1502,7 @@ impl UserQuery {
                     LogicalPlan::SubqueryAlias(
                         SubqueryAlias::try_new(
                             Arc::new(source_plan),
-                            TableReference::parse_str(&alias.to_string()),
+                            TableReference::bare(alias.name.value.clone()),
                         )
                         .context(ex_error::DataFusionLogicalPlanMergeSourceSnafu)?,
                     )
@@ -1441,7 +1569,7 @@ impl UserQuery {
                 .context(ex_error::DataFusionLogicalPlanMergeTargetSnafu)?
         };
         let plan = if let Some(target_alias) = target_alias {
-            plan.alias(target_alias.name.to_string())
+            plan.alias(target_alias.name.value.clone())
                 .context(ex_error::DataFusionLogicalPlanMergeTargetSnafu)?
         } else {
             plan
@@ -1471,10 +1599,10 @@ impl UserQuery {
             .any(|c| matches!(c.action, MergeAction::Insert(_)));
         let has_update = clauses
             .iter()
-            .any(|c| matches!(c.action, MergeAction::Update { .. }));
+            .any(|c| matches!(c.action, MergeAction::Update(_)));
         let has_delete = clauses
             .iter()
-            .any(|c| matches!(c.action, MergeAction::Delete));
+            .any(|c| matches!(c.action, MergeAction::Delete { .. }));
 
         let merge_clause_projection = merge_clause_projection(
             &sql_planner,
@@ -2101,7 +2229,7 @@ impl UserQuery {
         query: &str,
     ) -> std::result::Result<DFStatement, DataFusionError> {
         let state = self.session.ctx.state();
-        let dialect = state.config().options().sql_parser.dialect.as_str();
+        let dialect = &state.config().options().sql_parser.dialect;
         state.sql_to_statement(query, dialect)
     }
 
@@ -2384,7 +2512,7 @@ impl UserQuery {
             .sql_to_df_statement(query)
             .context(ex_error::DataFusionSnafu)?;
         let mut plan = self.get_custom_logical_plan(statement).await?;
-        let session_params_map: HashMap<String, ScalarValue> = self
+        let session_params_map: HashMap<String, ScalarAndMetadata> = self
             .session
             .session_params
             .properties
@@ -2392,7 +2520,9 @@ impl UserQuery {
             .filter_map(|entry| {
                 // Use original parameter name as key
                 let (key, prop) = (entry.value().name.clone(), entry.value().clone());
-                prop.to_scalar_value().map(|scalar| (key, scalar))
+                prop.to_scalar_value()
+                    .map(ScalarAndMetadata::from)
+                    .map(|scalar| (key, scalar))
             })
             .collect();
         let session_params = ParamValues::Map(session_params_map);
@@ -2559,8 +2689,9 @@ impl UserQuery {
     // It then replaces the pivot value source with the list of string expressions
     async fn replace_pivot_subquery_with_list(
         &self,
+        with: Option<&With>,
         table: &TableFactor,
-        value_column: &[Ident],
+        value_column: &[Expr],
         value_source: &mut PivotValueSource,
     ) {
         match value_source {
@@ -2596,6 +2727,12 @@ impl UserQuery {
                     let _ = write!(query, "ORDER BY {order_by_clause}");
                 }
 
+                let query = if let Some(with) = with {
+                    format!("{with} {query}")
+                } else {
+                    query
+                };
+
                 let result = self.execute_with_custom_plan(&query).await;
                 if let Ok(batches) = result {
                     *value_source =
@@ -2603,7 +2740,11 @@ impl UserQuery {
                 }
             }
             PivotValueSource::Subquery(subquery) => {
-                let subquery_sql = subquery.to_string();
+                let subquery_sql = if let Some(with) = with {
+                    format!("{with} {subquery}")
+                } else {
+                    subquery.to_string()
+                };
 
                 let result = self.execute_with_custom_plan(&subquery_sql).await;
 
@@ -2618,56 +2759,175 @@ impl UserQuery {
         }
     }
 
+    async fn resolve_table_factor_columns(
+        &self,
+        with: Option<&With>,
+        table: &TableFactor,
+    ) -> Result<Vec<String>> {
+        let sql = if let Some(with) = with {
+            format!("{with} SELECT * FROM {table}")
+        } else {
+            format!("SELECT * FROM {table}")
+        };
+        let statement = self
+            .sql_to_df_statement(&sql)
+            .context(ex_error::DataFusionSnafu)?;
+        let plan = self.get_custom_logical_plan(statement).await?;
+        Ok(plan
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect())
+    }
+
+    async fn rewrite_pivot_relation(
+        &self,
+        with: Option<&With>,
+        relation: &mut TableFactor,
+    ) -> Result<()> {
+        let TableFactor::Pivot {
+            table,
+            aggregate_functions,
+            value_column,
+            value_source,
+            default_on_null,
+            alias,
+        } = relation
+        else {
+            return Ok(());
+        };
+
+        self.replace_pivot_subquery_with_list(with, table, value_column, value_source)
+            .await;
+
+        let PivotValueSource::List(values) = value_source else {
+            return Ok(());
+        };
+        if value_column.len() != 1 || aggregate_functions.len() != 1 {
+            return Ok(());
+        }
+
+        let input_columns = self.resolve_table_factor_columns(with, table).await?;
+        let value_column_name = value_column[0].to_string();
+        let measure_column = pivot_measure_column(&aggregate_functions[0])?;
+
+        let group_columns: Vec<String> = input_columns
+            .into_iter()
+            .filter(|column| column != &value_column_name && column != &measure_column)
+            .collect();
+
+        let aggregate_name = pivot_aggregate_name(&aggregate_functions[0])?;
+        let group_projection = if group_columns.is_empty() {
+            String::new()
+        } else {
+            format!("{}, ", group_columns.join(", "))
+        };
+        let group_by_clause = if group_columns.is_empty() {
+            String::new()
+        } else {
+            format!(" GROUP BY {}", group_columns.join(", "))
+        };
+
+        let pivot_exprs = values
+            .iter()
+            .map(|value| {
+                let value_sql = value.expr.to_string();
+                let output_alias = pivot_value_alias(value);
+                let case_expr = format!(
+                    "CASE WHEN {value_column_name} = {value_sql} THEN {measure_column} END"
+                );
+                let base_agg = match aggregate_name.as_str() {
+                    "COUNT" => format!("COUNT({case_expr})"),
+                    name => format!("{name}({case_expr})"),
+                };
+
+                let expr = if aggregate_name != "COUNT" {
+                    if let Some(default_on_null) = default_on_null {
+                        format!("COALESCE({base_agg}, {default_on_null})")
+                    } else {
+                        base_agg
+                    }
+                } else {
+                    base_agg
+                };
+
+                format!(r#"{expr} AS "{output_alias}""#)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let rewritten_sql = format!(
+            "(SELECT {group_projection}{pivot_exprs} FROM {table}{group_by_clause}){}",
+            alias.as_ref()
+                .map(|alias| format!(" {alias}"))
+                .unwrap_or_default()
+        );
+
+        let parsed = Parser::parse_sql(
+            &SnowflakeDialect {},
+            &format!("SELECT * FROM {rewritten_sql}"),
+        )
+        .context(ex_error::SqlParserSnafu)?;
+        let statement = parsed.into_iter().next().ok_or_else(|| Error::SqlParser {
+            error: datafusion::sql::sqlparser::parser::ParserError::ParserError(
+                "Failed to parse rewritten pivot query".to_string(),
+            ),
+            location: location!(),
+        })?;
+        let Statement::Query(query) = statement else {
+            return Ok(());
+        };
+        let SetExpr::Select(select) = *query.body else {
+            return Ok(());
+        };
+        if let Some(table_with_joins) = select.from.into_iter().next() {
+            *relation = table_with_joins.relation;
+        }
+        Ok(())
+    }
+
     /// This method traverses query including set expressions and updates it when needed.
     fn traverse_and_update_query<'a>(
         &'a self,
         query: &'a mut Query,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             fn process_set_expr<'a>(
                 this: &'a UserQuery,
+                with: Option<&'a With>,
                 set_expr: &'a mut sqlparser::ast::SetExpr,
-            ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
+            ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
                 Box::pin(async move {
                     match set_expr {
                         sqlparser::ast::SetExpr::Select(select) => {
                             for table_with_joins in &mut select.from {
-                                if let TableFactor::Pivot {
-                                    table,
-                                    value_column,
-                                    value_source,
-                                    ..
-                                } = &mut table_with_joins.relation
-                                {
-                                    this.replace_pivot_subquery_with_list(
-                                        table,
-                                        value_column,
-                                        value_source,
-                                    )
-                                    .await;
-                                }
+                                this.rewrite_pivot_relation(with, &mut table_with_joins.relation)
+                                    .await?;
                             }
+                            Ok(())
                         }
 
                         sqlparser::ast::SetExpr::Query(inner_query) => {
-                            this.traverse_and_update_query(inner_query).await;
+                            this.traverse_and_update_query(inner_query).await
                         }
                         sqlparser::ast::SetExpr::SetOperation { left, right, .. } => {
-                            process_set_expr(this, left).await;
-                            process_set_expr(this, right).await;
+                            process_set_expr(this, with, left).await?;
+                            process_set_expr(this, with, right).await
                         }
-                        _ => {}
+                        _ => Ok(()),
                     }
                 })
             }
 
-            process_set_expr(self, &mut query.body).await;
+            process_set_expr(self, query.with.as_ref(), &mut query.body).await?;
 
             if let Some(with) = &mut query.with {
                 for cte in &mut with.cte_tables {
-                    self.traverse_and_update_query(&mut cte.query).await;
+                    self.traverse_and_update_query(&mut cte.query).await?;
                 }
             }
+            Ok(())
         })
     }
 
@@ -3100,9 +3360,9 @@ pub fn merge_clause_projection<S: ContextProvider>(
             op
         };
         match merge_clause.action {
-            MergeAction::Update { assignments } => {
+            MergeAction::Update(update) => {
                 updated_ops.push(op.clone());
-                for assignment in assignments {
+                for assignment in update.assignments {
                     match assignment.target {
                         AssignmentTarget::ColumnName(mut column) => {
                             let column_name = column
@@ -3145,7 +3405,7 @@ pub fn merge_clause_projection<S: ContextProvider>(
                         .ok_or_else(|| ex_error::MergeInsertOnlyOneRowSnafu.build())?
                         .into_iter(),
                 ) {
-                    let column_name = column.value.clone();
+                    let column_name = column.to_string();
                     let expr = sql_planner
                         .sql_to_expr(value, source_schema, &mut planner_context)
                         .context(ex_error::DataFusionSnafu)?;
@@ -3159,7 +3419,7 @@ pub fn merge_clause_projection<S: ContextProvider>(
                     inserts.insert(column, vec![(op.clone(), lit(ScalarValue::Null))]);
                 }
             }
-            MergeAction::Delete => (),
+            MergeAction::Delete { .. } => (),
         }
     }
     let exprs = collect_merge_clause_expressions(target_schema, updates, inserts)?;
@@ -3586,7 +3846,7 @@ pub fn get_volume_kv_option(
         .options
         .iter()
         .find(|opt| opt.option_name.eq_ignore_ascii_case(key))
-        .map(|opt| opt.value.clone())
+        .and_then(key_value_option_value)
         .unwrap_or_default();
 
     if value.is_empty() {
@@ -3601,12 +3861,161 @@ pub fn get_volume_kv_option(
 }
 
 #[must_use]
-pub fn get_kv_option<'a>(options: &'a KeyValueOptions, key: &str) -> Option<&'a str> {
+pub fn get_kv_option(options: &KeyValueOptions, key: &str) -> Option<String> {
     options
         .options
         .iter()
         .find(|opt| opt.option_name.eq_ignore_ascii_case(key))
-        .map(|opt| opt.value.as_str())
+        .and_then(key_value_option_value)
+}
+
+fn key_value_option_value(
+    option: &sqlparser::ast::helpers::key_value_options::KeyValueOption,
+) -> Option<String> {
+    use sqlparser::ast::helpers::key_value_options::KeyValueOptionKind;
+
+    match &option.option_value {
+        KeyValueOptionKind::Single(value) => Some(value.clone().into_string().unwrap_or_else(|| value.to_string())),
+        _ => None,
+    }
+}
+
+fn parse_create_external_volume(query: &str) -> Result<(ObjectName, Vec<CloudProviderParams>, bool)> {
+    let header_re = Regex::new(
+        r"(?is)^CREATE\s+EXTERNAL\s+VOLUME\s+(IF\s+NOT\s+EXISTS\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s+STORAGE_LOCATIONS\s*=\s*\(\((?P<body>.*)\)\)$",
+    )
+    .expect("valid create external volume regex");
+    let Some(captures) = header_re.captures(query) else {
+        return Err(Error::SqlParser {
+            error: datafusion::sql::sqlparser::parser::ParserError::ParserError(
+                "Unsupported CREATE EXTERNAL VOLUME syntax".to_string(),
+            ),
+            location: location!(),
+        });
+    };
+
+    let if_not_exists = captures.get(1).is_some();
+    let volume_name = captures.name("name").map(|m| m.as_str()).unwrap_or_default();
+    let body = captures.name("body").map(|m| m.as_str()).unwrap_or_default();
+
+    let kv_re = Regex::new(r"(?is)([A-Z_]+)\s*=\s*'([^']*)'")
+        .expect("valid key value regex");
+    let extract = |key: &str| {
+        kv_re.captures_iter(body).find_map(|caps| {
+            caps.get(1)
+                .filter(|m| m.as_str().eq_ignore_ascii_case(key))
+                .and_then(|_| caps.get(2).map(|m| m.as_str().to_string()))
+        })
+    };
+
+    let provider = extract("STORAGE_PROVIDER").unwrap_or_default();
+    let credentials_body = Regex::new(r"(?is)CREDENTIALS\s*=\s*\((?P<body>[^)]*)\)")
+        .expect("valid credentials regex")
+        .captures(body)
+        .and_then(|caps| caps.name("body").map(|m| m.as_str().to_string()));
+
+    let credentials = KeyValueOptions {
+        options: credentials_body
+            .as_deref()
+            .map(|body| {
+                kv_re.captures_iter(body)
+                    .filter_map(|caps| {
+                        Some(KeyValueOption {
+                            option_name: caps.get(1)?.as_str().to_string(),
+                            option_value: KeyValueOptionKind::Single(Value::SingleQuotedString(
+                                caps.get(2)?.as_str().to_string(),
+                            )),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        delimiter: KeyValueOptionsDelimiter::Space,
+    };
+
+    Ok((
+        ObjectName(vec![ObjectNamePart::Identifier(Ident::new(volume_name))]),
+        vec![CloudProviderParams {
+            provider,
+            credentials,
+            base_url: extract("STORAGE_BASE_URL"),
+            storage_endpoint: extract("STORAGE_ENDPOINT"),
+            aws_access_point_arn: extract("STORAGE_AWS_ACCESS_POINT_ARN"),
+        }],
+        if_not_exists,
+    ))
+}
+
+fn pivot_aggregate_name(aggregate: &ExprWithAlias) -> Result<String> {
+    let Expr::Function(function) = &aggregate.expr else {
+        return Err(Error::DataFusion {
+            error: Box::new(DataFusionError::Plan(
+                "Unsupported pivot aggregate expression".to_string(),
+            )),
+            location: location!(),
+        });
+    };
+    Ok(function.name.to_string().to_ascii_uppercase())
+}
+
+fn pivot_measure_column(aggregate: &ExprWithAlias) -> Result<String> {
+    let Expr::Function(function) = &aggregate.expr else {
+        return Err(Error::DataFusion {
+            error: Box::new(DataFusionError::Plan(
+                "Unsupported pivot aggregate expression".to_string(),
+            )),
+            location: location!(),
+        });
+    };
+
+    let FunctionArguments::List(args) = &function.args else {
+        return Err(Error::DataFusion {
+            error: Box::new(DataFusionError::Plan(
+                "Unsupported pivot aggregate arguments".to_string(),
+            )),
+            location: location!(),
+        });
+    };
+    let Some(arg) = args.args.first() else {
+        return Err(Error::DataFusion {
+            error: Box::new(DataFusionError::Plan(
+                "Missing pivot aggregate argument".to_string(),
+            )),
+            location: location!(),
+        });
+    };
+    let expr = match arg {
+        FunctionArg::Unnamed(FunctionArgExpr::Expr(expr)) => expr,
+        FunctionArg::Named { arg: FunctionArgExpr::Expr(expr), .. }
+        | FunctionArg::ExprNamed { arg: FunctionArgExpr::Expr(expr), .. } => expr,
+        _ => {
+            return Err(Error::DataFusion {
+                error: Box::new(DataFusionError::Plan(
+                    "Unsupported pivot aggregate argument".to_string(),
+                )),
+                location: location!(),
+            });
+        }
+    };
+    Ok(expr.to_string())
+}
+
+fn pivot_value_alias(value: &ExprWithAlias) -> String {
+    if let Some(alias) = &value.alias {
+        return alias.value.clone();
+    }
+    match &value.expr {
+        Expr::Value(value) => match &value.value {
+            Value::SingleQuotedString(value) => value.clone(),
+            Value::Number(value, _) => value.clone(),
+            _ => value.to_string(),
+        },
+        expr => expr.to_string(),
+    }
+}
+
+fn object_name_to_string(name: &ObjectName) -> String {
+    name.to_string()
 }
 
 fn create_file_format(
@@ -3625,7 +4034,7 @@ fn create_file_format(
 
             if let Some(compression) = get_kv_option(file_format, "compression") {
                 csv_format = csv_format.with_file_compression_type(
-                    FileCompressionType::from_str(compression)
+                    FileCompressionType::from_str(&compression)
                         .context(ex_error::DataFusionSnafu)?,
                 );
             }

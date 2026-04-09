@@ -198,7 +198,7 @@ macro_rules! test_query {
                     r"[A-Za-z0-9_\-]+/[A-Za-z0-9_\-]+/[A-Za-z0-9_\-]+/data/[0-9a-fA-F]{4,8}/", "/[PATH]/testing/data/[HEX]/",
                 );
                 settings.add_filter(r"/testing/data/[0-9a-fA-F]{4,8}/", "/testing/data/[HEX]/");
-                settings.add_filter(r"(?i)\b(metadata_load_time|time_elapsed_opening|time_elapsed_processing|time_elapsed_scanning_total|time_elapsed_scanning_until_data|elapsed_compute|bloom_filter_eval_time|page_index_eval_time|row_pushdown_eval_time|statistics_eval_time)\s*=\s*[0-9]+(?:\.[0-9]+)?\s*(?:ns|µs|us|ms|s)", "$1=[TIME]");
+                settings.add_filter(r"(?i)\b(metadata_load_time|time_elapsed_opening|time_elapsed_processing|time_elapsed_scanning_total|time_elapsed_scanning_until_data|elapsed_compute|bloom_filter_eval_time|page_index_eval_time|row_pushdown_eval_time|statistics_eval_time|expr_[0-9]+_eval_time)\s*=\s*[0-9]+(?:\.[0-9]+)?\s*(?:ns|µs|us|ms|s)", "$1=[TIME]");
                 settings.add_filter(r"(-{130})(-{1,})", "$1");
                 settings.add_filter(r"( {100})( {1,})", "$1");
 

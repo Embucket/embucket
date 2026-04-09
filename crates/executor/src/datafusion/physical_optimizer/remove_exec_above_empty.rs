@@ -206,6 +206,7 @@ mod tests {
             None,
             PartitionMode::Partitioned,
             datafusion_common::NullEquality::NullEqualsNull,
+            false,
         )?);
 
         let rule = RemoveExecAboveEmpty::new();
