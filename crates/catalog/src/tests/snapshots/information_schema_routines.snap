@@ -56,7 +56,9 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | array_to_string                    |
 | array_union                        |
 | arrays_overlap                     |
+| arrays_zip                         |
 | arrow_cast                         |
+| arrow_metadata                     |
 | arrow_typeof                       |
 | ascii                              |
 | asin                               |
@@ -174,6 +176,7 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | list_sort                          |
 | list_to_string                     |
 | list_union                         |
+| list_zip                           |
 | ln                                 |
 | log                                |
 | log10                              |
@@ -184,6 +187,7 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | make_array                         |
 | make_date                          |
 | make_list                          |
+| make_time                          |
 | map                                |
 | map_entries                        |
 | map_extract                        |
@@ -205,10 +209,12 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | octet_length                       |
 | overlay                            |
 | percent_rank                       |
+| percentile_cont                    |
 | pi                                 |
 | position                           |
 | pow                                |
 | power                              |
+| quantile_cont                      |
 | radians                            |
 | random                             |
 | range                              |
@@ -218,7 +224,6 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | regexp_like                        |
 | regexp_match                       |
 | regexp_replace                     |
-| regexp_substr                      |
 | regr_avgx                          |
 | regr_avgy                          |
 | regr_count                         |
@@ -232,7 +237,6 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | replace                            |
 | reverse                            |
 | right                              |
-| rlike                              |
 | round                              |
 | row                                |
 | row_number                         |
@@ -267,6 +271,7 @@ description: "SELECT routine_name FROM embucket.information_schema.routines\n   
 | to_date                            |
 | to_hex                             |
 | to_local_time                      |
+| to_time                            |
 | to_timestamp                       |
 | to_timestamp_micros                |
 | to_timestamp_millis                |
