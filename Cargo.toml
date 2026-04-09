@@ -46,7 +46,7 @@ datafusion = { git = "https://github.com/embucket/datafusion.git", rev = "97e4f7
 datafusion-common = { git = "https://github.com/embucket/datafusion.git", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
 datafusion-doc = { git = "https://github.com/embucket/datafusion.git", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
 datafusion-expr = { git = "https://github.com/embucket/datafusion.git", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
-datafusion-functions-json = { git = "https://github.com/embucket/datafusion-functions-json.git", rev = "3751908df188c7b7a87869c5bc32aaadd9e3020f" }
+datafusion-functions-json = { git = "https://github.com/embucket/datafusion-functions-json.git", rev = "96050386c6ab9215e49967cac94111517a6efc27" }
 datafusion-macros = { git = "https://github.com/embucket/datafusion.git", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
 datafusion-physical-plan = { git = "https://github.com/embucket/datafusion.git", rev = "97e4f7ae3ce846a37611cef237f0c18eff9755b6" }
 datafusion_iceberg = { git = "https://github.com/embucket/iceberg-rust.git", rev = "fc10535b26184a94ed99f2eb3c79f37473fe2e0a" }
