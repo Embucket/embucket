@@ -22,10 +22,10 @@ See the full [Quick Start guide](https://docs.embucket.com/getting-started/quick
 
 ## Deploy
 
-Deploy Embucket to AWS Lambda with the pre-built zip:
+Deploy Embucket to AWS Lambda with the pre-built zip from the latest [GitHub release](https://github.com/Embucket/embucket/releases/latest):
 
 ```bash
-aws s3 cp s3://embucket-releases/lambda/embucket-lambda-latest.zip .
+gh release download --repo Embucket/embucket --pattern 'embucket-lambda-*-arm64.zip'
 ```
 
 See the [AWS Lambda deployment guide](https://docs.embucket.com/deploy/aws-lambda/) for configuration and production setup.
