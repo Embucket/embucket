@@ -109,17 +109,21 @@ Save the bucket name, region, and ARN. You need these values in the next step.
 
   </TabItem>
   <TabItem label="Pre-built binary">
-    Download the pre-built Lambda zip from S3:
+    Download the pre-built Lambda zip from the latest [GitHub release](https://github.com/Embucket/embucket/releases/latest). Each release publishes both `arm64` and `x86_64` assets named `embucket-lambda-<version>-<arch>.zip`.
+
+    Use the [GitHub CLI](https://cli.github.com/) to pull the latest asset for your target architecture:
 
     ```bash
-    aws s3 cp s3://embucket-releases/lambda/embucket-lambda-latest.zip .
+    gh release download --repo Embucket/embucket --pattern 'embucket-lambda-*-arm64.zip'
     ```
+
+    For `x86_64`, swap the pattern to `'embucket-lambda-*-x86_64.zip'`. To grab a specific version, pass `--tag v1.2.3`.
 
     <Aside type="note">
       The pre-built binary includes the `state-store-query` feature for DynamoDB-backed query state persistence.
     </Aside>
 
-    Create the Lambda function:
+    Create the Lambda function, pointing `--zip-file` at the downloaded asset:
 
     ```bash
     aws lambda create-function \
@@ -127,21 +131,21 @@ Save the bucket name, region, and ARN. You need these values in the next step.
       --runtime provided.al2023 \
       --architectures arm64 \
       --handler bootstrap \
-      --zip-file fileb://embucket-lambda-latest.zip \
+      --zip-file fileb://embucket-lambda-<version>-arm64.zip \
       --role arn:aws:iam::123456789012:role/embucket-lambda-role \
       --memory-size 3008 \
       --timeout 30 \
       --environment "Variables={METASTORE_CONFIG=config/metastore.yaml,LOG_FORMAT=json,TRACING_LEVEL=debug,RUST_LOG=info}"
     ```
 
-    Replace the role ARN with your own execution role.
+    Replace the role ARN with your own execution role and `<version>` with the tag you downloaded.
 
     To update an existing function:
 
     ```bash
     aws lambda update-function-code \
       --function-name embucket-lambda \
-      --zip-file fileb://embucket-lambda-latest.zip
+      --zip-file fileb://embucket-lambda-<version>-arm64.zip
     ```
 
   </TabItem>
