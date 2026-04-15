@@ -19,6 +19,7 @@ use datafusion_physical_plan::{
     SendableRecordBatchStream,
     coalesce_partitions::CoalescePartitionsExec,
     execution_plan::{Boundedness, EmissionType},
+    metrics::{Count, ExecutionPlanMetricsSet, MetricBuilder, MetricsSet},
     stream::RecordBatchStreamAdapter,
 };
 use futures::{Stream, StreamExt};
@@ -52,6 +53,11 @@ pub struct MergeIntoCOWSinkExec {
     input: Arc<dyn ExecutionPlan>,
     target: DataFusionTable,
     properties: PlanProperties,
+    /// Per-node metrics surfaced via `EXPLAIN ANALYZE`. Populated with
+    /// `updated_rows` / `inserted_rows` / `deleted_rows` counters after the
+    /// write transaction commits, so `EXPLAIN ANALYZE MERGE INTO …` reports
+    /// how many rows each clause produced alongside the child scan metrics.
+    metrics: ExecutionPlanMetricsSet,
 }
 
 impl MergeIntoCOWSinkExec {
@@ -73,6 +79,7 @@ impl MergeIntoCOWSinkExec {
             input,
             target,
             properties,
+            metrics: ExecutionPlanMetricsSet::new(),
         }
     }
 }
@@ -109,6 +116,13 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
         vec![&self.input]
     }
 
+    /// Surface per-clause row counts (updated / inserted / deleted) as
+    /// `EXPLAIN ANALYZE` metrics. Values are populated by `execute()` after
+    /// the write transaction commits; they're zero until then.
+    fn metrics(&self) -> Option<MetricsSet> {
+        Some(self.metrics.clone_inner())
+    }
+
     fn with_new_children(
         self: Arc<Self>,
         children: Vec<Arc<dyn ExecutionPlan>>,
@@ -142,6 +156,16 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
         let updated_rows: Arc<AtomicI64> = Arc::new(AtomicI64::new(0));
         let inserted_rows: Arc<AtomicI64> = Arc::new(AtomicI64::new(0));
 
+        // `Count` metrics that surface in `EXPLAIN ANALYZE` as
+        // `metrics=[updated_rows=…, inserted_rows=…, deleted_rows=…]` on this
+        // node. Populated below after the write transaction commits.
+        let updated_rows_metric: Count =
+            MetricBuilder::new(&self.metrics).counter("updated_rows", partition);
+        let inserted_rows_metric: Count =
+            MetricBuilder::new(&self.metrics).counter("inserted_rows", partition);
+        let deleted_rows_metric: Count =
+            MetricBuilder::new(&self.metrics).counter("deleted_rows", partition);
+
         let coalesce = CoalescePartitionsExec::new(self.input.clone());
 
         // Filter out rows whoose __data_file_path doesn't have a matching row
@@ -163,6 +187,9 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
             let schema = schema.clone();
             let updated_rows = Arc::clone(&updated_rows);
             let inserted_rows = Arc::clone(&inserted_rows);
+            let updated_rows_metric = updated_rows_metric.clone();
+            let inserted_rows_metric = inserted_rows_metric.clone();
+            let deleted_rows_metric = deleted_rows_metric.clone();
             let projected_schema = count_and_project_stream.projected_schema();
             let batches: SendableRecordBatchStream = Box::pin(RecordBatchStreamAdapter::new(
                 projected_schema,
@@ -221,6 +248,13 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                 let inserted = inserted_rows.load(Ordering::Relaxed);
                 // MERGE DELETE is not supported yet
                 let deleted = 0i64;
+
+                // Publish per-clause counts to the `MetricsSet` so
+                // `EXPLAIN ANALYZE` shows them on the MergeIntoSinkExec line.
+                // Rely on `try_from` so huge row counts fall back cleanly.
+                updated_rows_metric.add(usize::try_from(updated).unwrap_or(usize::MAX));
+                inserted_rows_metric.add(usize::try_from(inserted).unwrap_or(usize::MAX));
+                deleted_rows_metric.add(usize::try_from(deleted).unwrap_or(usize::MAX));
 
                 let arrays = schema
                     .fields()
