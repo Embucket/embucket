@@ -299,3 +299,25 @@ test_query!(
     ],
     snapshot_path = "merge_into"
 );
+
+// Regression test for https://github.com/Embucket/embucket/issues/128.
+//
+// Target is one data file with many rows; source is a mix of updates (matches) and
+// inserts (no match), and the target rows of the join land in the filter stream in
+// batches where some contain source_exists=true rows and some only contain target
+// rows. Previously the "no matches, no source" fast path would silently drop the
+// target-only batches for a file that had already been marked as matching in an
+// earlier batch, causing the final row count to be less than the expected
+// (target_rows + new_source_rows). This test asserts that no target row is lost.
+test_query!(
+    merge_into_mixed_unsorted_multi_row_no_data_loss,
+    "SELECT COUNT(*) as total_rows, COUNT(CASE WHEN description = 'updated row' THEN 1 END) as updated_rows, COUNT(CASE WHEN description = 'original row' THEN 1 END) as preserved_rows, COUNT(CASE WHEN description = 'new row' THEN 1 END) as inserted_rows FROM embucket.public.merge_target",
+    setup_queries = [
+        "CREATE TABLE embucket.public.merge_target (id INTEGER, description VARCHAR)",
+        "CREATE TABLE embucket.public.merge_source (id INTEGER, description VARCHAR)",
+        "INSERT INTO embucket.public.merge_target VALUES (1, 'original row'), (2, 'original row'), (3, 'original row'), (4, 'original row'), (5, 'original row'), (6, 'original row'), (7, 'original row'), (8, 'original row'), (9, 'original row'), (10, 'original row')",
+        "INSERT INTO embucket.public.merge_source VALUES (3, 'updated row'), (7, 'updated row'), (11, 'new row'), (12, 'new row')",
+        "MERGE INTO merge_target t USING merge_source s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.description = s.description WHEN NOT MATCHED THEN INSERT (id, description) VALUES (s.id, s.description)",
+    ],
+    snapshot_path = "merge_into"
+);

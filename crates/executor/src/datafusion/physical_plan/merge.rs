@@ -655,7 +655,13 @@ impl Stream for MergeCOWFilterStream {
                             .push(filtered_batch);
                     }
 
-                    if matching_data_and_manifest_files.is_empty() {
+                    // Only take the fast paths if the current batch references no target file
+                    // that will be (or has been) overwritten. Otherwise the full filter path
+                    // below is required so target rows belonging to `all_matching_data_files`
+                    // are re-emitted into the rewritten data file.
+                    if matching_data_and_manifest_files.is_empty()
+                        && all_matching_data_files.is_empty()
+                    {
                         // Return early if all rows only come from source
                         if matching_data_file_array.len() == source_exists_array.len() {
                             return Poll::Ready(Some(Ok(batch)));
@@ -1209,5 +1215,25 @@ mod tests {
         source_target_source_matching,
         &[(0, 2), (0, 1), (0, 6), (0, 5)],
         60
+    );
+    // Regression test for https://github.com/Embucket/embucket/issues/128
+    //
+    // If a target file has been seen as "matching" in an earlier batch and a subsequent
+    // batch contains only target rows (no `__source_exists` = true rows) for that same
+    // file, the rows in the later batch must still be passed through the filter so they
+    // land in the rewritten data file. Previously the "no matches, no source" fast path
+    // dropped them, causing silent data loss during `MERGE INTO` on unsorted inputs.
+    test_merge_cow_filter_stream!(matching_then_target, &[(0, 4), (0, 1)], 20);
+    test_merge_cow_filter_stream!(
+        matching_then_target_then_matching,
+        &[(0, 4), (0, 1), (0, 4)],
+        30
+    );
+    // Mixed scenario: several target-only batches arriving AFTER the target file has
+    // been matched.
+    test_merge_cow_filter_stream!(
+        matching_then_multiple_target_batches,
+        &[(0, 4), (0, 1), (0, 1), (0, 1)],
+        40
     );
 }
