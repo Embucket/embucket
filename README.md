@@ -1,3 +1,5 @@
+[![Coverage Status](https://coveralls.io/repos/github/embucket/embucket/badge.svg?branch=master)](https://coveralls.io/github/embucket/embucket?branch=master)
+
 # Embucket
 
 Embucket is a Snowflake-compatible query engine built on [Apache DataFusion](https://datafusion.apache.org/). It runs as an AWS Lambda function and uses S3 Tables (Apache Iceberg) for storage. Connect with any Snowflake-compatible tool or the [dbt-embucket](https://github.com/Embucket/dbt-embucket) adapter.
