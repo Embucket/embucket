@@ -201,6 +201,11 @@ macro_rules! test_query {
                 settings.add_filter(r"(?i)\b(metadata_load_time|time_elapsed_opening|time_elapsed_processing|time_elapsed_scanning_total|time_elapsed_scanning_until_data|elapsed_compute|bloom_filter_eval_time|page_index_eval_time|row_pushdown_eval_time|statistics_eval_time)\s*=\s*[0-9]+(?:\.[0-9]+)?\s*(?:ns|µs|us|ms|s)", "$1=[TIME]");
                 settings.add_filter(r"(-{130})(-{1,})", "$1");
                 settings.add_filter(r"( {100})( {1,})", "$1");
+                // RoundRobinBatch fan-out equals the DataFusion planner's partition
+                // target, which in practice is the host CPU count. Normalize it so
+                // EXPLAIN snapshots don't flake between 4-core CI and dev boxes with
+                // different core counts.
+                settings.add_filter(r"RoundRobinBatch\(\d+\)", "RoundRobinBatch([N])");
 
                 let setup: Vec<&str> = vec![$($($setup_queries),*)?];
                 if !setup.is_empty() {
