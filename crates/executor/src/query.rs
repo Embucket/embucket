@@ -473,40 +473,40 @@ impl UserQuery {
             // / `LogicalPlan::Analyze` that DataFusion's SQL path would have
             // produced. This lets callers actually inspect the plan and see
             // physical-level metrics via `EXPLAIN ANALYZE MERGE`.
-            if let DFStatement::Statement(inner) = explain.statement.as_ref() {
-                if matches!(inner.as_ref(), Statement::Merge { .. }) {
-                    let analyze = explain.analyze;
-                    let verbose = explain.verbose;
-                    let format = explain.format.clone();
-                    let merge_stmt = (**inner).clone();
-                    let merge_plan = Box::pin(self.merge_to_logical_plan(merge_stmt)).await?;
-                    let merge_plan = Arc::new(merge_plan);
-                    let schema = datafusion_expr::LogicalPlan::explain_schema()
-                        .to_dfschema_ref()
-                        .context(ex_error::DataFusionSnafu)?;
-                    let wrapped = if analyze {
-                        LogicalPlan::Analyze(datafusion_expr::logical_plan::Analyze {
-                            verbose,
-                            input: merge_plan,
-                            schema,
-                        })
-                    } else {
-                        let explain_format = match format.as_deref() {
-                            Some(f) => datafusion_expr::logical_plan::ExplainFormat::from_str(f)
-                                .unwrap_or(datafusion_expr::logical_plan::ExplainFormat::Indent),
-                            None => datafusion_expr::logical_plan::ExplainFormat::Indent,
-                        };
-                        LogicalPlan::Explain(datafusion_expr::logical_plan::Explain {
-                            verbose,
-                            explain_format,
-                            plan: merge_plan,
-                            stringified_plans: vec![],
-                            schema,
-                            logical_optimization_succeeded: false,
-                        })
+            if let DFStatement::Statement(inner) = explain.statement.as_ref()
+                && matches!(inner.as_ref(), Statement::Merge { .. })
+            {
+                let analyze = explain.analyze;
+                let verbose = explain.verbose;
+                let format = explain.format.clone();
+                let merge_stmt = (**inner).clone();
+                let merge_plan = Box::pin(self.merge_to_logical_plan(merge_stmt)).await?;
+                let merge_plan = Arc::new(merge_plan);
+                let schema = datafusion_expr::LogicalPlan::explain_schema()
+                    .to_dfschema_ref()
+                    .context(ex_error::DataFusionSnafu)?;
+                let wrapped = if analyze {
+                    LogicalPlan::Analyze(datafusion_expr::logical_plan::Analyze {
+                        verbose,
+                        input: merge_plan,
+                        schema,
+                    })
+                } else {
+                    let explain_format = match format.as_deref() {
+                        Some(f) => datafusion_expr::logical_plan::ExplainFormat::from_str(f)
+                            .unwrap_or(datafusion_expr::logical_plan::ExplainFormat::Indent),
+                        None => datafusion_expr::logical_plan::ExplainFormat::Indent,
                     };
-                    return self.execute_logical_plan(wrapped).await;
-                }
+                    LogicalPlan::Explain(datafusion_expr::logical_plan::Explain {
+                        verbose,
+                        explain_format,
+                        plan: merge_plan,
+                        stringified_plans: vec![],
+                        schema,
+                        logical_optimization_succeeded: false,
+                    })
+                };
+                return self.execute_logical_plan(wrapped).await;
             }
         }
         self.execute_sql(&self.query).await
