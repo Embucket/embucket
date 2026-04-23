@@ -39,9 +39,22 @@ impl AnalyzerRule for CustomTypeCoercionRewriter {
 }
 
 fn analyze_internal(plan: &LogicalPlan) -> DFResult<Transformed<LogicalPlan>> {
-    // get schema representing all available input fields. This is used for data type
-    // resolution only, so order does not matter here
-    let schema = merge_schema(&plan.inputs());
+    // Get schema representing all available input fields. Used for data-type
+    // resolution only, so order doesn't matter.
+    //
+    // For leaf plan nodes (e.g. `TableScan`), `plan.inputs()` is empty and
+    // `merge_schema` returns an empty schema. If we relied on that, filter
+    // expressions attached to the leaf itself — such as the target filter
+    // that `UserQuery::merge_query` injects via
+    // `LogicalPlanBuilder::scan_with_filters` when the MERGE source is a
+    // partitioned `DataFusionTable` — would see no fields and fail with
+    // "Schema error: No field named …". Fall back to `plan.schema()` in
+    // that case so the rewriter can actually look up the column types.
+    let schema = if plan.inputs().is_empty() {
+        plan.schema().as_ref().clone()
+    } else {
+        merge_schema(&plan.inputs())
+    };
 
     let name_preserver = NamePreserver::new(plan);
     let new_plan = plan.clone().map_expressions(|expr| {

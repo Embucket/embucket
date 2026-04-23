@@ -57,7 +57,7 @@ use datafusion::sql::statement::object_name_to_string;
 use datafusion_common::config::ConfigOptions;
 use datafusion_common::{
     Column, DFSchema, DataFusionError, ParamValues, ResolvedTableReference, SchemaReference,
-    TableReference, plan_datafusion_err,
+    TableReference, ToDFSchema, plan_datafusion_err,
 };
 use datafusion_expr::conditional_expressions::CaseBuilder;
 use datafusion_expr::logical_plan::dml::{DmlStatement, InsertOp, WriteOp};
@@ -464,6 +464,50 @@ impl UserQuery {
             }
         } else if let DFStatement::CreateExternalTable(cetable) = statement {
             return Box::pin(self.create_external_table_query(cetable)).await;
+        } else if let DFStatement::Explain(explain) = &statement {
+            // DataFusion's default planner rejects `EXPLAIN MERGE INTO ...` as
+            // "Unsupported SQL statement: MERGE INTO" because MERGE has its
+            // own Embucket-side planner (`merge_query`). Intercept the case
+            // where the inner statement is a MERGE: build the merge logical
+            // plan ourselves, then wrap it in the equivalent `LogicalPlan::Explain`
+            // / `LogicalPlan::Analyze` that DataFusion's SQL path would have
+            // produced. This lets callers actually inspect the plan and see
+            // physical-level metrics via `EXPLAIN ANALYZE MERGE`.
+            if let DFStatement::Statement(inner) = explain.statement.as_ref()
+                && matches!(inner.as_ref(), Statement::Merge { .. })
+            {
+                let analyze = explain.analyze;
+                let verbose = explain.verbose;
+                let format = explain.format.clone();
+                let merge_stmt = (**inner).clone();
+                let merge_plan = Box::pin(self.merge_to_logical_plan(merge_stmt)).await?;
+                let merge_plan = Arc::new(merge_plan);
+                let schema = datafusion_expr::LogicalPlan::explain_schema()
+                    .to_dfschema_ref()
+                    .context(ex_error::DataFusionSnafu)?;
+                let wrapped = if analyze {
+                    LogicalPlan::Analyze(datafusion_expr::logical_plan::Analyze {
+                        verbose,
+                        input: merge_plan,
+                        schema,
+                    })
+                } else {
+                    let explain_format = match format.as_deref() {
+                        Some(f) => datafusion_expr::logical_plan::ExplainFormat::from_str(f)
+                            .unwrap_or(datafusion_expr::logical_plan::ExplainFormat::Indent),
+                        None => datafusion_expr::logical_plan::ExplainFormat::Indent,
+                    };
+                    LogicalPlan::Explain(datafusion_expr::logical_plan::Explain {
+                        verbose,
+                        explain_format,
+                        plan: merge_plan,
+                        stringified_plans: vec![],
+                        schema,
+                        logical_optimization_succeeded: false,
+                    })
+                };
+                return self.execute_logical_plan(wrapped).await;
+            }
         }
         self.execute_sql(&self.query).await
     }
@@ -1281,9 +1325,25 @@ impl UserQuery {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     #[instrument(name = "UserQuery::merge_query", level = "trace", skip(self), err)]
     pub async fn merge_query(&self, statement: Statement) -> Result<QueryResult> {
+        let plan = self.merge_to_logical_plan(statement).await?;
+        self.execute_logical_plan(plan).await
+    }
+
+    /// Builds the logical plan for a `MERGE INTO` statement without executing
+    /// it. Shared between `merge_query` (which runs the plan) and the
+    /// `DFStatement::Explain` routing in `execute` (which wraps it in
+    /// `LogicalPlan::Explain` / `LogicalPlan::Analyze` so callers can see the
+    /// plan or live physical metrics without a separate SQL path).
+    #[allow(clippy::too_many_lines)]
+    #[instrument(
+        name = "UserQuery::merge_to_logical_plan",
+        level = "trace",
+        skip(self),
+        err
+    )]
+    pub async fn merge_to_logical_plan(&self, statement: Statement) -> Result<LogicalPlan> {
         let Statement::Merge {
             table: target,
             source,
@@ -1499,10 +1559,9 @@ impl UserQuery {
         )
         .context(ex_error::DataFusionSnafu)?;
 
-        self.execute_logical_plan(LogicalPlan::Extension(Extension {
+        Ok(LogicalPlan::Extension(Extension {
             node: Arc::new(merge_into_plan),
         }))
-        .await
     }
 
     #[instrument(name = "UserQuery::create_database", level = "trace", skip(self), err)]
