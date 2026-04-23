@@ -216,7 +216,7 @@ impl ScalarUDFImpl for ToTimestampFunc {
             };
             return Ok(Arc::new(Field::new(
                 self.name(),
-                DataType::Timestamp(unit.clone(), self.timezone()),
+                DataType::Timestamp(*unit, self.timezone()),
                 true,
             )));
         }
