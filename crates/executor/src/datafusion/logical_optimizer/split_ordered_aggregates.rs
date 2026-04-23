@@ -183,7 +183,7 @@ fn merge_branches(mut branches: Vec<Branch>) -> Result<MergeResult> {
                 .join_on(right_plan, datafusion_common::JoinType::Inner, on_exprs)?
                 .build()?
         };
-        name_map.extend(out.into_iter());
+        name_map.extend(out);
     }
     Ok((acc_plan, name_map))
 }

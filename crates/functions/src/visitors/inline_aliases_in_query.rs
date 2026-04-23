@@ -1,6 +1,7 @@
 use datafusion::logical_expr::sqlparser::ast::{Expr, Function, SetOperator, VisitMut};
 use datafusion::sql::sqlparser::ast::{
-    Query, SelectItem, SetExpr, Statement, TableFactor, VisitorMut, visit_expressions_mut,
+    Query, SelectItem, SetExpr, Statement, TableFactor, TableWithJoins, VisitorMut,
+    visit_expressions_mut,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
@@ -60,22 +61,33 @@ impl VisitorMut for InlineAliasesInSelect {
                 }
             }
 
+            // Per ANSI SQL (and Snowflake), a SELECT-list alias must NOT shadow a
+            // column of the FROM-clause relation when that same name is referenced
+            // inside another projection expression. If the FROM clause contains any
+            // non-derived relation (a named table, CTE, table function, etc.), we
+            // can't see its schema at the AST level, so we must assume any
+            // identifier could refer to one of its columns. Inlining projection
+            // aliases in that case can silently produce wrong results (issue #131).
+            let inline_in_projection = from_is_alias_inline_safe(&select.from);
+
             for item in &mut select.projection {
                 match item {
                     SelectItem::ExprWithAlias { expr, alias } => {
-                        //Don't substitute aliases for the same alias & subquery idents
-                        substitute_aliases(
-                            expr,
-                            &alias_expr_map,
-                            Some(&alias.value),
-                            Some(&|e| contains_ident_value(&subquery_idents, e)),
-                        );
+                        if inline_in_projection {
+                            //Don't substitute aliases for the same alias & subquery idents
+                            substitute_aliases(
+                                expr,
+                                &alias_expr_map,
+                                Some(&alias.value),
+                                Some(&|e| contains_ident_value(&subquery_idents, e)),
+                            );
+                        }
                         //Don't add to a substitution map if the alias is the same as the subquery ident
                         if !subquery_idents.contains(&alias.value) {
                             alias_expr_map.insert(alias.value.clone(), expr.clone());
                         }
                     }
-                    SelectItem::UnnamedExpr(expr) => {
+                    SelectItem::UnnamedExpr(expr) if inline_in_projection => {
                         //Don't substitute subquery idents
                         substitute_aliases(
                             expr,
@@ -124,6 +136,33 @@ impl VisitorMut for InlineAliasesInSelect {
             }
         }
         ControlFlow::Continue(())
+    }
+}
+
+/// Returns `true` when every `TableFactor` in the FROM clause is a derived
+/// subquery whose columns we've already collected into `subquery_idents` (or
+/// when FROM is empty). In those cases it is safe to inline SELECT-list
+/// aliases into other projection expressions, because any identifier we'd
+/// substitute either can't refer to a real column (empty FROM) or is filtered
+/// out by the `subquery_idents` check. As soon as FROM contains a named
+/// table, CTE, or table function we can't see the schema of, bail out.
+fn from_is_alias_inline_safe(from: &[TableWithJoins]) -> bool {
+    from.iter().all(|twj| {
+        factor_is_alias_inline_safe(&twj.relation)
+            && twj
+                .joins
+                .iter()
+                .all(|j| factor_is_alias_inline_safe(&j.relation))
+    })
+}
+
+fn factor_is_alias_inline_safe(factor: &TableFactor) -> bool {
+    match factor {
+        TableFactor::Derived { .. } => true,
+        TableFactor::NestedJoin {
+            table_with_joins, ..
+        } => from_is_alias_inline_safe(std::slice::from_ref(table_with_joins)),
+        _ => false,
     }
 }
 

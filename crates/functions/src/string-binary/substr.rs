@@ -226,18 +226,10 @@ impl ScalarUDFImpl for SubstrFunc {
         }
 
         let first_data_type = match &arg_types[0] {
-            DataType::Dictionary(key_type, value_type) => {
-                if key_type.is_integer() && is_string_coercible(value_type) {
-                    coerce_string_type(value_type)
-                } else {
-                    return InvalidArgumentTypeSnafu {
-                        function_name: self.name().to_string(),
-                        position: position_name(0).to_string(),
-                        expected_type: "a string or binary coercible type".to_string(),
-                        actual_type: format!("{:?}", &arg_types[0]),
-                    }
-                    .fail()?;
-                }
+            DataType::Dictionary(key_type, value_type)
+                if key_type.is_integer() && is_string_coercible(value_type) =>
+            {
+                coerce_string_type(value_type)
             }
             data_type if is_string_coercible(data_type) => coerce_string_type(data_type),
             data_type if is_binary_type(data_type) => coerce_binary_type(data_type),

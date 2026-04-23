@@ -410,6 +410,24 @@ fn test_inline_aliases_in_query() -> DFResult<()> {
         "SELECT regexp_replace(name, 'yes', '', 1, 1) AS name, regexp_replace(name, 'yes', '', 1, 1) AS test FROM (SELECT column1 AS name FROM (VALUES ('yesnotyes')))"),
         ("SELECT sum(jan_sales) AS jan_sales, sum(jan_sales / 1) AS jan_sales_per_sq_foot FROM (SELECT sum(CASE WHEN d_moy = 1 THEN ws_ext_sales_price * ws_quantity ELSE 0 END) AS jan_sales FROM web_sales, date_dim UNION ALL SELECT sum(CASE WHEN d_moy = 1 THEN cs_sales_price * cs_quantity ELSE 0 END) AS jan_sales FROM catalog_sales, date_dim)",
          "SELECT sum(jan_sales) AS jan_sales, sum(jan_sales / 1) AS jan_sales_per_sq_foot FROM (SELECT sum(CASE WHEN d_moy = 1 THEN ws_ext_sales_price * ws_quantity ELSE 0 END) AS jan_sales FROM web_sales, date_dim UNION ALL SELECT sum(CASE WHEN d_moy = 1 THEN cs_sales_price * cs_quantity ELSE 0 END) AS jan_sales FROM catalog_sales, date_dim)"),
+        // Regression test for issue #131: a SELECT-list alias that shadows a
+        // FROM-clause column name must NOT be inlined into other projection
+        // expressions. Here `start_tstamp` is both a column of CTE `s` and
+        // the alias of the first projection; inlining would turn the CASE
+        // condition into the tautology `user_start_tstamp = user_start_tstamp`
+        // and silently produce the wrong result. Because FROM references a
+        // named relation (the CTE `s`) whose schema is invisible at the AST
+        // level, we conservatively skip projection-list alias inlining.
+        (
+            "WITH s AS (SELECT 'S1' AS sid, TIMESTAMP '2020-01-01 00:00:00' AS start_tstamp, TIMESTAMP '2020-01-01 00:00:00' AS user_start_tstamp UNION ALL SELECT 'S2' AS sid, TIMESTAMP '2020-01-01 05:00:00' AS start_tstamp, TIMESTAMP '2020-01-01 00:00:00' AS user_start_tstamp) SELECT user_start_tstamp AS start_tstamp, MAX(CASE WHEN start_tstamp = user_start_tstamp THEN sid END) AS first_sid FROM s GROUP BY user_start_tstamp",
+            "WITH s AS (SELECT 'S1' AS sid, TIMESTAMP '2020-01-01 00:00:00' AS start_tstamp, TIMESTAMP '2020-01-01 00:00:00' AS user_start_tstamp UNION ALL SELECT 'S2' AS sid, TIMESTAMP '2020-01-01 05:00:00' AS start_tstamp, TIMESTAMP '2020-01-01 00:00:00' AS user_start_tstamp) SELECT user_start_tstamp AS start_tstamp, MAX(CASE WHEN start_tstamp = user_start_tstamp THEN sid END) AS first_sid FROM s GROUP BY user_start_tstamp",
+        ),
+        // Same shape but over a named table: projection-list aliases must not
+        // be inlined because a table column with the same name may exist.
+        (
+            "SELECT user_start_tstamp AS start_tstamp, MAX(CASE WHEN start_tstamp = user_start_tstamp THEN sid END) AS first_sid FROM sessions GROUP BY user_start_tstamp",
+            "SELECT user_start_tstamp AS start_tstamp, MAX(CASE WHEN start_tstamp = user_start_tstamp THEN sid END) AS first_sid FROM sessions GROUP BY user_start_tstamp",
+        ),
     ];
 
     for (input, expected) in cases {

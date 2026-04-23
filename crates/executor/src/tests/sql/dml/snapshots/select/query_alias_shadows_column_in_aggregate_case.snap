@@ -1,0 +1,14 @@
+---
+source: crates/executor/src/tests/sql/dml/select.rs
+assertion_line: 39
+description: "\"WITH s AS (\n        SELECT 'S1' AS sid,\n               TIMESTAMP '2020-01-01 00:00:00' AS start_tstamp,\n               TIMESTAMP '2020-01-01 00:00:00' AS user_start_tstamp\n        UNION ALL\n        SELECT 'S2' AS sid,\n               TIMESTAMP '2020-01-01 05:00:00' AS start_tstamp,\n               TIMESTAMP '2020-01-01 00:00:00' AS user_start_tstamp\n    )\n    SELECT user_start_tstamp AS start_tstamp,\n           MAX(CASE WHEN start_tstamp = user_start_tstamp THEN sid END) AS first_sid\n    FROM s\n    GROUP BY user_start_tstamp;\""
+---
+Ok(
+    [
+        "+---------------------+-----------+",
+        "| start_tstamp        | first_sid |",
+        "+---------------------+-----------+",
+        "| 2020-01-01T00:00:00 | S1        |",
+        "+---------------------+-----------+",
+    ],
+)
