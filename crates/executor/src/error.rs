@@ -495,13 +495,6 @@ pub enum Error {
         location: Location,
     },
 
-    #[snafu(display("Data for not-matching file {file} is not available"))]
-    MergeFilterStreamNotMatching {
-        file: String,
-        #[snafu(implicit)]
-        location: Location,
-    },
-
     #[snafu(display("Matching files have already been consumed"))]
     MatchingFilesAlreadyConsumed {
         #[snafu(implicit)]

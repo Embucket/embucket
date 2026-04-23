@@ -1,11 +1,7 @@
 use datafusion::{
     arrow::{
         array::{Array, ArrayRef, BooleanArray, RecordBatch, StringArray, downcast_array},
-        compute::{
-            filter, filter_record_batch,
-            kernels::cmp::{distinct, eq},
-            or, or_kleene,
-        },
+        compute::{filter, kernels::cmp::distinct},
         datatypes::Schema,
     },
     physical_expr::EquivalenceProperties,
@@ -15,7 +11,7 @@ use datafusion_iceberg::{
     DataFusionTable, error::Error as DataFusionIcebergError, table::write_parquet_data_files,
 };
 use datafusion_physical_plan::{
-    DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, PlanProperties, RecordBatchStream,
+    DisplayAs, DisplayFormatType, ExecutionPlan, Partitioning, PlanProperties,
     SendableRecordBatchStream,
     coalesce_partitions::CoalescePartitionsExec,
     execution_plan::{Boundedness, EmissionType},
@@ -24,17 +20,14 @@ use datafusion_physical_plan::{
 };
 use futures::{Stream, StreamExt};
 use iceberg_rust::{catalog::tabular::Tabular, error::Error as IcebergError};
-use lru::LruCache;
 use pin_project_lite::pin_project;
 use snafu::ResultExt;
 use std::{
-    collections::{HashMap, HashSet},
-    num::NonZeroUsize,
+    collections::HashMap,
     ops::BitAnd,
     sync::atomic::{AtomicI64, Ordering},
     sync::{Arc, Mutex},
     task::Poll,
-    thread::available_parallelism,
 };
 
 use crate::error;
@@ -45,7 +38,6 @@ pub(crate) static DATA_FILE_PATH_COLUMN: &str = "__data_file_path";
 pub(crate) static MANIFEST_FILE_PATH_COLUMN: &str = "__manifest_file_path";
 pub(crate) static MERGE_UPDATED_COLUMN: &str = "__merge_row_updated";
 pub(crate) static MERGE_INSERTED_COLUMN: &str = "__merge_row_inserted";
-static THREAD_FILE_RATIO: usize = 4;
 
 #[derive(Debug)]
 pub struct MergeIntoCOWSinkExec {
@@ -168,17 +160,12 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
 
         let coalesce = CoalescePartitionsExec::new(self.input.clone());
 
-        // Filter out rows whoose __data_file_path doesn't have a matching row
-        let filtered: Arc<dyn ExecutionPlan> = Arc::new(MergeCOWFilterExec::new(
-            Arc::new(coalesce),
-            matching_files.clone(),
-        ));
-
-        let input_batches = filtered.execute(partition, context.clone())?;
+        let input_batches = coalesce.execute(partition, context.clone())?;
         let count_and_project_stream = MergeCOWCountAndProjectStream::new(
             input_batches,
             updated_rows.clone(),
             inserted_rows.clone(),
+            matching_files.clone(),
         );
 
         let stream = futures::stream::once({
@@ -290,8 +277,9 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
 }
 
 pin_project! {
-    /// Stream wrapper that counts per-action MERGE rows (insert/update markers) and projects away
-    /// auxiliary merge columns before writing to data files.
+    /// Stream wrapper that counts per-action MERGE rows (insert/update markers), collects
+    /// matching data/manifest file pairs, and projects away auxiliary merge columns before
+    /// writing to data files.
     pub struct MergeCOWCountAndProjectStream {
         projection_indices: Vec<usize>,
         projected_schema: Arc<Schema>,
@@ -299,6 +287,10 @@ pin_project! {
         inserted_idx: Option<usize>,
         updated_rows: Arc<AtomicI64>,
         inserted_rows: Arc<AtomicI64>,
+        data_file_path_idx: usize,
+        manifest_file_path_idx: usize,
+        matching_files: HashMap<String, String>,
+        matching_files_ref: Arc<Mutex<Option<ManifestAndDataFiles>>>,
 
         #[pin]
         input: SendableRecordBatchStream,
@@ -310,11 +302,16 @@ impl MergeCOWCountAndProjectStream {
         input: SendableRecordBatchStream,
         updated_rows: Arc<AtomicI64>,
         inserted_rows: Arc<AtomicI64>,
+        matching_files_ref: Arc<Mutex<Option<ManifestAndDataFiles>>>,
     ) -> Self {
         let input_schema = input.schema();
 
         let updated_idx = input_schema.index_of(MERGE_UPDATED_COLUMN).ok();
         let inserted_idx = input_schema.index_of(MERGE_INSERTED_COLUMN).ok();
+        let data_file_path_idx = input_schema.index_of(DATA_FILE_PATH_COLUMN).unwrap_or(0);
+        let manifest_file_path_idx = input_schema
+            .index_of(MANIFEST_FILE_PATH_COLUMN)
+            .unwrap_or(0);
 
         // Drop auxiliary columns so we only write table columns to parquet
         let projection_indices: Vec<usize> = input_schema
@@ -350,6 +347,10 @@ impl MergeCOWCountAndProjectStream {
             inserted_idx,
             updated_rows,
             inserted_rows,
+            data_file_path_idx,
+            manifest_file_path_idx,
+            matching_files: HashMap::new(),
+            matching_files_ref,
             input,
         }
     }
@@ -369,6 +370,14 @@ impl Stream for MergeCOWCountAndProjectStream {
         let mut project = self.project();
         match project.input.as_mut().poll_next(cx) {
             Poll::Ready(Some(Ok(batch))) => {
+                // Collect unique (data_file, manifest_file) pairs
+                let data_file_col = batch.column(*project.data_file_path_idx);
+                let manifest_file_col = batch.column(*project.manifest_file_path_idx);
+                let file_pairs =
+                    unique_files_and_manifests(data_file_col.as_ref(), manifest_file_col.as_ref())?;
+                project.matching_files.extend(file_pairs);
+
+                // Count updated/inserted rows
                 if let Some(updated_idx) = *project.updated_idx
                     && let Some(col) = batch.columns().get(updated_idx)
                 {
@@ -384,6 +393,7 @@ impl Stream for MergeCOWCountAndProjectStream {
                     project.inserted_rows.fetch_add(n, Ordering::Relaxed);
                 }
 
+                // Project away auxiliary columns
                 let cols = project
                     .projection_indices
                     .iter()
@@ -399,7 +409,21 @@ impl Stream for MergeCOWCountAndProjectStream {
                 Poll::Ready(Some(Ok(projected)))
             }
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(None) => {
+                // Store matching files for the commit phase
+                let matching_files = std::mem::take(project.matching_files);
+                let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
+                for (file, manifest) in matching_files {
+                    grouped
+                        .entry(manifest)
+                        .and_modify(|v| v.push(file.clone()))
+                        .or_insert_with(|| vec![file]);
+                }
+                #[allow(clippy::unwrap_used)]
+                let mut lock = project.matching_files_ref.lock().unwrap();
+                lock.replace(grouped);
+                Poll::Ready(None)
+            }
             Poll::Pending => Poll::Pending,
         }
     }
@@ -425,398 +449,6 @@ fn usize_to_i64_saturating(v: usize) -> i64 {
     i64::try_from(v).unwrap_or(i64::MAX)
 }
 
-#[derive(Debug)]
-struct MergeCOWFilterExec {
-    input: Arc<dyn ExecutionPlan>,
-    properties: PlanProperties,
-    matching_files: Arc<Mutex<Option<ManifestAndDataFiles>>>,
-}
-
-impl MergeCOWFilterExec {
-    fn new(
-        input: Arc<dyn ExecutionPlan>,
-        matching_files: Arc<Mutex<Option<ManifestAndDataFiles>>>,
-    ) -> Self {
-        let properties = input.properties().clone();
-        Self {
-            input,
-            properties,
-            matching_files,
-        }
-    }
-}
-
-impl DisplayAs for MergeCOWFilterExec {
-    fn fmt_as(&self, t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match t {
-            DisplayFormatType::Default
-            | DisplayFormatType::Verbose
-            | DisplayFormatType::TreeRender => {
-                write!(f, "SourceExistFilterExec")
-            }
-        }
-    }
-}
-
-impl ExecutionPlan for MergeCOWFilterExec {
-    fn name(&self) -> &'static str {
-        "MergeCOWFilterExec"
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn properties(&self) -> &PlanProperties {
-        &self.properties
-    }
-
-    fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> {
-        vec![&self.input]
-    }
-
-    fn with_new_children(
-        self: Arc<Self>,
-        children: Vec<Arc<dyn ExecutionPlan>>,
-    ) -> datafusion_common::Result<Arc<dyn ExecutionPlan>> {
-        if children.len() != 1 {
-            return Err(DataFusionError::Internal(
-                error::LogicalExtensionChildCountSnafu {
-                    name: "MergeCOWFilterExec".to_string(),
-                    expected: 1usize,
-                }
-                .build()
-                .to_string(),
-            ));
-        }
-        Ok(Arc::new(Self::new(
-            children[0].clone(),
-            self.matching_files.clone(),
-        )))
-    }
-
-    fn execute(
-        &self,
-        partition: usize,
-        context: Arc<datafusion::execution::TaskContext>,
-    ) -> datafusion_common::Result<SendableRecordBatchStream> {
-        Ok(Box::pin(MergeCOWFilterStream::new(
-            self.input.execute(partition, context)?,
-            self.matching_files.clone(),
-        )))
-    }
-}
-
-pin_project! {
-    /// A streaming filter for Copy-on-Write (COW) merge operations that tracks file matching state.
-    ///
-    /// This stream processes record batches and maintains state about which data files have
-    /// matching rows (where `__source_exists` = true) and which do not. It buffers batches
-    /// from non-matching files until their matching status is determined, then releases them
-    /// when appropriate.
-    ///
-    /// The stream is used to efficiently handle merge operations by:
-    /// - Tracking files that have already found matching rows
-    /// - Buffering data from files that haven't found matches yet
-    /// - Managing the flow of data to optimize merge performance
-    pub struct MergeCOWFilterStream {
-        // Files which already encountered a "__source_exists" = true value
-        matching_files: HashMap<String,String>,
-        // Reference to store the matching files after the stream has finished executing
-        matching_files_ref: Arc<Mutex<Option<ManifestAndDataFiles>>>,
-        // Files which haven't encountered a "__source_exists" = true value
-        not_matching_files: HashMap<String,String>,
-        // Buffer of RecordBatches whoose data files haven't had a matching row yet
-        not_matched_buffer: LruCache<String, Vec<RecordBatch>>,
-        // Previously buffered RecordBatches that are now ready to be consumed
-        ready_batches: Vec<RecordBatch>,
-
-        #[pin]
-        input: SendableRecordBatchStream,
-    }
-}
-
-impl MergeCOWFilterStream {
-    fn new(
-        input: SendableRecordBatchStream,
-        matching_files_ref: Arc<Mutex<Option<ManifestAndDataFiles>>>,
-    ) -> Self {
-        let buffer_size = (available_parallelism().map(NonZeroUsize::get).unwrap_or(1)
-            / THREAD_FILE_RATIO)
-            .max(2);
-        Self {
-            matching_files: HashMap::new(),
-            not_matching_files: HashMap::new(),
-            #[allow(clippy::unwrap_used)]
-            not_matched_buffer: LruCache::new(NonZeroUsize::new(buffer_size).unwrap()),
-            ready_batches: Vec::new(),
-            matching_files_ref,
-            input,
-        }
-    }
-}
-
-impl Stream for MergeCOWFilterStream {
-    type Item = Result<RecordBatch, DataFusionError>;
-
-    #[allow(clippy::too_many_lines)]
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        let mut project = self.project();
-
-        loop {
-            // Return early if a batch is ready
-            if let Some(batch) = project.ready_batches.pop() {
-                return Poll::Ready(Some(Ok(batch)));
-            }
-
-            match project.input.as_mut().poll_next(cx) {
-                Poll::Ready(Some(Ok(batch))) => {
-                    let schema = batch.schema();
-
-                    let source_exists_array = batch.column(schema.index_of(SOURCE_EXISTS_COLUMN)?);
-                    let data_file_path_array =
-                        batch.column(schema.index_of(DATA_FILE_PATH_COLUMN)?);
-                    let manifest_file_path_array =
-                        batch.column(schema.index_of(MANIFEST_FILE_PATH_COLUMN)?);
-
-                    // All data files in the current batch
-
-                    let data_and_manifest_files = unique_files_and_manifests(
-                        &data_file_path_array,
-                        &manifest_file_path_array,
-                    )?;
-
-                    let current_data_files: HashSet<String> = data_and_manifest_files
-                        .keys()
-                        .map(ToOwned::to_owned)
-                        .collect();
-
-                    // All data files that have a matching row in the current batch
-                    let matching_data_file_array = filter(
-                        &data_file_path_array,
-                        &downcast_array::<BooleanArray>(source_exists_array),
-                    )?;
-
-                    let matching_data_files = unique_values(&matching_data_file_array)?;
-
-                    // Data files that have a matching row now, but didn't before
-                    let newly_matched_data_files: HashSet<String> = project
-                        .not_matching_files
-                        .keys()
-                        .map(ToOwned::to_owned)
-                        .collect::<HashSet<String>>()
-                        .intersection(&matching_data_files)
-                        .map(ToOwned::to_owned)
-                        .collect();
-
-                    // All data files that ever had a matching row, previous batches included
-                    let all_matching_data_files = {
-                        // Datafiles in the current batch that were matched before
-                        let mut previously_matched_data_files: HashSet<String> = project
-                            .matching_files
-                            .keys()
-                            .map(ToOwned::to_owned)
-                            .collect::<HashSet<String>>()
-                            .intersection(&current_data_files)
-                            .map(ToOwned::to_owned)
-                            .collect();
-
-                        previously_matched_data_files.extend(matching_data_files.clone());
-                        previously_matched_data_files
-                    };
-
-                    let not_matched_data_files: HashSet<String> = current_data_files
-                        .difference(&all_matching_data_files)
-                        .map(ToOwned::to_owned)
-                        .collect();
-
-                    let matching_data_and_manifest_files: HashMap<String, String> =
-                        data_and_manifest_files
-                            .iter()
-                            .filter(|(file, _)| matching_data_files.contains(*file))
-                            .map(|(x, y)| (x.clone(), y.clone()))
-                            .collect();
-
-                    // When datafile didn't match in previous record batches but matches now, the
-                    // previous record batches have to be appended to the output
-                    for file in newly_matched_data_files {
-                        let manifest =
-                            project.not_matching_files.remove(&file).ok_or_else(|| {
-                                DataFusionError::Internal(
-                                    error::MergeFilterStreamNotMatchingSnafu { file: file.clone() }
-                                        .build()
-                                        .to_string(),
-                                )
-                            })?;
-
-                        let batches = project.not_matched_buffer.pop(&file).ok_or_else(|| {
-                            DataFusionError::Internal(
-                                error::MergeFilterStreamNotMatchingSnafu { file: file.clone() }
-                                    .build()
-                                    .to_string(),
-                            )
-                        })?;
-
-                        for batch in batches {
-                            project.ready_batches.push(batch);
-                        }
-
-                        project.matching_files.insert(file, manifest);
-                    }
-
-                    // All files without a match are recorded and their record batches are stored
-                    // in the 'not_matched_buffer'
-                    for file in not_matched_data_files {
-                        let manifest = data_and_manifest_files.get(&file).ok_or_else(|| {
-                            DataFusionError::Internal(
-                                error::MergeFilterStreamNotMatchingSnafu { file: file.clone() }
-                                    .build()
-                                    .to_string(),
-                            )
-                        })?;
-                        project
-                            .not_matching_files
-                            .insert(file.clone(), manifest.clone());
-
-                        let predicate = eq(&data_file_path_array, &StringArray::new_scalar(&file))?;
-                        let filtered_batch = filter_record_batch(&batch, &predicate)?;
-                        project
-                            .not_matched_buffer
-                            .get_or_insert_mut(file, Vec::new)
-                            .push(filtered_batch);
-                    }
-
-                    // Only take the fast paths if the current batch references no target file
-                    // that will be (or has been) overwritten. Otherwise the full filter path
-                    // below is required so target rows belonging to `all_matching_data_files`
-                    // are re-emitted into the rewritten data file.
-                    if matching_data_and_manifest_files.is_empty()
-                        && all_matching_data_files.is_empty()
-                    {
-                        // Return early if all rows only come from source
-                        if matching_data_file_array.len() == source_exists_array.len() {
-                            return Poll::Ready(Some(Ok(batch)));
-                        } else if matching_data_file_array.is_empty() {
-                            //NO matches and no rows from source
-                            continue;
-                        }
-                    }
-
-                    let file_predicate = all_matching_data_files.iter().try_fold(
-                        None::<BooleanArray>,
-                        |acc, x| {
-                            let new = eq(&data_file_path_array, &StringArray::new_scalar(x))?;
-                            if let Some(acc) = acc {
-                                let result = or(&acc, &new)?;
-                                Ok::<_, DataFusionError>(Some(result))
-                            } else {
-                                Ok(Some(new))
-                            }
-                        },
-                    )?;
-                    let predicate = if let Some(file_predicate) = file_predicate {
-                        or_kleene(
-                            &file_predicate,
-                            &downcast_array::<BooleanArray>(&source_exists_array),
-                        )?
-                    } else {
-                        downcast_array::<BooleanArray>(&source_exists_array)
-                    };
-
-                    project
-                        .matching_files
-                        .extend(matching_data_and_manifest_files);
-
-                    let filtered_batch = filter_record_batch(&batch, &predicate)?;
-
-                    return Poll::Ready(Some(Ok(filtered_batch)));
-                }
-                Poll::Ready(None) => {
-                    // The stream has finished, we now have to pass the list of matched files to the
-                    // matching_files_ref to be accessed from outside of this stream
-                    let mut matching_files = std::mem::take(project.matching_files);
-                    let mut new: HashMap<String, Vec<String>> = HashMap::new();
-                    for (file, manifest) in matching_files.drain() {
-                        new.entry(manifest)
-                            .and_modify(|v| v.push(file.clone()))
-                            .or_insert_with(|| vec![file]);
-                    }
-                    #[allow(clippy::unwrap_used)]
-                    let mut lock = project.matching_files_ref.lock().unwrap();
-                    lock.replace(new);
-                    return Poll::Ready(None);
-                }
-                x => return x,
-            }
-        }
-    }
-}
-
-impl RecordBatchStream for MergeCOWFilterStream {
-    fn schema(&self) -> datafusion::arrow::datatypes::SchemaRef {
-        self.input.schema()
-    }
-}
-
-/// Extracts unique string values from an array efficiently by only comparing consecutive elements.
-///
-/// This function assumes the input array is sorted and leverages this property to find unique values
-/// by only checking consecutive pairs rather than comparing all elements. It:
-/// 1. Takes the first element as a starting point
-/// 2. Identifies positions where consecutive elements differ
-/// 3. Filters to keep only the distinct values
-/// 4. Returns a `HashSet` containing all unique string values
-///
-/// # Arguments
-/// * `array` - A reference to an Array (expected to be a `StringArray`)
-///
-/// # Returns
-/// * `Result<HashSet<String>, DataFusionError>` - `HashSet` of unique string values or an error
-fn unique_values(array: &dyn Array) -> Result<HashSet<String>, DataFusionError> {
-    if array.is_empty() {
-        return Ok(HashSet::new());
-    }
-
-    let first = downcast_array::<StringArray>(array).value(0).to_owned();
-
-    let init = if first.is_empty() {
-        HashSet::new()
-    } else {
-        HashSet::from_iter([first])
-    };
-
-    let slice_len = array.len() - 1;
-
-    if slice_len == 0 {
-        return Ok(init);
-    }
-
-    let v1 = array.slice(0, slice_len);
-    let v2 = array.slice(1, slice_len);
-
-    // Which consecutive entries are different
-    let mask = distinct(&v1, &v2)?;
-
-    // only keep values that are diffirent from their previous value, this drastically reduces the
-    // number of values needed to process
-    let unique = filter(&v2, &mask)?;
-
-    let strings = downcast_array::<StringArray>(&unique);
-
-    let result = strings.iter().fold(init, |mut acc, x| {
-        if let Some(x) = x
-            && !x.is_empty()
-        {
-            acc.insert(x.to_owned());
-        }
-        acc
-    });
-
-    Ok(result)
-}
 
 /// Creates a mapping of unique file paths to their corresponding manifest paths.
 ///
@@ -893,87 +525,9 @@ fn unique_files_and_manifests(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
-    use datafusion::arrow::array::{GenericStringBuilder, Int32Array};
-    use datafusion::arrow::compute;
-    use datafusion::arrow::datatypes::{DataType, Field};
 
     use super::*;
     use std::sync::Arc;
-
-    macro_rules! test_merge_cow_filter_stream {
-        ($test_name:ident, $input_slice:expr, $expected_sum:expr) => {
-            paste::paste! {
-                #[tokio::test]
-                async fn [<test_merge_cow_filter_stream_ $test_name>]() {
-                    use datafusion::arrow::datatypes::{DataType, Field};
-                    use futures::stream;
-
-                    let schema = Arc::new(Schema::new(vec![
-                        Field::new(SOURCE_EXISTS_COLUMN, DataType::Boolean, true),
-                        Field::new(DATA_FILE_PATH_COLUMN, DataType::Utf8, true),
-                        Field::new(MANIFEST_FILE_PATH_COLUMN, DataType::Utf8, true),
-                        Field::new("data", DataType::Int32, false),
-                    ]));
-
-                    let input_stream = stream::iter(build_input_stream($input_slice));
-
-                    let stream = Box::pin(RecordBatchStreamAdapter::new(schema, input_stream));
-
-                    let matching_files = Arc::default();
-
-                    let mut filter_stream = MergeCOWFilterStream::new(stream, matching_files);
-
-                    let mut sum = 0;
-                    while let Some(result) = StreamExt::next(&mut filter_stream).await {
-                        let batch = result.unwrap();
-                        let data = batch.column(3);
-
-                        sum += compute::sum(&downcast_array::<Int32Array>(&data)).unwrap();
-                    }
-
-                    assert_eq!(sum, $expected_sum);
-                }
-            }
-        };
-    }
-
-    #[test]
-    fn test_unique_values_with_duplicates() {
-        let array = Arc::new(StringArray::from(vec!["a", "a", "b", "b", "c"]));
-        let result = unique_values(array.as_ref()).unwrap();
-
-        let expected: HashSet<String> = ["a", "b", "c"].iter().map(|&s| s.to_string()).collect();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_unique_values_all_same() {
-        let array = Arc::new(StringArray::from(vec!["same", "same", "same"]));
-        let result = unique_values(array.as_ref()).unwrap();
-
-        let expected: HashSet<String> = std::iter::once(&"same")
-            .map(std::string::ToString::to_string)
-            .collect();
-
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_unique_values_with_nulls() {
-        let array = Arc::new(StringArray::from(vec![
-            Some("a"),
-            None,
-            Some("b"),
-            None,
-            Some("a"),
-        ]));
-        let result = unique_values(array.as_ref()).unwrap();
-
-        let expected: HashSet<String> = ["a", "b"].iter().map(|&s| s.to_string()).collect();
-
-        assert_eq!(result, expected);
-    }
 
     #[test]
     fn test_unique_files_and_manifests_with_duplicates() {
@@ -999,275 +553,4 @@ mod tests {
         ]);
         assert_eq!(result, expected);
     }
-
-    #[tokio::test]
-    async fn test_merge_cow_filter_stream_simple() {
-        use datafusion::arrow::datatypes::{DataType, Field};
-        use futures::stream;
-
-        let schema = Arc::new(Schema::new(vec![
-            Field::new(SOURCE_EXISTS_COLUMN, DataType::Boolean, false),
-            Field::new(DATA_FILE_PATH_COLUMN, DataType::Utf8, false),
-            Field::new(MANIFEST_FILE_PATH_COLUMN, DataType::Utf8, false),
-            Field::new("data", DataType::Int32, false),
-        ]));
-
-        let batch1 = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(BooleanArray::from(vec![false, false, true, false])),
-                Arc::new(StringArray::from(vec!["file1", "file1", "file2", "file2"])),
-                Arc::new(StringArray::from(vec![
-                    "manifest1",
-                    "manifest1",
-                    "manifest1",
-                    "manifest1",
-                ])),
-                Arc::new(datafusion::arrow::array::Int32Array::from(vec![1, 2, 3, 4])),
-            ],
-        )
-        .unwrap();
-
-        let batch2 = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(BooleanArray::from(vec![false, true, false, true])),
-                Arc::new(StringArray::from(vec!["file2", "file3", "file3", "file3"])),
-                Arc::new(StringArray::from(vec![
-                    "manifest1",
-                    "manifest2",
-                    "manifest2",
-                    "manifest2",
-                ])),
-                Arc::new(datafusion::arrow::array::Int32Array::from(vec![5, 6, 7, 8])),
-            ],
-        )
-        .unwrap();
-
-        let batch3 = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(BooleanArray::from(vec![true, true, false])),
-                Arc::new(StringArray::from(vec!["file4", "file4", "file4"])),
-                Arc::new(StringArray::from(vec![
-                    "manifest3",
-                    "manifest3",
-                    "manifest3",
-                ])),
-                Arc::new(datafusion::arrow::array::Int32Array::from(vec![9, 10, 11])),
-            ],
-        )
-        .unwrap();
-
-        let input_stream = stream::iter(vec![Ok(batch1), Ok(batch2), Ok(batch3)]);
-        let stream = Box::pin(RecordBatchStreamAdapter::new(schema, input_stream));
-
-        let matching_files = Arc::default();
-
-        let mut filter_stream = MergeCOWFilterStream::new(stream, matching_files);
-
-        let mut total_rows = 0;
-        while let Some(result) = StreamExt::next(&mut filter_stream).await {
-            let batch = result.unwrap();
-            total_rows += batch.num_rows();
-        }
-
-        assert!(total_rows == 9);
-    }
-
-    /// Generates test record batches from a sequence of scenario identifiers.
-    ///
-    /// Each tuple in the sequence contains (index, `scenario_type`) where `scenario_type` maps to:
-    /// 1. Target-only data, 2. Source-only data, 3. Target+Source, 4. Matching data,
-    /// 5. Target+Matching, 6. Source+Matching, 7. Target+Source+Matching
-    fn build_input_stream(
-        sequence: &[(usize, usize)],
-    ) -> Vec<Result<RecordBatch, DataFusionError>> {
-        sequence
-            .iter()
-            .map(|(n, i)| {
-                let n: i32 = (*n).try_into().unwrap();
-                match i {
-                    1 => Ok(build_record_batch(&[generate_target(n)])),
-                    2 => Ok(build_record_batch(&[generate_source(n)])),
-                    3 => Ok(build_record_batch(&[
-                        generate_target(n),
-                        generate_source(n),
-                    ])),
-                    4 => Ok(build_record_batch(&[generate_matching(n)])),
-                    5 => Ok(build_record_batch(&[
-                        generate_target(n),
-                        generate_matching(n),
-                    ])),
-                    6 => Ok(build_record_batch(&[
-                        generate_source(n),
-                        generate_matching(n),
-                    ])),
-                    7 => Ok(build_record_batch(&[
-                        generate_source(n),
-                        generate_target(n),
-                        generate_matching(n),
-                    ])),
-
-                    _ => panic!(),
-                }
-            })
-            .collect()
-    }
-
-    /// Builds a test record batch from a sequence of input data.
-    #[allow(clippy::type_complexity)]
-    fn build_record_batch(
-        input: &[(
-            Vec<bool>,
-            Vec<Option<String>>,
-            Vec<Option<String>>,
-            Vec<i32>,
-        )],
-    ) -> RecordBatch {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new(SOURCE_EXISTS_COLUMN, DataType::Boolean, true),
-            Field::new(DATA_FILE_PATH_COLUMN, DataType::Utf8, true),
-            Field::new(MANIFEST_FILE_PATH_COLUMN, DataType::Utf8, true),
-            Field::new("data", DataType::Int32, false),
-        ]));
-
-        let mut b_builder = BooleanArray::builder(8);
-        let mut df_builder = GenericStringBuilder::<i32>::new();
-        let mut mf_builder = GenericStringBuilder::<i32>::new();
-        let mut d_builder = Int32Array::builder(8);
-        for (b, df, mf, d) in input {
-            b_builder.append_slice(b);
-            df_builder.append_array(&StringArray::from(df.clone()));
-            mf_builder.append_array(&StringArray::from(mf.clone()));
-            d_builder.append_slice(d);
-        }
-        RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(b_builder.finish()),
-                Arc::new(df_builder.finish()),
-                Arc::new(mf_builder.finish()),
-                Arc::new(d_builder.finish()),
-            ],
-        )
-        .expect("Failed to build record batch")
-    }
-
-    // Creates test data for the target table where __source_exists is NULL ==> NOT MATCHED
-    #[allow(clippy::type_complexity)]
-    fn generate_target(
-        i: i32,
-    ) -> (
-        Vec<bool>,
-        Vec<Option<String>>,
-        Vec<Option<String>>,
-        Vec<i32>,
-    ) {
-        (
-            vec![false, false, false, false],
-            vec![
-                Some(format!("file{i}")),
-                Some(format!("file{i}")),
-                Some(format!("file{i}")),
-                Some(format!("file{i}")),
-            ],
-            vec![
-                Some(format!("manifest{i}")),
-                Some(format!("manifest{i}")),
-                Some(format!("manifest{i}")),
-                Some(format!("manifest{i}")),
-            ],
-            vec![i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4],
-        )
-    }
-
-    // Creates test data for the source table where __data_file_path & __manifest_file_path are
-    // NULL ==> NOT MATCHED
-    #[allow(clippy::type_complexity)]
-    fn generate_source(
-        i: i32,
-    ) -> (
-        Vec<bool>,
-        Vec<Option<String>>,
-        Vec<Option<String>>,
-        Vec<i32>,
-    ) {
-        (
-            vec![true, true, true, true],
-            vec![None, None, None, None],
-            vec![None, None, None, None],
-            vec![i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4],
-        )
-    }
-
-    // Creates MATCHED test data for target and source table
-    #[allow(clippy::type_complexity)]
-    fn generate_matching(
-        i: i32,
-    ) -> (
-        Vec<bool>,
-        Vec<Option<String>>,
-        Vec<Option<String>>,
-        Vec<i32>,
-    ) {
-        (
-            vec![true, true, true, true],
-            vec![
-                Some(format!("file{i}")),
-                Some(format!("file{i}")),
-                Some(format!("file{i}")),
-                Some(format!("file{i}")),
-            ],
-            vec![
-                Some(format!("manifest{i}")),
-                Some(format!("manifest{i}")),
-                Some(format!("manifest{i}")),
-                Some(format!("manifest{i}")),
-            ],
-            vec![i * 4 + 1, i * 4 + 2, i * 4 + 3, i * 4 + 4],
-        )
-    }
-
-    test_merge_cow_filter_stream!(single_target, &[(0, 1)], 0);
-    test_merge_cow_filter_stream!(single_source, &[(0, 2)], 10);
-    test_merge_cow_filter_stream!(single_matching, &[(0, 4)], 10);
-    test_merge_cow_filter_stream!(single_target_source, &[(0, 3)], 10);
-    test_merge_cow_filter_stream!(single_target_matching, &[(0, 5)], 20);
-    test_merge_cow_filter_stream!(single_source_matching, &[(0, 6)], 20);
-    test_merge_cow_filter_stream!(single_target_source_matching, &[(0, 7)], 30);
-    test_merge_cow_filter_stream!(target_source, &[(0, 1), (0, 2)], 10);
-    test_merge_cow_filter_stream!(target_matching, &[(0, 1), (0, 4)], 20);
-    test_merge_cow_filter_stream!(source_matching, &[(0, 2), (0, 4)], 20);
-    test_merge_cow_filter_stream!(target_target_matching, &[(0, 1), (0, 1), (0, 4)], 30);
-    test_merge_cow_filter_stream!(
-        target1_target2_matching2_target3_matching1,
-        &[(0, 1), (1, 1), (1, 4), (2, 1), (0, 4)],
-        72
-    );
-    test_merge_cow_filter_stream!(
-        source_target_source_matching,
-        &[(0, 2), (0, 1), (0, 6), (0, 5)],
-        60
-    );
-    // Regression test for https://github.com/Embucket/embucket/issues/128
-    //
-    // If a target file has been seen as "matching" in an earlier batch and a subsequent
-    // batch contains only target rows (no `__source_exists` = true rows) for that same
-    // file, the rows in the later batch must still be passed through the filter so they
-    // land in the rewritten data file. Previously the "no matches, no source" fast path
-    // dropped them, causing silent data loss during `MERGE INTO` on unsorted inputs.
-    test_merge_cow_filter_stream!(matching_then_target, &[(0, 4), (0, 1)], 20);
-    test_merge_cow_filter_stream!(
-        matching_then_target_then_matching,
-        &[(0, 4), (0, 1), (0, 4)],
-        30
-    );
-    // Mixed scenario: several target-only batches arriving AFTER the target file has
-    // been matched.
-    test_merge_cow_filter_stream!(
-        matching_then_multiple_target_batches,
-        &[(0, 4), (0, 1), (0, 1), (0, 1)],
-        40
-    );
 }
