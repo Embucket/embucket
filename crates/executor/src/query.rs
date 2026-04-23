@@ -1337,11 +1337,13 @@ impl UserQuery {
     /// `LogicalPlan::Explain` / `LogicalPlan::Analyze` so callers can see the
     /// plan or live physical metrics without a separate SQL path).
     #[allow(clippy::too_many_lines)]
-    #[instrument(name = "UserQuery::merge_to_logical_plan", level = "trace", skip(self), err)]
-    pub async fn merge_to_logical_plan(
-        &self,
-        statement: Statement,
-    ) -> Result<LogicalPlan> {
+    #[instrument(
+        name = "UserQuery::merge_to_logical_plan",
+        level = "trace",
+        skip(self),
+        err
+    )]
+    pub async fn merge_to_logical_plan(&self, statement: Statement) -> Result<LogicalPlan> {
         let Statement::Merge {
             table: target,
             source,
