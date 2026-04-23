@@ -204,15 +204,19 @@ impl ScalarUDFImpl for ToTimestampFunc {
             }
         }
 
-        // If the first argument is already a timestamp type, return it as is (with its timezone).
+        // If the first argument is already a timestamp type, preserve the unit but
+        // apply this function's timezone policy (e.g. to_timestamp_ntz strips timezone).
         if matches!(
             args.arg_fields[0].data_type(),
             DataType::Timestamp(TimeUnit::Microsecond, _)
                 | DataType::Timestamp(TimeUnit::Nanosecond, Some(_))
         ) {
+            let DataType::Timestamp(unit, _) = args.arg_fields[0].data_type() else {
+                unreachable!()
+            };
             return Ok(Arc::new(Field::new(
                 self.name(),
-                args.arg_fields[0].data_type().clone(),
+                DataType::Timestamp(*unit, self.timezone()),
                 true,
             )));
         }
@@ -317,6 +321,20 @@ impl ScalarUDFImpl for ToTimestampFunc {
                 DataType::Timestamp(TimeUnit::Microsecond, _)
                     | DataType::Timestamp(TimeUnit::Nanosecond, Some(_))
             ) {
+                // If the input timezone differs from this function's target timezone
+                // (e.g. to_timestamp_ntz needs to strip tz), cast to apply the policy.
+                let DataType::Timestamp(unit, ref tz) = arr.data_type().clone() else {
+                    unreachable!()
+                };
+                let target_tz = self.timezone();
+                if *tz != target_tz {
+                    let arr = cast_with_options(
+                        &arr,
+                        &DataType::Timestamp(unit, target_tz),
+                        &DEFAULT_CAST_OPTIONS,
+                    )?;
+                    return Ok(ColumnarValue::Array(arr));
+                }
                 return Ok(ColumnarValue::Array(Arc::new(arr)));
             }
 
