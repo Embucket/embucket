@@ -1,0 +1,14 @@
+---
+source: crates/functions/src/tests/datetime/datediff.rs
+assertion_line: 105
+description: "\"SELECT\n        DATEDIFF('second',\n            TIMESTAMP '2020-01-01 00:00:00.250',\n            TIMESTAMP '2020-01-01 00:00:01.750') AS sec_1_5,\n        DATEDIFF('second',\n            TIMESTAMP '2020-01-01 00:00:00.500',\n            TIMESTAMP '2020-01-01 00:00:02.900') AS sec_2_4,\n        DATEDIFF('second',\n            TIMESTAMP '2020-01-01 00:00:00.000',\n            TIMESTAMP '2020-01-01 00:00:02.500') AS sec_2_5,\n        DATEDIFF('hour',\n            TIMESTAMP '2020-01-01 01:30:00',\n            TIMESTAMP '2020-01-01 02:30:00') AS hour_1h_two_buckets;\""
+---
+Ok(
+    [
+        "+---------+---------+---------+---------------------+",
+        "| sec_1_5 | sec_2_4 | sec_2_5 | hour_1h_two_buckets |",
+        "+---------+---------+---------+---------------------+",
+        "| 1       | 2       | 2       | 1                   |",
+        "+---------+---------+---------+---------------------+",
+    ],
+)

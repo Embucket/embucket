@@ -100,13 +100,6 @@ impl DateDiffFunc {
 
         let arr1 = cast(lhs, &DataType::Timestamp(TimeUnit::Nanosecond, None))?;
         let arr2 = cast(rhs, &DataType::Timestamp(TimeUnit::Nanosecond, None))?;
-        let diff = sub(&arr2, &arr1)?;
-        let diff_arr = diff
-            .as_any()
-            .downcast_ref::<DurationNanosecondArray>()
-            .context(dtime_errors::CantCastToSnafu {
-                v: "duration_nsec".to_string(),
-            })?;
         match unit_type {
             DatePart::Quarter | DatePart::Year | DatePart::YearISO => {
                 let arr1 = &date_part(&arr1, unit_type)?;
@@ -136,37 +129,25 @@ impl DateDiffFunc {
                 let result = cast(&result, &DataType::Int64)?;
                 Ok(ColumnarValue::Array(Arc::new(result)))
             }
-            DatePart::Week | DatePart::WeekISO => Ok(self.weeks_diff(diff_arr)),
-            DatePart::Day | DatePart::DayOfYear => Ok(Self::diff(diff_arr, 86_400 * SECOND)),
-            DatePart::Hour => {
-                let nanos_in_hour: i64 = 3_600 * SECOND;
-                let arr1 = &date_part(&arr1, unit_type)?;
-                let arr2 = &date_part(&arr2, unit_type)?;
-                let hours_diff = cast(&sub(&arr2, &arr1)?, &DataType::Int64)?;
-                let hours_arr = as_int64_array(&hours_diff)?;
-
-                let result = diff_arr
-                    .iter()
-                    .zip(hours_arr.iter())
-                    .map(|(nanos, diff)| match (nanos, diff) {
-                        (Some(n), Some(hours_diff)) => {
-                            let res = n.div_euclid(nanos_in_hour);
-                            if hours_diff != 0 {
-                                Some(res + 1)
-                            } else {
-                                Some(res)
-                            }
-                        }
-                        _ => None,
-                    })
-                    .collect::<Int64Array>();
-                Ok(ColumnarValue::Array(Arc::new(result)))
+            DatePart::Week | DatePart::WeekISO => {
+                let diff = sub(&arr2, &arr1)?;
+                let diff_arr = diff
+                    .as_any()
+                    .downcast_ref::<DurationNanosecondArray>()
+                    .context(dtime_errors::CantCastToSnafu {
+                        v: "duration_nsec".to_string(),
+                    })?;
+                Ok(self.weeks_diff(diff_arr))
             }
-            DatePart::Minute => Ok(Self::diff(diff_arr, 60 * SECOND)),
-            DatePart::Second => Ok(Self::diff(diff_arr, SECOND)),
-            DatePart::Millisecond => Ok(Self::diff(diff_arr, 1_000_000)),
-            DatePart::Microsecond => Ok(Self::diff(diff_arr, 1_000)),
-            _ => Ok(Self::diff(diff_arr, 1)),
+            DatePart::Day | DatePart::DayOfYear => {
+                Self::boundary_diff(&arr1, &arr2, 86_400 * SECOND)
+            }
+            DatePart::Hour => Self::boundary_diff(&arr1, &arr2, 3_600 * SECOND),
+            DatePart::Minute => Self::boundary_diff(&arr1, &arr2, 60 * SECOND),
+            DatePart::Second => Self::boundary_diff(&arr1, &arr2, SECOND),
+            DatePart::Millisecond => Self::boundary_diff(&arr1, &arr2, 1_000_000),
+            DatePart::Microsecond => Self::boundary_diff(&arr1, &arr2, 1_000),
+            _ => Self::boundary_diff(&arr1, &arr2, 1),
         }
     }
 
@@ -182,26 +163,15 @@ impl DateDiffFunc {
             | DatePart::Millisecond
             | DatePart::Microsecond
             | DatePart::Nanosecond => {
-                // Cast TIME to Int64 nanoseconds from midnight, compute diff
-                let lhs_i64 = cast(lhs, &DataType::Int64)?;
-                let rhs_i64 = cast(rhs, &DataType::Int64)?;
-                let diff_i64 = sub(&rhs_i64, &lhs_i64)?;
-                // Convert to Duration(Ns) to reuse the generic diff logic
-                let diff_ns = cast(&diff_i64, &DataType::Duration(TimeUnit::Nanosecond))?;
-                let diff_arr = diff_ns
-                    .as_any()
-                    .downcast_ref::<DurationNanosecondArray>()
-                    .context(dtime_errors::CantCastToSnafu {
-                        v: "duration_nsec".to_string(),
-                    })?;
-                Ok(match unit_type {
-                    DatePart::Hour => Self::diff(diff_arr, 3_600 * SECOND),
-                    DatePart::Minute => Self::diff(diff_arr, 60 * SECOND),
-                    DatePart::Second => Self::diff(diff_arr, SECOND),
-                    DatePart::Millisecond => Self::diff(diff_arr, 1_000_000),
-                    DatePart::Microsecond => Self::diff(diff_arr, 1_000),
-                    _ => Self::diff(diff_arr, 1),
-                })
+                let coef = match unit_type {
+                    DatePart::Hour => 3_600 * SECOND,
+                    DatePart::Minute => 60 * SECOND,
+                    DatePart::Second => SECOND,
+                    DatePart::Millisecond => 1_000_000,
+                    DatePart::Microsecond => 1_000,
+                    _ => 1,
+                };
+                Self::boundary_diff(lhs, rhs, coef)
             }
             _ => dtime_errors::DateDiffInvalidComponentForTimeSnafu {
                 component: format!("{unit_type:?}"),
@@ -234,12 +204,28 @@ impl DateDiffFunc {
         ColumnarValue::Array(Arc::new(diff))
     }
 
-    fn diff(diff_arr: &DurationNanosecondArray, coef: i64) -> ColumnarValue {
-        let diff_arr: Int64Array = diff_arr.unary(|x| {
-            let div = x / coef;
-            if x % coef == 0 { div } else { div + 1 }
-        });
-        ColumnarValue::Array(Arc::new(diff_arr))
+    // Snowflake's DATEDIFF returns the number of `part`-boundaries crossed
+    // between the two endpoints, not the fractional elapsed duration. We
+    // implement that by truncating each endpoint to `coef` precision
+    // independently (floor division) and subtracting the integer quotients.
+    fn boundary_diff(
+        lhs: &Arc<dyn Array>,
+        rhs: &Arc<dyn Array>,
+        coef: i64,
+    ) -> Result<ColumnarValue> {
+        let lhs_i64 = cast(lhs, &DataType::Int64)?;
+        let rhs_i64 = cast(rhs, &DataType::Int64)?;
+        let a = as_int64_array(&lhs_i64)?;
+        let b = as_int64_array(&rhs_i64)?;
+        let result: Int64Array = a
+            .iter()
+            .zip(b.iter())
+            .map(|(a, b)| match (a, b) {
+                (Some(a), Some(b)) => Some(b.div_euclid(coef) - a.div_euclid(coef)),
+                _ => None,
+            })
+            .collect();
+        Ok(ColumnarValue::Array(Arc::new(result)))
     }
 }
 
