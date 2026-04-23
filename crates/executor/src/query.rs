@@ -606,7 +606,7 @@ impl UserQuery {
                 return ex_error::OnlyPrimitiveStatementsSnafu.fail();
             }
 
-            for (name, value) in names.into_iter().zip(value_list.into_iter()) {
+            for (name, value) in names.into_iter().zip(value_list) {
                 let session_value = if let SqlExpr::Value(ValueWithSpan { value: v, .. }) = value {
                     Ok(SessionProperty::from_value(
                         name.clone(),
@@ -775,15 +775,13 @@ impl UserQuery {
                     .fail();
                 }
             }
-            ObjectType::Schema => {
-                if !if_exists && catalog.schema(&schema_name).is_none() {
-                    return ex_error::SchemaNotFoundInDatabaseSnafu {
-                        operation_on: OperationOn::Table(OperationType::Drop),
-                        schema: schema_name,
-                        db: catalog_name.to_string(),
-                    }
-                    .fail();
+            ObjectType::Schema if !if_exists && catalog.schema(&schema_name).is_none() => {
+                return ex_error::SchemaNotFoundInDatabaseSnafu {
+                    operation_on: OperationOn::Table(OperationType::Drop),
+                    schema: schema_name,
+                    db: catalog_name.to_string(),
                 }
+                .fail();
             }
             _ => {}
         }
@@ -3142,8 +3140,7 @@ pub fn merge_clause_projection<S: ContextProvider>(
                         .rows
                         .into_iter()
                         .next()
-                        .ok_or_else(|| ex_error::MergeInsertOnlyOneRowSnafu.build())?
-                        .into_iter(),
+                        .ok_or_else(|| ex_error::MergeInsertOnlyOneRowSnafu.build())?,
                 ) {
                     let column_name = column.value.clone();
                     let expr = sql_planner
@@ -3240,7 +3237,7 @@ fn collect_merge_clause_expressions(
 
             let case_expr = match (updates, insert) {
                 (Some(updates), Some(inserts)) => {
-                    let builder_opt = updates.into_iter().chain(inserts.into_iter()).fold(
+                    let builder_opt = updates.into_iter().chain(inserts).fold(
                         None::<CaseBuilder>,
                         |acc, (w, t)| {
                             if let Some(mut acc) = acc {
@@ -3358,7 +3355,7 @@ async fn target_filter_expression(
         .context(ex_error::IcebergSnafu)?;
     let expr = partition_fields
         .iter()
-        .zip(partition_column_bounds.into_iter())
+        .zip(partition_column_bounds)
         .fold(None, |acc, (column, [min, max])| {
             let column_expr = col(column.source_name());
             let expr = and(

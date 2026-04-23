@@ -129,7 +129,7 @@ impl ScalarUDFImpl for ToArrayFunc {
         let values_array = if flat_values.is_empty() {
             new_empty_array(&elem_type)
         } else {
-            ScalarValue::iter_to_array(flat_values.into_iter())?
+            ScalarValue::iter_to_array(flat_values)?
         };
         let offset_buf = OffsetBuffer::new(offsets.into());
 

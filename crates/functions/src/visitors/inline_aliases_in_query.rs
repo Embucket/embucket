@@ -87,16 +87,14 @@ impl VisitorMut for InlineAliasesInSelect {
                             alias_expr_map.insert(alias.value.clone(), expr.clone());
                         }
                     }
-                    SelectItem::UnnamedExpr(expr) => {
-                        if inline_in_projection {
-                            //Don't substitute subquery idents
-                            substitute_aliases(
-                                expr,
-                                &alias_expr_map,
-                                None,
-                                Some(&|e| contains_ident_value(&subquery_idents, e)),
-                            );
-                        }
+                    SelectItem::UnnamedExpr(expr) if inline_in_projection => {
+                        //Don't substitute subquery idents
+                        substitute_aliases(
+                            expr,
+                            &alias_expr_map,
+                            None,
+                            Some(&|e| contains_ident_value(&subquery_idents, e)),
+                        );
                     }
                     _ => {}
                 }

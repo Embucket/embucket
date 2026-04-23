@@ -20,7 +20,7 @@ pub async fn fetch_table_providers(
     let table_names = schema_provider.table_names();
 
     let results: Vec<DataFusionResult<Option<(String, Arc<dyn TableProvider>)>>> =
-        stream::iter(table_names.into_iter())
+        stream::iter(table_names)
             .map(|table_name| {
                 let schema_provider = Arc::clone(&schema_provider);
                 async move {
