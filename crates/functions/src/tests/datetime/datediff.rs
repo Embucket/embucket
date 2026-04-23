@@ -58,3 +58,64 @@ test_query!(
             CAST('1970-02-01 00:15:00' AS TIMESTAMP)) AS date_time",
     snapshot_path = "datediff"
 );
+
+// DATEDIFF uses boundary-count semantics (matches Snowflake), not
+// ceiling-of-duration. These cases all produce 0 because the endpoints
+// sit in the same `part` bucket even though the true duration is positive.
+test_query!(
+    boundary_count_same_bucket,
+    "SELECT
+        DATEDIFF('second',
+            TIMESTAMP '2020-01-01 00:00:00.100',
+            TIMESTAMP '2020-01-01 00:00:00.900') AS sec_sub,
+        DATEDIFF('minute',
+            TIMESTAMP '2020-01-01 00:00:05',
+            TIMESTAMP '2020-01-01 00:00:55') AS min_sub,
+        DATEDIFF('hour',
+            TIMESTAMP '2020-01-01 01:30:00',
+            TIMESTAMP '2020-01-01 01:50:00') AS hour_sub,
+        DATEDIFF('day',
+            TIMESTAMP '2020-01-01 08:00:00',
+            TIMESTAMP '2020-01-01 20:00:00') AS day_sub;",
+    snapshot_path = "datediff"
+);
+
+// Endpoints straddle a single boundary: DATEDIFF returns 1 even when the
+// true elapsed duration is less than one full unit.
+test_query!(
+    boundary_count_straddle,
+    "SELECT
+        DATEDIFF('second',
+            TIMESTAMP '2020-01-01 00:00:00.900',
+            TIMESTAMP '2020-01-01 00:00:01.100') AS sec_straddle,
+        DATEDIFF('minute',
+            TIMESTAMP '2020-01-01 01:00:55',
+            TIMESTAMP '2020-01-01 01:01:05') AS min_straddle,
+        DATEDIFF('hour',
+            TIMESTAMP '2020-01-01 01:55:00',
+            TIMESTAMP '2020-01-01 02:05:00') AS hour_straddle,
+        DATEDIFF('day',
+            TIMESTAMP '2020-01-01 23:00:00',
+            TIMESTAMP '2020-01-02 01:00:00') AS day_straddle;",
+    snapshot_path = "datediff"
+);
+
+// Counts boundaries, not rounded duration: a 1.5-second span that crosses
+// exactly one second-boundary returns 1, not 2 (CEIL(1.5) = 2 would be wrong).
+test_query!(
+    boundary_count_not_ceiling,
+    "SELECT
+        DATEDIFF('second',
+            TIMESTAMP '2020-01-01 00:00:00.250',
+            TIMESTAMP '2020-01-01 00:00:01.750') AS sec_1_5,
+        DATEDIFF('second',
+            TIMESTAMP '2020-01-01 00:00:00.500',
+            TIMESTAMP '2020-01-01 00:00:02.900') AS sec_2_4,
+        DATEDIFF('second',
+            TIMESTAMP '2020-01-01 00:00:00.000',
+            TIMESTAMP '2020-01-01 00:00:02.500') AS sec_2_5,
+        DATEDIFF('hour',
+            TIMESTAMP '2020-01-01 01:30:00',
+            TIMESTAMP '2020-01-01 02:30:00') AS hour_1h_two_buckets;",
+    snapshot_path = "datediff"
+);
