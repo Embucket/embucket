@@ -3353,10 +3353,9 @@ async fn target_filter_expression(
         .partition_fields(*current_snapshot.snapshot_id())
         .map_err(IcebergError::from)
         .context(ex_error::IcebergSnafu)?;
-    let expr = partition_fields
-        .iter()
-        .zip(partition_column_bounds)
-        .fold(None, |acc, (column, [min, max])| {
+    let expr = partition_fields.iter().zip(partition_column_bounds).fold(
+        None,
+        |acc, (column, [min, max])| {
             let column_expr = col(column.source_name());
             let expr = and(
                 datafusion_expr::Expr::BinaryExpr(BinaryExpr::new(
@@ -3375,7 +3374,8 @@ async fn target_filter_expression(
             } else {
                 Some(expr)
             }
-        });
+        },
+    );
     Ok(expr)
 }
 
