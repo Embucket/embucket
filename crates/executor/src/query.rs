@@ -1517,11 +1517,37 @@ impl UserQuery {
 
         // Create the LogicalPlan for the join
         let sql_planner = SqlToRel::new(&session_context_provider);
+
         let schema = build_join_schema(&target_schema, &source_schema, &JoinType::Full)
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
         let on_expr = sql_planner
             .sql_to_expr((*on).clone(), &schema, &mut planner_context)
+            .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
+
+        let affected_files_plan = LogicalPlanBuilder::new(target_plan.clone())
+            .join_on(source_plan.clone(), JoinType::Inner, [on_expr.clone(); 1])
+            .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?
+            .aggregate(
+                [col(DATA_FILE_PATH_COLUMN)],
+                Vec::<datafusion_expr::Expr>::new(),
+            )
+            .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?
+            .build()
+            .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
+
+        let target_plan = LogicalPlanBuilder::new(target_plan)
+            .join(
+                affected_files_plan,
+                JoinType::LeftSemi,
+                (
+                    vec![Column::from_name(DATA_FILE_PATH_COLUMN)],
+                    vec![Column::from_name(DATA_FILE_PATH_COLUMN)],
+                ),
+                None,
+            )
+            .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?
+            .build()
             .context(ex_error::DataFusionLogicalPlanMergeJoinSnafu)?;
 
         let has_insert = clauses

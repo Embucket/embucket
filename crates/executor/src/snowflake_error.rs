@@ -254,7 +254,6 @@ pub fn executor_error(error: &Error) -> SnowflakeError {
         | Error::CatalogListDowncast { .. }
         | Error::CatalogDownCast { .. }
         | Error::LogicalExtensionChildCount { .. }
-        | Error::MergeFilterStreamNotMatching { .. }
         | Error::MatchingFilesAlreadyConsumed { .. }
         | Error::MissingFilterPredicates { .. } => CustomSnafu {
             message,
