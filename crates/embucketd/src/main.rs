@@ -182,7 +182,7 @@ async fn async_main(
         .layer(TraceLayer::new_for_http())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
-            std::time::Duration::from_secs(1200),
+            std::time::Duration::from_mins(20),
         ))
         .layer(CatchPanicLayer::new())
         .into_make_service_with_connect_info::<SocketAddr>();
