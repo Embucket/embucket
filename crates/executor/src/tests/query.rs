@@ -206,6 +206,10 @@ macro_rules! test_query {
                 // EXPLAIN snapshots don't flake between 4-core CI and dev boxes with
                 // different core counts.
                 settings.add_filter(r"RoundRobinBatch\(\d+\)", "RoundRobinBatch([N])");
+                // Hash-repartition fan-out and input_partitions also depend on
+                // the host CPU count. Normalize both so snapshots are stable.
+                settings.add_filter(r"Hash\((\[[^\]]*\]),\s*\d+\)", "Hash($1, [N])");
+                settings.add_filter(r"input_partitions=\d+", "input_partitions=[N]");
 
                 let setup: Vec<&str> = vec![$($($setup_queries),*)?];
                 if !setup.is_empty() {
