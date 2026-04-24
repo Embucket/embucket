@@ -381,7 +381,9 @@ impl Stream for MergeCOWCountAndProjectStream {
                 {
                     let updated = downcast_array::<BooleanArray>(col.as_ref());
                     let count = count_true_and_valid(&updated);
-                    project.updated_rows.fetch_add(usize_to_i64_saturating(count), Ordering::Relaxed);
+                    project
+                        .updated_rows
+                        .fetch_add(usize_to_i64_saturating(count), Ordering::Relaxed);
                     project.updated_rows_metric.add(count);
                 }
                 if let Some(inserted_idx) = *project.inserted_idx
@@ -389,7 +391,9 @@ impl Stream for MergeCOWCountAndProjectStream {
                 {
                     let inserted = downcast_array::<BooleanArray>(col.as_ref());
                     let count = count_true_and_valid(&inserted);
-                    project.inserted_rows.fetch_add(usize_to_i64_saturating(count), Ordering::Relaxed);
+                    project
+                        .inserted_rows
+                        .fetch_add(usize_to_i64_saturating(count), Ordering::Relaxed);
                     project.inserted_rows_metric.add(count);
                 }
 
@@ -448,7 +452,6 @@ fn count_true_and_valid(arr: &BooleanArray) -> usize {
 fn usize_to_i64_saturating(v: usize) -> i64 {
     i64::try_from(v).unwrap_or(i64::MAX)
 }
-
 
 /// Creates a mapping of unique file paths to their corresponding manifest paths.
 ///
