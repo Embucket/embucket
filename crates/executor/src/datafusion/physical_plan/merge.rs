@@ -148,14 +148,14 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
         let updated_rows: Arc<AtomicI64> = Arc::new(AtomicI64::new(0));
         let inserted_rows: Arc<AtomicI64> = Arc::new(AtomicI64::new(0));
 
-        // `Count` metrics that surface in `EXPLAIN ANALYZE` as
-        // `metrics=[updated_rows=…, inserted_rows=…, deleted_rows=…]` on this
-        // node. Populated below after the write transaction commits.
+        // `Count` metrics surfaced via `EXPLAIN ANALYZE` on this node.
+        // Updated incrementally by the stream as rows flow through.
         let updated_rows_metric: Count =
             MetricBuilder::new(&self.metrics).counter("updated_rows", partition);
         let inserted_rows_metric: Count =
             MetricBuilder::new(&self.metrics).counter("inserted_rows", partition);
-        let deleted_rows_metric: Count =
+        // MERGE DELETE is not supported yet; register the metric so it shows as 0.
+        let _deleted_rows_metric: Count =
             MetricBuilder::new(&self.metrics).counter("deleted_rows", partition);
 
         let coalesce = CoalescePartitionsExec::new(self.input.clone());
@@ -165,6 +165,8 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
             input_batches,
             updated_rows.clone(),
             inserted_rows.clone(),
+            updated_rows_metric.clone(),
+            inserted_rows_metric.clone(),
             matching_files.clone(),
         );
 
@@ -174,9 +176,6 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
             let schema = schema.clone();
             let updated_rows = Arc::clone(&updated_rows);
             let inserted_rows = Arc::clone(&inserted_rows);
-            let updated_rows_metric = updated_rows_metric.clone();
-            let inserted_rows_metric = inserted_rows_metric.clone();
-            let deleted_rows_metric = deleted_rows_metric.clone();
             let projected_schema = count_and_project_stream.projected_schema();
             let batches: SendableRecordBatchStream = Box::pin(RecordBatchStreamAdapter::new(
                 projected_schema,
@@ -236,13 +235,6 @@ impl ExecutionPlan for MergeIntoCOWSinkExec {
                 // MERGE DELETE is not supported yet
                 let deleted = 0i64;
 
-                // Publish per-clause counts to the `MetricsSet` so
-                // `EXPLAIN ANALYZE` shows them on the MergeIntoSinkExec line.
-                // Rely on `try_from` so huge row counts fall back cleanly.
-                updated_rows_metric.add(usize::try_from(updated).unwrap_or(usize::MAX));
-                inserted_rows_metric.add(usize::try_from(inserted).unwrap_or(usize::MAX));
-                deleted_rows_metric.add(usize::try_from(deleted).unwrap_or(usize::MAX));
-
                 let arrays = schema
                     .fields()
                     .iter()
@@ -287,6 +279,8 @@ pin_project! {
         inserted_idx: Option<usize>,
         updated_rows: Arc<AtomicI64>,
         inserted_rows: Arc<AtomicI64>,
+        updated_rows_metric: Count,
+        inserted_rows_metric: Count,
         data_file_path_idx: usize,
         manifest_file_path_idx: usize,
         matching_files: HashMap<String, String>,
@@ -302,6 +296,8 @@ impl MergeCOWCountAndProjectStream {
         input: SendableRecordBatchStream,
         updated_rows: Arc<AtomicI64>,
         inserted_rows: Arc<AtomicI64>,
+        updated_rows_metric: Count,
+        inserted_rows_metric: Count,
         matching_files_ref: Arc<Mutex<Option<ManifestAndDataFiles>>>,
     ) -> Self {
         let input_schema = input.schema();
@@ -347,6 +343,8 @@ impl MergeCOWCountAndProjectStream {
             inserted_idx,
             updated_rows,
             inserted_rows,
+            updated_rows_metric,
+            inserted_rows_metric,
             data_file_path_idx,
             manifest_file_path_idx,
             matching_files: HashMap::new(),
@@ -382,15 +380,17 @@ impl Stream for MergeCOWCountAndProjectStream {
                     && let Some(col) = batch.columns().get(updated_idx)
                 {
                     let updated = downcast_array::<BooleanArray>(col.as_ref());
-                    let n = usize_to_i64_saturating(count_true_and_valid(&updated));
-                    project.updated_rows.fetch_add(n, Ordering::Relaxed);
+                    let count = count_true_and_valid(&updated);
+                    project.updated_rows.fetch_add(usize_to_i64_saturating(count), Ordering::Relaxed);
+                    project.updated_rows_metric.add(count);
                 }
                 if let Some(inserted_idx) = *project.inserted_idx
                     && let Some(col) = batch.columns().get(inserted_idx)
                 {
                     let inserted = downcast_array::<BooleanArray>(col.as_ref());
-                    let n = usize_to_i64_saturating(count_true_and_valid(&inserted));
-                    project.inserted_rows.fetch_add(n, Ordering::Relaxed);
+                    let count = count_true_and_valid(&inserted);
+                    project.inserted_rows.fetch_add(usize_to_i64_saturating(count), Ordering::Relaxed);
+                    project.inserted_rows_metric.add(count);
                 }
 
                 // Project away auxiliary columns
